@@ -1,0 +1,15 @@
+/* Fonts bundled with Sungfluence so the app works offline.
+   Inter, JetBrains Mono, Playfair Display, Oswald and Noto Naskh Arabic: SIL Open Font License 1.1.
+   Special Elite: Apache License 2.0. Files come from the Fontsource project. */
+@font-face { font-family: 'Inter'; font-style: normal; font-display: swap; font-weight: 100 900; src: url('inter-latin-wght-normal.woff2') format('woff2-variations'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-display: swap; font-weight: 400; src: url('jetbrains-mono-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-display: swap; font-weight: 700; src: url('jetbrains-mono-latin-700-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Playfair Display'; font-style: normal; font-display: swap; font-weight: 400 900; src: url('playfair-display-latin-wght-normal.woff2') format('woff2-variations'); }
+@font-face { font-family: 'Oswald'; font-style: normal; font-display: swap; font-weight: 200 700; src: url('oswald-latin-wght-normal.woff2') format('woff2-variations'); }
+@font-face { font-family: 'Noto Naskh Arabic'; font-style: normal; font-display: swap; font-weight: 400; src: url('noto-naskh-arabic-arabic-400-normal.woff2') format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC; }
+@font-face { font-family: 'Noto Naskh Arabic'; font-style: normal; font-display: swap; font-weight: 700; src: url('noto-naskh-arabic-arabic-700-normal.woff2') format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC; }
+@font-face { font-family: 'Noto Naskh Arabic'; font-style: normal; font-display: swap; font-weight: 400 700; src: url('noto-naskh-arabic-latin-400-normal.woff2') format('woff2'); unicode-range: U+0000-00FF; }
+@font-face { font-family: 'Special Elite'; font-style: normal; font-display: swap; font-weight: 400; src: url('special-elite-latin-400-normal.woff2') format('woff2'); }
+/* Noto Nastaliq Urdu: SIL Open Font License 1.1, from Fontsource. The usual script for Urdu poetry. */
+@font-face { font-family: 'Noto Nastaliq Urdu'; font-style: normal; font-display: swap; font-weight: 400; src: url('noto-nastaliq-urdu-arabic-400-normal.woff2') format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC; }
+@font-face { font-family: 'Noto Nastaliq Urdu'; font-style: normal; font-display: swap; font-weight: 700; src: url('noto-nastaliq-urdu-arabic-700-normal.woff2') format('woff2'); unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC; }

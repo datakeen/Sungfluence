@@ -1,0 +1,135 @@
+{
+  "name": "sungfluence",
+  "productName": "SungFluence",
+  "version": "3.1.0",
+  "description": "A small design studio that turns images into art made of letters: word portraits, text along lines, ASCII, Braille, calligrams, plus photo, vector and text tools.",
+  "main": "main.js",
+  "author": {
+    "name": "Ahmed Bilal",
+    "url": "https://www.linkedin.com/in/abilal/"
+  },
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://github.com/datakeen/Sungfluence",
+  "keywords": [
+    "ascii-art",
+    "text-art",
+    "typography",
+    "word-art",
+    "calligram",
+    "braille",
+    "image-to-text",
+    "electron"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js",
+    "build:single": "node scripts/build.js --single",
+    "prestart": "node scripts/build.js",
+    "start": "electron .",
+    "web": "npx --yes http-server src -p 8080 -c-1",
+    "test": "node tests/regression.test.js && node tests/plugins.test.js && node tests/studio.test.js && node tests/effects.test.js",
+    "predist": "node scripts/build.js",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "vendor": "node scripts/vendor.js",
+    "icons": "node scripts/icons.js",
+    "test:smoke": "node tests/smoke.test.js"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/oswald": "^5.3.0",
+    "@fontsource-variable/playfair-display": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/noto-naskh-arabic": "^5.3.0",
+    "@fontsource/special-elite": "^5.3.0",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "jspdf": "^2.5.1",
+    "jszip": "^3.10.1",
+    "playwright": "^1.48.2"
+  },
+  "build": {
+    "appId": "io.github.datakeen.sungfluence",
+    "productName": "SungFluence",
+    "copyright": "Copyright (C) 2026 Ahmed Bilal. Licensed under the GNU AGPL v3 or later.",
+    "files": [
+      "main.js",
+      "package.json",
+      "LICENSE",
+      "src/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "artifactName": "SungFluence-${version}-${os}-${arch}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "SungFluence-Setup-${version}-${arch}.${ext}",
+      "license": "LICENSE"
+    },
+    "portable": {
+      "artifactName": "SungFluence-Portable-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.graphics-design",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
+      "category": "Graphics",
+      "icon": "build/icon.png",
+      "maintainer": "Ahmed Bilal",
+      "synopsis": "Turn photos into typographic art",
+      "executableName": "sungfluence"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/datakeen/Sungfluence.git"
+  },
+  "bugs": {
+    "url": "https://github.com/datakeen/Sungfluence/issues"
+  }
+}
