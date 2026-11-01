@@ -68,9 +68,21 @@ Arabic script joins its letters, so styles must never draw it one letter at a ti
 
 1. License: AGPL-3.0-or-later (decided). Keep SPDX lines in new files. The plugin template stays MIT on purpose.
 2. Samples: all pictures in `app/samples/` were made by the owner with AI image tools, and the owner holds the rights (confirmed November 2026). Keep new samples under about 450 KB (1600 px JPEG).
-3. The GitHub repository is `datakeen/Sungfluence` (private for now). Installer steps: `docs/INSTALLERS-AND-GITHUB.md`.
-4. Run the build and all tests, and check the screenshots.
+3. Add the release to `CHANGELOG.md` (move the Unreleased items under the new version and date), and raise `version` in `package.json` to match the tag.
+4. The GitHub repository is `datakeen/Sungfluence` (private for now). Installer steps: `docs/INSTALLERS-AND-GITHUB.md`.
+5. Run the build and all tests, and check the screenshots.
 
 ## Where the project is going
 
-See `ROADMAP.md`. Before a large change, propose a short plan and wait for the owner.
+See `ROADMAP.md`. The owner wants a proper design studio, not a toy. The roadmap is in phases; build them in order, because later phases stand on earlier ones.
+
+New code should already fit the target building blocks listed at the top of the roadmap, even before their phase starts:
+
+- An action belongs in one function that a menu, a shortcut, a button and a test can all call. Do not bury logic in a click handler.
+- A new export goes through one function that takes the scene and options and returns a file, so it can move into the exporter registry later.
+- Do not add more code that assumes exactly three layers. Read layers through `doc.order` and `layerOf`.
+- Text that may be Urdu, Arabic or Persian is placed by word, never by letter (see "Text in Urdu and Arabic").
+- Anything that would send data off the computer is opt-in, uses the user's own key, and never stores keys in project files.
+- Add user-visible changes to the Unreleased part of `CHANGELOG.md` in the same commit.
+
+Before a large change, propose a short plan and wait for the owner.

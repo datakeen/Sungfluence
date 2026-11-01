@@ -153,6 +153,10 @@ docs/                     screenshots, the plugin guide, the installer and GitHu
 5. **Output:** the same list is drawn to the screen and written to SVG, PDF and text, so every export matches the preview.
 6. **Compose:** the three layers are stacked in your order with their opacity and blend mode.
 
+## What is new, and what is next
+
+Every release is listed in [CHANGELOG.md](CHANGELOG.md). The plan toward a full design studio, with Urdu and Arabic in every style, print and maker exports, animation, batch work and optional AI, is in [ROADMAP.md](ROADMAP.md).
+
 ## Feedback and contributing
 
 Found a bug, or have an idea? Please [open an issue](https://github.com/datakeen/Sungfluence/issues) on GitHub. Click **New issue**, give it a short title, and describe what happened or what you would like. Screenshots help.
