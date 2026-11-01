@@ -25,6 +25,13 @@ On a Mac, use Cmd where this page says Ctrl. Press **F1** at any time to open th
 | Space | Hold to move with any tool |
 | Enter | Finish a pen line, apply a crop |
 | Delete | Delete the selected object, line or point |
+| Alt while dragging | Move freely, without snapping |
+| Shift while drawing | Straight lines in 15° steps |
+| Ctrl K | Find any command |
+| Ctrl O | Open an image or a project |
+| Ctrl A | Select all shapes |
+| Ctrl ; | Snapping on or off |
+| Ctrl ' | Show the grid |
 | Ctrl C / V | Copy and paste objects |
 | Ctrl D | Deselect |
 | Ctrl J | Duplicate objects or text layer |

@@ -1,5 +1,13 @@
 # The window
 
+## Menu bar
+
+Every action is in the menus: **File**, **Edit**, **Image**, **Layer**, **Text art**, **Effects**, **Export**, **View** and **Help**. In the desktop app they are the normal menu bar of the window; in a browser they are a bar at the top of the page. Each menu item shows its keyboard shortcut.
+
+## Find any command (Ctrl K)
+
+Press **Ctrl K** (Cmd K on a Mac), or choose **Help → Find a command**, and type a few letters: a command, a style, a recipe, a sample, an export format or a tool. Use the arrow keys and Enter, or click. Items that are not available right now are dimmed.
+
 ## Top bar
 
 | Part | What it does |

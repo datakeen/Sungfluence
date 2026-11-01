@@ -7,6 +7,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Menu bar** with File, Edit, Image, Layer, Text art, Effects, Export, View and Help. The desktop app shows it as its normal menu bar; the web version shows it at the top of the page. Every item shows its shortcut, and checkmarks show what is on.
+- **Find any command** with Ctrl K: commands, styles, recipes, samples, export formats and tools.
+- **Snapping** while drawing and editing vectors: end points, points and corners, mid points, centers, intersections, extensions, perpendicular, tangent, on lines, text baselines, edges in the photo, lining up with other points, 15° angles and a grid. A mark shows where the point will land. Alt places a point freely; a Snap button and View → Snapping choose what to snap to.
+- **Grid**: View → Show grid (Ctrl '), with its size in Settings.
+- New shortcuts: Ctrl O opens, Ctrl A selects all shapes, Ctrl ; turns snapping on or off.
 - **Help inside the app.** Press F1, or choose **?** → **Help and tutorial**, or **Help → SungFluence Help** in the desktop app. Topics on the left, search, links between pages. It works offline and ships with every installer.
 - **Getting started tutorial** in five steps, with pictures. New users see a one-time hint that points to it.
 - **User reference** for the window, the Photo, Vector, Text art and Output panels, export, plugins, Urdu and Arabic, and common problems.
@@ -17,6 +22,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Every action is now one command that menus, shortcuts, the palette and tests all share. Shortcuts work the same as before.
 - New icon: a light S and a gold F on deep ink, in the style of the wordmark.
 - The desktop Help menu has Help and Getting started at the top.
 

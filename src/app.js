@@ -1038,7 +1038,7 @@ function setTool(id) {
   if (ui.tool === 'pen' && id !== 'pen') finishPen();
   if (ui.tool === 'crop' && id !== 'crop') cropCancel();
   commitTextEdit();
-  ui.tool = id;
+  ui.tool = id; ui.snapHint = null;
   const t = TOOLS.find((x) => x.id === id);
   const tab = t && t.group ? ((id === 'shape' || id === 'text') && ui.objLayer === 'photo' ? 'photo' : t.group) : null;
   if (tab && ui.tab !== tab) { ui.tab = tab; buildTabs(); buildPanel(); }
@@ -1152,8 +1152,8 @@ wrap.addEventListener('pointerdown', (e) => {
   if (ui.tool === 'zoom') { drag = { kind: 'zoomRect', a: [p.ax, p.ay], b: [p.ax, p.ay], alt: e.altKey, wr: wrap.getBoundingClientRect(), cx: e.clientX, cy: e.clientY }; return; }
   if (ui.tool === 'crop') { cropDown(p, ix, iy); return; }
   if (ui.tool === 'select') { selectDown(p, ix, iy, e); return; }
-  if (ui.tool === 'shape') { shapeDown(ix, iy, e); return; }
-  if (ui.tool === 'text') { textDown(p, ix, iy); return; }
+  if (ui.tool === 'shape') { const s = snapAt(ix, iy, { e, p }); shapeDown(s[0], s[1], e); return; }
+  if (ui.tool === 'text') { const s = snapAt(ix, iy, { e, p }); textDown(p, s[0], s[1]); return; }
   if (ui.tool === 'wand') {
     const [mx, my] = toMaster(ix, iy);
     if (mx < 0 || my < 0 || mx >= master.w || my >= master.h) return;
@@ -1164,7 +1164,8 @@ wrap.addEventListener('pointerdown', (e) => {
     drag = { kind: 'brush', sub: e.altKey || ui.brush.mode === 'sub', last: null };
     brushAt(p);
   } else if (ui.tool === 'pen') {
-    penDown(p, ix, iy);
+    const s = snapAt(ix, iy, penSnap(e, p));
+    penDown(p, s[0], s[1]);
   } else if (ui.tool === 'pencil') {
     drag = { kind: 'pencil', pts: [[ix, iy]], last: [p.cx, p.cy] };
   } else if (ui.tool === 'direct') {
@@ -1183,7 +1184,12 @@ wrap.addEventListener('pointermove', (e) => {
   }
   const p = evPos(e);
   if (ui.tool === 'brush') { const ring = $('brushRing'); const vr = viewport.getBoundingClientRect(); ring.style.left = (e.clientX - vr.left) + 'px'; ring.style.top = (e.clientY - vr.top) + 'px'; ring.style.width = ring.style.height = ui.brush.size + 'px'; }
-  if (ui.tool === 'pen' && pen) { hover = toImg(p); if (!drag) drawOverlay(); }
+  if (!drag && ['pen', 'shape', 'text'].includes(ui.tool)) {
+    const before = JSON.stringify(ui.snapHint);
+    const s = snapAt(...toImg(p), ui.tool === 'pen' ? penSnap(e, p) : { e, p });
+    if (ui.tool === 'pen' && pen) { hover = s; drawOverlay(); }
+    else if (JSON.stringify(ui.snapHint) !== before) drawOverlay();
+  }
   if (!drag) { if (guideHit(p)) wrap.style.cursor = 'grab'; else if (ui.tool === 'select' || ui.tool === 'crop') hoverCursor(p); else wrap.style.cursor = ''; return; }
   if (drag.kind === 'pan') { wrap.scrollLeft = drag.sl - (e.clientX - drag.x); wrap.scrollTop = drag.st - (e.clientY - drag.y); return; }
   const [ix, iy] = toImg(p);
@@ -1191,8 +1197,8 @@ wrap.addEventListener('pointermove', (e) => {
   else if (drag.kind === 'lasso') { drag.pts.push([ix, iy]); drawOverlay(); }
   else if (drag.kind === 'brush') brushAt(p);
   else if (drag.kind === 'pencil') { if (Math.hypot(p.cx - drag.last[0], p.cy - drag.last[1]) >= 2) { drag.pts.push([ix, iy]); drag.last = [p.cx, p.cy]; drawOverlay(); } }
-  else if (drag.kind === 'penHandle') { const n = pen.nodes[pen.nodes.length - 1]; n.ox = ix - n.x; n.oy = iy - n.y; n.ix = -n.ox; n.iy = -n.oy; drawOverlay(); }
-  else if (drag.kind === 'node' || drag.kind === 'handle' || drag.kind === 'path') directMove(ix, iy, e);
+  else if (drag.kind === 'penHandle') { const n = pen.nodes[pen.nodes.length - 1]; const s = snapAt(ix, iy, { e, p, anchor: [n.x, n.y] }); n.ox = s[0] - n.x; n.oy = s[1] - n.y; n.ix = -n.ox; n.iy = -n.oy; drawOverlay(); }
+  else if (drag.kind === 'node' || drag.kind === 'handle' || drag.kind === 'path') directMove(ix, iy, e, p);
   else if (drag.kind.startsWith('crop')) cropMove(ix, iy, e);
   else if (drag.kind === 'guide') guideMove(p, e);
   else if (drag.kind.startsWith('obj') || drag.kind === 'marquee' || drag.kind === 'shapeDraw') objDragMove(ix, iy, e, p);
@@ -1201,6 +1207,7 @@ const endDrag = (e) => {
   if (e && e.pointerType === 'touch') { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; }
   if (!drag) return;
   const d = drag; drag = null;
+  ui.snapHint = null;
   wrapClass();
   if (d.kind === 'zoomRect') {
     const moved = Math.hypot((d.b[0] - d.a[0]) * evPos(e).k, (d.b[1] - d.a[1]) * evPos(e).k) > 6;
@@ -1235,7 +1242,7 @@ wrap.addEventListener('dblclick', (e) => {
     zoomTo(ui.zoom === 'fit' ? 1 : 'fit', { x: e.clientX - r.left, y: e.clientY - r.top });
   }
 });
-wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush') $('brushRing').hidden = true; });
+wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush') $('brushRing').hidden = true; if (ui.snapHint && !drag) { ui.snapHint = null; drawOverlay(); } });
 wrap.addEventListener('pointerenter', () => { if (ui.tool === 'brush') $('brushRing').hidden = false; });
 
 function brushAt(p) {
@@ -1339,11 +1346,16 @@ function segDist(px, py, ax, ay, bx, by) {
   const t = clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1);
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
-function directMove(ix, iy, e) {
+function directMove(ix, iy, e, p) {
   const d = drag;
-  if (d.kind === 'node') { const n = d.path.nodes[d.i]; n.x = ix; n.y = iy; }
+  if (d.kind === 'node') {
+    const N = d.path.nodes, nb = N[d.i - 1] || N[d.i + 1];
+    [ix, iy] = snapAt(ix, iy, { e, p, skipPath: d.path, skipNode: [d.path, d.i], anchor: nb ? [nb.x, nb.y] : null });
+    const n = N[d.i]; n.x = ix; n.y = iy;
+  }
   else if (d.kind === 'handle') {
     const n = d.path.nodes[d.i];
+    [ix, iy] = snapAt(ix, iy, { e, p, skipPath: d.path, anchor: [n.x, n.y] });
     const hx = ix - n.x, hy = iy - n.y;
     if (d.which === 'o') { n.ox = hx; n.oy = hy; if (!e.altKey) { const L = Math.hypot(n.ix, n.iy) || Math.hypot(hx, hy); const a = Math.atan2(hy, hx) + Math.PI; n.ix = Math.cos(a) * L; n.iy = Math.sin(a) * L; } }
     else { n.ix = hx; n.iy = hy; if (!e.altKey) { const L = Math.hypot(n.ox, n.oy) || Math.hypot(hx, hy); const a = Math.atan2(hy, hx) + Math.PI; n.ox = Math.cos(a) * L; n.oy = Math.sin(a) * L; } }
@@ -1419,6 +1431,7 @@ function drawOverlay() {
   if (ui.cropDraft) parts.push(cropOverlay(g, k));
   if (doc.out.mock === 'artboard' && !ui.cropDraft) parts.push(objectOverlay(g, k));
   parts.push(guideOverlay(g, k));
+  parts.push(snapOverlay(g, k));
   overlay.innerHTML = parts.join('');
 }
 
@@ -1496,6 +1509,24 @@ function buildOptbar() {
     bar.appendChild(el('span', 'hint', 'Click a line to select it. Drag points, handles or the whole line. Alt breaks a handle pair. Delete removes.'));
     bar.appendChild(optBtn('Delete', () => deleteSelection(), false, !ui.selPath));
   }
+  if (['select', 'shape', 'text', 'pen', 'direct'].includes(t)) snapButtons(bar);
+  syncMenus();
+}
+/* Snap on or off, and a menu of what it snaps to. Alt turns it off while you drag. */
+function snapButtons(bar) {
+  const box = el('div', 'snapbox');
+  const on = el('button', 'btn' + (prefs.snap.on ? ' on' : ''), 'Snap'); on.type = 'button';
+  on.setAttribute('aria-pressed', String(!!prefs.snap.on)); on.title = 'Snap to points and lines (' + keyLabel('mod+;') + '). Hold Alt to drag freely.';
+  on.onclick = () => runCommand('snap.on');
+  const more = el('button', 'btn', '▾'); more.type = 'button'; more.setAttribute('aria-label', 'What to snap to'); more.title = 'What to snap to';
+  more.onclick = (ev) => { ev.stopPropagation(); const r = more.getBoundingClientRect(); dropMenu(resolveMenu([{ id: 'snap.on' }, { sep: true }].concat(SNAP_KINDS.map(([k]) => ({ id: 'snap.' + k })), [{ sep: true }, { id: 'view.grid' }, { id: 'snap.gridSize' }])), r.left, r.bottom + 4, 0); };
+  box.append(on, more);
+  bar.appendChild(box);
+}
+/* the pen snaps to its own points too, and draws from its last point */
+function penSnap(e, p) {
+  const N = pen ? pen.nodes : [], last = N[N.length - 1];
+  return { e, p, anchor: last ? [last.x, last.y] : null, live: N.map((n) => [n.x, n.y]) };
 }
 
 /* ===== 03b-objects.js ===== */
@@ -1725,13 +1756,16 @@ function selectDown(p, ix, iy, e) {
   }
   drawOverlay(); buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel();
 }
-function objDragMove(ix, iy, e) {
+function objDragMove(ix, iy, e, p) {
   const d = drag;
   if (d.kind === 'marquee') { d.b = [ix, iy]; drawOverlay(); return; }
-  if (d.kind === 'shapeDraw') { shapeDrag(ix, iy, e); return; }
+  if (d.kind === 'shapeDraw') { shapeDrag(ix, iy, e, p); return; }
   if (d.kind === 'objMove') {
     let dx = ix - d.start[0], dy = iy - d.start[1];
     if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+    // snap the moved box: measure from where the shapes started
+    d.objs.forEach((o, i) => { o.x = d.orig[i][0]; o.y = d.orig[i][1]; });
+    [dx, dy] = snapMove(d.objs, dx, dy, e, p);
     d.objs.forEach((o, i) => { o.x = d.orig[i][0] + dx; o.y = d.orig[i][1] + dy; });
     d.moved = true;
     objChanged({ list: d.objs });
@@ -1791,8 +1825,9 @@ function shapeDown(ix, iy, e) {
   doc.objects.push(o); ui.selObjs = [o.id]; ui.selPath = null;
   drag = { kind: 'shapeDraw', o, start: [ix, iy] };
 }
-function shapeDrag(ix, iy, e) {
+function shapeDrag(ix, iy, e, p) {
   const d = drag;
+  if (!e.shiftKey) [ix, iy] = snapAt(ix, iy, { e, p, anchor: d.line ? d.start : null, skipPath: d.line || null, skipObjs: d.o ? new Set([d.o.id]) : null });
   let dx = ix - d.start[0], dy = iy - d.start[1];
   if (d.line) {
     if (e.shiftKey) { const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI / 4, L = Math.hypot(dx, dy); dx = Math.cos(a) * L; dy = Math.sin(a) * L; }
@@ -2392,6 +2427,11 @@ function openSettings() {
     s1.appendChild(makeControl(prefs, T('zoomHud', 'Show the zoom size while zooming', { idp: 'pf-' }), () => savePrefs()));
     const rs = optBtn('Reset zoom settings', () => { ['zoomSpeed', 'zoomSmooth', 'zoomDuration', 'wheel', 'zoomAnchor', 'zoomStep', 'zoomMax', 'zoomInvert', 'dblClick', 'pixelated', 'zoomHud'].forEach((k) => set(k, PREF_DEFAULTS[k])); openSettings(); });
     rs.classList.add('btn-quiet'); s1.appendChild(rs);
+    const sn = sec(body, 'Snapping and grid');
+    sn.appendChild(makeControl(prefs.snap, T('on', 'Snap while drawing and moving', { idp: 'pf-sn-' }), () => { savePrefs(); buildOptbar(); }));
+    sn.appendChild(makeControl(prefs.grid, T('show', 'Show the grid', { idp: 'pf-g-' }), () => { savePrefs(); drawOverlay(); }));
+    sn.appendChild(numInput('Grid size', prefs.grid.size || gridSize(), (v) => { prefs.grid.size = Math.max(1, Math.round(v)); savePrefs(); drawOverlay(); }, { min: 1, max: 2000, step: 1, unit: 'image pixels' }));
+    sn.appendChild(el('span', 'note', 'Choose what to snap to under View → Snapping, or with the small arrow next to Snap. Hold Alt to place something freely.'));
     const s2 = sec(body, 'Look');
     s2.appendChild(makeControl(prefs, Object.assign(S('theme', 'Theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]), { idp: 'pf-', rebuild: () => { applyTheme(); openSettings(); } }), () => savePrefs()));
     const s3 = sec(body, 'This computer');
@@ -2572,6 +2612,309 @@ function guideMove(p, e) {
 }
 function guideEnd() { queueHistory(); buildControls(); }
 
+/* ===== 03d-snap.js ===== */
+/* ===================== Part 3d: snapping ===================== */
+/* While drawing and editing vectors, the pointer snaps to useful places. Everything is in image pixels.
+   snapAt(ix, iy, o) returns the snapped point and leaves a hint (ui.snapHint) that the overlay draws.
+   o: { e: the pointer event (Alt turns snapping off), p: evPos(e), anchor: [x, y] the point drawn from,
+        skipPath: a path left out (the one being edited), skipNode: [path, index], skipObjs: Set of object ids } */
+const SNAP_KINDS = [
+  ['end', 'End points'], ['point', 'Points and corners'], ['mid', 'Mid points'], ['center', 'Centers'], ['inter', 'Intersections'],
+  ['ext', 'Extensions'], ['perp', 'Perpendicular'], ['tan', 'Tangent'], ['line', 'On lines'], ['baseline', 'Text baselines'],
+  ['edge', 'Edges in the photo'], ['guides', 'Line up with other points'], ['angle', '15° angles'], ['grid', 'Grid']
+];
+const SNAP_DEFAULTS = { on: true, end: true, point: true, mid: true, center: true, inter: true, ext: true, perp: true, tan: true, line: true, baseline: true, edge: false, guides: true, angle: true, grid: false };
+prefs.snap = Object.assign({}, SNAP_DEFAULTS, prefs.snap || {});
+prefs.grid = Object.assign({ show: false, size: 0 }, prefs.grid || {});
+/* the order wins when several snaps are about as close */
+const SNAP_RANK = ['end', 'inter', 'center', 'mid', 'point', 'perp', 'tan', 'baseline', 'ext', 'edge', 'line'];
+const SNAP_LABEL = { end: 'end point', point: 'point', mid: 'mid point', center: 'center', inter: 'intersection', ext: 'extension', perp: 'perpendicular', tan: 'tangent',
+  line: 'on line', baseline: 'baseline', edge: 'photo edge', angle: 'angle', grid: 'grid', guides: 'lined up' };
+function setSnap(k) { prefs.snap[k] = !prefs.snap[k]; savePrefs(); buildOptbar(); syncMenus(); }
+function gridSize() { return prefs.grid.size > 0 ? prefs.grid.size : Math.max(4, Math.round(Math.min(iw, ih) / 24)); }
+
+/* ---------- what can be snapped to, made once per change ---------- */
+let snapCache = null;
+function snapGeom() {
+  const key = vecVer + '|' + objVer + '|' + doc.lines.paths.length + '|' + doc.objects.length + '|' + JSON.stringify(cropRect()) + '|' + iw + 'x' + ih;
+  if (snapCache && snapCache.key === key) return snapCache;
+  const pts = [], polys = [], ends = [], bases = [];
+  const id = (x) => x;
+  // lines of the Vector layer
+  for (const path of doc.lines.paths) {
+    if (path.hidden || !path.nodes || !path.nodes.length) continue;
+    const N = path.nodes, fl = flatten(path, id, 1).map((q) => [q[0], q[1]]);
+    polys.push({ src: path, pts: fl });
+    N.forEach((n, i) => pts.push({ x: n.x, y: n.y, kind: !path.closed && (i === 0 || i === N.length - 1) ? 'end' : 'point', src: path, i }));
+    // the middle of each piece of the line
+    const segs = path.closed ? N.length : N.length - 1;
+    for (let i = 0; i < segs; i++) {
+      const a = N[i], b = N[(i + 1) % N.length];
+      const p1 = [a.x + (a.ox || 0), a.y + (a.oy || 0)], p2 = [b.x + (b.ix || 0), b.y + (b.iy || 0)];
+      pts.push({ x: 0.125 * a.x + 0.375 * p1[0] + 0.375 * p2[0] + 0.125 * b.x, y: 0.125 * a.y + 0.375 * p1[1] + 0.375 * p2[1] + 0.125 * b.y, kind: 'mid', src: path });
+    }
+    if (path.closed && fl.length > 2) { let cx = 0, cy = 0; fl.forEach((q) => { cx += q[0]; cy += q[1]; }); pts.push({ x: cx / fl.length, y: cy / fl.length, kind: 'center', src: path }); }
+    if (!path.closed && fl.length > 1) {
+      // the direction a line leaves its ends, for extensions
+      const dir = (a, b) => { const L = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; return [(a[0] - b[0]) / L, (a[1] - b[1]) / L]; };
+      const k = Math.min(3, fl.length - 1);
+      ends.push({ x: fl[0][0], y: fl[0][1], u: dir(fl[0], fl[k]), src: path });
+      ends.push({ x: fl[fl.length - 1][0], y: fl[fl.length - 1][1], u: dir(fl[fl.length - 1], fl[fl.length - 1 - k]), src: path });
+    }
+  }
+  // shapes, text and images
+  for (const o of doc.objects) {
+    if (o.hidden || !layerOf(o.layer).visible) continue;
+    const L = (lx, ly) => fromLocal(o, lx, ly), w = o.w / 2, h = o.h / 2;
+    pts.push(Object.assign({ kind: 'center', obj: o.id }, ptObj(L(0, 0))));
+    let outline;
+    if (o.type === 'ellipse') {
+      outline = []; for (let i = 0; i <= 48; i++) { const a = i / 48 * Math.PI * 2; outline.push(L(Math.cos(a) * w, Math.sin(a) * h)); }
+      [[w, 0], [-w, 0], [0, h], [0, -h]].forEach((q) => pts.push(Object.assign({ kind: 'point', obj: o.id }, ptObj(L(q[0], q[1])))));
+    } else if (o.type === 'polygon' || o.type === 'star') {
+      outline = polyPoints(o).map((q) => L(q[0], q[1])); outline.push(outline[0]);
+      outline.slice(0, -1).forEach((q, i) => { pts.push(Object.assign({ kind: 'point', obj: o.id }, ptObj(q))); const n = outline[i + 1]; pts.push({ x: (q[0] + n[0]) / 2, y: (q[1] + n[1]) / 2, kind: 'mid', obj: o.id }); });
+    } else {
+      outline = [[-w, -h], [w, -h], [w, h], [-w, h], [-w, -h]].map((q) => L(q[0], q[1]));
+      outline.slice(0, -1).forEach((q, i) => { pts.push(Object.assign({ kind: 'point', obj: o.id }, ptObj(q))); const n = outline[i + 1]; pts.push({ x: (q[0] + n[0]) / 2, y: (q[1] + n[1]) / 2, kind: 'mid', obj: o.id }); });
+    }
+    if (o.type !== 'text') polys.push({ obj: o.id, pts: outline });
+    if (o.type === 'text') {
+      // each line of text sits on a baseline, about 0.8 of the size below the top of the line
+      String(o.text || '').split('\n').forEach((s, i) => {
+        const y = -h + i * o.size * o.lh + o.size * (o.lh - 1) / 2 + o.size * 0.8;
+        bases.push({ obj: o.id, a: L(-w, y), b: L(w, y) });
+      });
+    }
+  }
+  // the artboard: corners, middles of the sides and the center
+  const cr = cropRect(), x0 = cr.x * iw, y0 = cr.y * ih, x1 = x0 + cr.w * iw, y1 = y0 + cr.h * ih;
+  [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].forEach((q) => pts.push({ x: q[0], y: q[1], kind: 'point', board: true }));
+  [[(x0 + x1) / 2, y0], [x1, (y0 + y1) / 2], [(x0 + x1) / 2, y1], [x0, (y0 + y1) / 2]].forEach((q) => pts.push({ x: q[0], y: q[1], kind: 'mid', board: true }));
+  pts.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, kind: 'center', board: true });
+  polys.push({ board: true, pts: [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]] });
+  snapCache = { key, pts, polys, ends, bases };
+  return snapCache;
+}
+const ptObj = (q) => ({ x: q[0], y: q[1] });
+
+/* strong edges of the photo, from the analysis copy: one map per photo */
+let edgeCache = null;
+function edgeMap() {
+  if (!src) return null;
+  if (edgeCache && edgeCache.src === src) return edgeCache;
+  const { w, h, lum } = src, mag = new Float32Array(w * h);
+  let top = 1e-6;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x, gx = lum[i + 1] - lum[i - 1], gy = lum[i + w] - lum[i - w];
+    const m = gx * gx + gy * gy; mag[i] = m; if (m > top) top = m;
+  }
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < mag.length; i++) hist[Math.min(255, Math.floor(mag[i] / top * 255))]++;
+  let acc = 0, bin = 255;
+  for (let k = 0; k < 256; k++) { acc += hist[k]; if (acc >= mag.length * 0.9) { bin = k; break; } }
+  edgeCache = { src, mag, thr: (bin + 1) / 256 * top };
+  return edgeCache;
+}
+
+/* ---------- geometry ---------- */
+function nearOnSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1e-9;
+  const t = clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1);
+  return [ax + t * dx, ay + t * dy, t];
+}
+function segCross(a, b, c, d) {
+  const r = [b[0] - a[0], b[1] - a[1]], s = [d[0] - c[0], d[1] - c[1]];
+  const den = r[0] * s[1] - r[1] * s[0];
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den, u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? [a[0] + t * r[0], a[1] + t * r[1]] : null;
+}
+
+/* ---------- the snap itself ---------- */
+function snapTol(p) { return 8 / ((p ? p.k : 1) * imgScale(artGeom())); }
+function snapAt(ix, iy, o) {
+  o = o || {};
+  ui.snapHint = null;
+  const S = prefs.snap;
+  if (!S.on || !origImg || (o.e && o.e.altKey)) return [ix, iy];
+  const tol = snapTol(o.p), G = snapGeom();
+  const skipObj = (q) => q.obj != null && o.skipObjs && o.skipObjs.has(q.obj);
+  const skipSrc = (q) => (o.skipPath && q.src === o.skipPath) || skipObj(q);
+  const cands = [];
+  const add = (x, y, kind, extra) => { const d = Math.hypot(x - ix, y - iy); if (d <= tol) cands.push(Object.assign({ x, y, kind, d }, extra || {})); };
+
+  // points: ends, corners, middles, centers
+  for (const q of G.pts) {
+    if (!S[q.kind] || skipObj(q)) continue;
+    if (o.skipPath && q.src === o.skipPath && !(o.skipNode && q.i != null && q.i !== o.skipNode[1])) continue;
+    if (Math.abs(q.x - ix) > tol || Math.abs(q.y - iy) > tol) continue;
+    add(q.x, q.y, q.kind);
+  }
+  // the line being drawn with the pen: its own points, so it can close or meet itself
+  if (o.live) o.live.forEach((q, i) => S.point && add(q[0], q[1], i === 0 ? 'end' : 'point'));
+
+  // pieces of lines near the pointer, for intersections, perpendicular, tangent and "on line"
+  const near = [];
+  for (const P of G.polys) {
+    if (skipSrc(P)) continue;
+    const pts = P.pts;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if (Math.min(a[0], b[0]) - tol * 2 > ix || Math.max(a[0], b[0]) + tol * 2 < ix || Math.min(a[1], b[1]) - tol * 2 > iy || Math.max(a[1], b[1]) + tol * 2 < iy) continue;
+      const q = nearOnSeg(ix, iy, a[0], a[1], b[0], b[1]);
+      const d = Math.hypot(q[0] - ix, q[1] - iy);
+      if (d <= tol * 2) near.push({ P, i, a, b, q, d });
+    }
+  }
+  if (S.inter) {
+    for (let m = 0; m < near.length; m++) for (let n = m + 1; n < near.length; n++) {
+      const A = near[m], B = near[n];
+      if (A.P === B.P && Math.abs(A.i - B.i) <= 1) continue;
+      const x = segCross(A.a, A.b, B.a, B.b);
+      if (x) add(x[0], x[1], 'inter');
+    }
+  }
+  if (S.line) near.forEach((s) => s.d <= tol && add(s.q[0], s.q[1], 'line'));
+  const an = o.anchor;
+  if (an && S.perp) near.forEach((s) => {
+    const q = nearOnSeg(an[0], an[1], s.a[0], s.a[1], s.b[0], s.b[1]);
+    if (q[2] > 0.001 && q[2] < 0.999) add(q[0], q[1], 'perp', { from: an });
+  });
+  if (an && S.tan) near.forEach((s) => {
+    const pts = s.P.pts, f = (j) => {
+      const p = pts[j], pa = pts[Math.max(0, j - 1)], pb = pts[Math.min(pts.length - 1, j + 1)];
+      return (p[0] - an[0]) * (pb[1] - pa[1]) - (p[1] - an[1]) * (pb[0] - pa[0]);
+    };
+    const f0 = f(s.i), f1 = f(s.i + 1);
+    if (f0 === 0 || f0 * f1 < 0) { const t = f0 / ((f0 - f1) || 1); add(s.a[0] + (s.b[0] - s.a[0]) * t, s.a[1] + (s.b[1] - s.a[1]) * t, 'tan', { from: an }); }
+  });
+  if (S.ext) for (const E of G.ends) {
+    if (skipSrc(E)) continue;
+    const vx = ix - E.x, vy = iy - E.y, t = vx * E.u[0] + vy * E.u[1];
+    if (t <= tol) continue;
+    const px = E.x + E.u[0] * t, py = E.y + E.u[1] * t;
+    add(px, py, 'ext', { from: [E.x, E.y] });
+  }
+  if (S.baseline) for (const B of G.bases) {
+    if (skipObj(B)) continue;
+    const q = nearOnSeg(ix, iy, B.a[0], B.a[1], B.b[0], B.b[1]);
+    add(q[0], q[1], 'baseline', { line: [B.a, B.b] });
+  }
+  if (S.edge) {
+    const E = edgeMap(), cr = cropRect();
+    if (E) {
+      const sx = (ix / iw - cr.x) / cr.w * src.w, sy = (iy / ih - cr.y) / cr.h * src.h, k = src.w / (cr.w * iw), r = Math.max(1, Math.round(tol * k));
+      let best = -1, bx = 0, by = 0;
+      for (let y = Math.max(1, Math.round(sy) - r); y <= Math.min(src.h - 2, Math.round(sy) + r); y++) for (let x = Math.max(1, Math.round(sx) - r); x <= Math.min(src.w - 2, Math.round(sx) + r); x++) {
+        const m = E.mag[y * src.w + x];
+        if (m >= E.thr && m - Math.hypot(x - sx, y - sy) * E.thr * 0.05 > best) { best = m - Math.hypot(x - sx, y - sy) * E.thr * 0.05; bx = x; by = y; }
+      }
+      if (best >= 0) add(((bx + 0.5) / src.w * cr.w + cr.x) * iw, ((by + 0.5) / src.h * cr.h + cr.y) * ih, 'edge');
+    }
+  }
+
+  if (cands.length) {
+    cands.forEach((c) => { c.score = c.d / tol + SNAP_RANK.indexOf(c.kind) * 0.12; });
+    cands.sort((a, b) => a.score - b.score);
+    const c = cands[0];
+    ui.snapHint = { x: c.x, y: c.y, kind: c.kind, from: c.from, line: c.line };
+    return [c.x, c.y];
+  }
+  // directions from the anchor: 15 degree steps (Shift always)
+  if (an && (S.angle || (o.e && o.e.shiftKey))) {
+    const dx = ix - an[0], dy = iy - an[1], L = Math.hypot(dx, dy);
+    if (L > tol) {
+      const a = Math.atan2(dy, dx), st = Math.PI / 12, q = Math.round(a / st) * st;
+      if ((o.e && o.e.shiftKey) || Math.abs(a - q) < 3.5 * Math.PI / 180) {
+        const x = an[0] + Math.cos(q) * L, y = an[1] + Math.sin(q) * L;
+        ui.snapHint = { x, y, kind: 'angle', from: an, deg: Math.round(-q * 180 / Math.PI) };
+        return [x, y];
+      }
+    }
+  }
+  // line up with other points, and the grid, each direction on its own
+  let x = ix, y = iy, gx = null, gy = null, bestX = tol, bestY = tol;
+  if (S.guides) {
+    const refs = G.pts.filter((q) => (q.kind === 'end' || q.kind === 'center' || q.kind === 'point') && !skipObj(q) && !(o.skipPath && q.src === o.skipPath && o.skipNode && q.i === o.skipNode[1]));
+    if (an) refs.push({ x: an[0], y: an[1] });
+    for (const q of refs) {
+      const ddx = Math.abs(q.x - ix), ddy = Math.abs(q.y - iy);
+      if (ddx < bestX) { bestX = ddx; x = q.x; gx = q; }
+      if (ddy < bestY) { bestY = ddy; y = q.y; gy = q; }
+    }
+  }
+  // with the grid on, points always land on it, unless they line up with another point
+  if (S.grid) {
+    const s = gridSize();
+    if (!gx) { x = Math.round(ix / s) * s; gx = { grid: true }; }
+    if (!gy) { y = Math.round(iy / s) * s; gy = { grid: true }; }
+  }
+  if (gx || gy) {
+    ui.snapHint = { x, y, kind: (gx && gx.grid) || (gy && gy.grid) ? 'grid' : 'guides', gx: gx && !gx.grid ? [gx.x, gx.y] : null, gy: gy && !gy.grid ? [gy.x, gy.y] : null };
+    return [x, y];
+  }
+  return [ix, iy];
+}
+/* moving shapes: the moved box's corners, middles and center snap; the shapes move by the same amount */
+function snapMove(objs, dx, dy, e, p) {
+  ui.snapHint = null;
+  if (!prefs.snap.on || (e && e.altKey) || (e && e.shiftKey)) return [dx, dy];
+  const skipObjs = new Set(objs.map((o) => o.id));
+  const b = objBounds(objs);
+  const keys = [[0, 0], [0.5, 0], [1, 0], [0, 0.5], [0.5, 0.5], [1, 0.5], [0, 1], [0.5, 1], [1, 1]].map(([u, v]) => [b.x + u * b.w + dx, b.y + v * b.h + dy]);
+  let best = null;
+  const tol = snapTol(p);
+  for (const k of keys) {
+    const r = snapAt(k[0], k[1], { p, skipObjs });
+    if (!ui.snapHint) continue;
+    const hint = ui.snapHint;
+    // a real point (an end, a center) wins over just lining up or the grid
+    const d = Math.hypot(r[0] - k[0], r[1] - k[1]) / tol + (hint.kind === 'guides' || hint.kind === 'grid' ? 1 : 0);
+    if (!best || d < best.d) best = { d, ox: r[0] - k[0], oy: r[1] - k[1], hint };
+  }
+  ui.snapHint = best ? best.hint : null;
+  return best ? [dx + best.ox, dy + best.oy] : [dx, dy];
+}
+
+/* ---------- drawing the hint and the grid ---------- */
+function snapOverlay(g, k) {
+  const parts = [], col = '#ff2d78', u = (px) => (px / k).toFixed(2), A = (q) => img2art(q[0], q[1], g);
+  if (prefs.grid.show && origImg) {
+    const s = gridSize(), cr = cropRect(), sc = imgScale(g) * k;
+    if (s * sc >= 6) {
+      const x0 = Math.ceil(cr.x * iw / s) * s, x1 = (cr.x + cr.w) * iw, y0 = Math.ceil(cr.y * ih / s) * s, y1 = (cr.y + cr.h) * ih;
+      let d = '';
+      for (let x = x0; x <= x1; x += s) { const a = A([x, cr.y * ih]), b = A([x, y1]); d += 'M' + a[0].toFixed(1) + ' ' + a[1].toFixed(1) + 'V' + b[1].toFixed(1); }
+      for (let y = y0; y <= y1; y += s) { const a = A([cr.x * iw, y]), b = A([x1, y]); d += 'M' + a[0].toFixed(1) + ' ' + a[1].toFixed(1) + 'H' + b[0].toFixed(1); }
+      parts.push('<path d="' + d + '" stroke="#7a7a8c" stroke-opacity=".35" stroke-width="1" fill="none" vector-effect="non-scaling-stroke"/>');
+    }
+  }
+  const h = ui.snapHint;
+  if (h && drag !== null || h && (ui.tool === 'pen' && pen)) {
+    const [x, y] = A([h.x, h.y]), r = 5 / k;
+    const line = (a, b, dash) => { const p1 = A(a), p2 = A(b); return '<line x1="' + p1[0] + '" y1="' + p1[1] + '" x2="' + p2[0] + '" y2="' + p2[1] + '" stroke="' + col + '" stroke-width="1" ' + (dash ? 'stroke-dasharray="4 3" ' : '') + 'vector-effect="non-scaling-stroke"/>'; };
+    if (h.from) parts.push(line(h.from, [h.x, h.y], true));
+    if (h.line) parts.push(line(h.line[0], h.line[1], false));
+    if (h.gx) parts.push(line(h.gx, [h.x, h.y], true));
+    if (h.gy) parts.push(line(h.gy, [h.x, h.y], true));
+    const s = 'fill="none" stroke="' + col + '" stroke-width="1.6" vector-effect="non-scaling-stroke"';
+    const mark = {
+      end: '<rect x="' + (x - r) + '" y="' + (y - r) + '" width="' + 2 * r + '" height="' + 2 * r + '" ' + s + '/>',
+      point: '<rect x="' + (x - r * 0.7) + '" y="' + (y - r * 0.7) + '" width="' + 1.4 * r + '" height="' + 1.4 * r + '" ' + s + '/>',
+      mid: '<path d="M' + x + ' ' + (y - r) + 'L' + (x + r) + ' ' + (y + r * 0.8) + 'L' + (x - r) + ' ' + (y + r * 0.8) + 'Z" ' + s + '/>',
+      center: '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" ' + s + '/><path d="M' + (x - r * 0.5) + ' ' + y + 'H' + (x + r * 0.5) + 'M' + x + ' ' + (y - r * 0.5) + 'V' + (y + r * 0.5) + '" ' + s + '/>',
+      inter: '<path d="M' + (x - r) + ' ' + (y - r) + 'L' + (x + r) + ' ' + (y + r) + 'M' + (x + r) + ' ' + (y - r) + 'L' + (x - r) + ' ' + (y + r) + '" ' + s + '/>',
+      perp: '<path d="M' + (x - r) + ' ' + (y - r) + 'V' + (y + r) + 'H' + (x + r) + 'M' + (x - r) + ' ' + y + 'H' + x + 'V' + (y + r) + '" ' + s + '/>',
+      tan: '<circle cx="' + x + '" cy="' + (y + r * 0.4) + '" r="' + r * 0.6 + '" ' + s + '/><path d="M' + (x - r) + ' ' + (y - r * 0.2) + 'H' + (x + r) + '" ' + s + '/>'
+    }[h.kind] || '<path d="M' + (x - r) + ' ' + y + 'H' + (x + r) + 'M' + x + ' ' + (y - r) + 'V' + (y + r) + '" ' + s + '/>';
+    parts.push(mark);
+    const label = h.kind === 'angle' ? h.deg + '°' : SNAP_LABEL[h.kind];
+    parts.push('<text x="' + (x + r * 1.6) + '" y="' + (y - r * 1.4) + '" font-size="' + u(11) + '" font-family="Inter, sans-serif" fill="' + col + '" stroke="#fff" stroke-width="' + u(3) + '" paint-order="stroke">' + label + '</text>');
+  }
+  return parts.join('');
+}
+
 /* ===== 04-ui.js ===== */
 /* ===================== Part 4: inspector, panels, controls, library ===================== */
 const SVGI = (p) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
@@ -2613,6 +2956,12 @@ function buildTabs() {
   TABS.forEach(([id, name]) => { const b = el('button', null, name); b.type = 'button'; b.setAttribute('aria-pressed', String(ui.tab === id)); b.onclick = () => { ui.tab = id; buildTabs(); buildPanel(); }; t.appendChild(b); });
 }
 const GRIP = SVGI('<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>');
+function toggleLayerVisible(id) {
+  const L = layerOf(id);
+  L.visible = !L.visible;
+  if (id === 'text' && L.visible && !doc.text.applied) { applyTextArt(); return; }
+  buildStack(); compose();
+}
 function buildStack() {
   const box = $('stack'); box.replaceChildren();
   const tl = activeLayers();
@@ -2629,7 +2978,7 @@ function buildStack() {
     const grip = el('span', 'grip'); grip.innerHTML = GRIP; grip.title = 'Drag to change the order';
     const eye = el('button', 'icon-btn'); eye.type = 'button'; eye.innerHTML = EYE;
     eye.setAttribute('aria-label', (L.visible ? 'Hide ' : 'Show ') + name); eye.setAttribute('aria-pressed', String(L.visible));
-    eye.onclick = () => { L.visible = !L.visible; if (id === 'text' && L.visible && !doc.text.applied) { applyTextArt(); return; } buildStack(); compose(); };
+    eye.onclick = () => toggleLayerVisible(id);
     const nm = el('button', 'nm'); nm.type = 'button';
     const ic = el('span', 'ic'); ic.innerHTML = info[id].ic;
     const tx = el('span'); tx.style.display = 'grid'; tx.style.minWidth = '0'; tx.append(el('b', null, name + ((L.opacity ?? 1) < 1 ? '  ' + Math.round(L.opacity * 100) + '%' : '') + (L.blend && L.blend !== 'normal' ? ' · ' + (BLENDS.find((b) => b[0] === L.blend) || ['', ''])[1] : '')), el('small', null, info[id].sub));
@@ -2674,6 +3023,7 @@ function buildPanel() {
   else buildOutputPanel(p);
   buildStack();
   drawOverlay();
+  syncMenus();
 }
 function sec(parent, title, right) {
   const s = el('div', 'sec');
@@ -3799,24 +4149,6 @@ function openPlugins() {
   });
 }
 $('pluginsBtn').onclick = openPlugins;
-/* The desktop app's menu bar calls these. The web version has the same actions on its buttons. */
-window.__sungfluenceMenu = (cmd) => {
-  const acts = {
-    'load-plugin': () => pluginInput.click(),
-    'plugins': openPlugins,
-    'plugin-template': () => saveFile('sungfluence-plugin-template.js', PLUGIN_FILES['sungfluence-plugin-template.js']),
-    'new': () => $('newBtn').click(),
-    'open': () => $('fileInput').click(),
-    'export': () => $('exportBtn').click(),
-    'settings': () => $('settingsBtn').click(),
-    'undo': () => $('undoBtn').click(),
-    'redo': () => $('redoBtn').click(),
-    'about': () => openAbout(),
-    'help': () => openHelp(),
-    'tutorial': () => openHelp('getting-started')
-  };
-  if (acts[cmd]) acts[cmd]();
-};
 /* plugins the user loaded before come back on start */
 const pluginsReady = (async () => {
   for (const p of savedPlugins()) {
@@ -3888,6 +4220,327 @@ function welcomeOnce() {
   toast('New to SungFluence? The getting started guide takes five minutes.', { label: 'Open it', fn: () => openHelp('getting-started') });
 }
 
+/* ===== 05c-commands.js ===== */
+/* ===================== Part 4d: commands, menus and the command palette ===================== */
+/* Every action is a command: an id, a label, its keys, and one function. The menu bar (in the page on the web,
+   the native one in the desktop app), the command palette (Ctrl K), keyboard shortcuts and tests all use this list.
+   keys: 'mod' is Ctrl (Cmd on a Mac). The first entry is shown in menus; all of them work. */
+const COMMANDS = new Map();
+function command(id, label, run, o) {
+  COMMANDS.set(id, Object.assign({ id, label, run, keys: [] }, o || {}));
+  return { id };
+}
+function runCommand(id) {
+  const c = COMMANDS.get(id);
+  if (!c) return false;
+  if (c.enabled && !c.enabled()) return false;
+  closeMenus();
+  c.run();
+  syncMenus();
+  return true;
+}
+const hasImg = () => !!origImg;
+const hasSel = () => ui.selObjs.length > 0;
+const ISSUES_URL = 'https://github.com/datakeen/Sungfluence/issues';
+const openURL = (u) => { const a = el('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; a.click(); };
+
+/* ---------- the commands ---------- */
+// File
+command('file.new', 'New artboard…', () => openNewArtboard(), { keys: ['shift+n'] });
+command('file.square', 'New square artboard', () => newSquare());
+command('file.open', 'Open image or project…', () => $('fileInput').click(), { keys: ['mod+o'], typing: true });
+command('file.save', 'Save project', () => saveProject(), { keys: ['mod+s'], typing: true, enabled: hasImg });
+command('file.export', 'Export…', () => openMenu(), { keys: ['mod+e'], typing: true, enabled: hasImg });
+command('file.settings', 'Settings…', () => openSettings());
+// Edit
+command('edit.undo', 'Undo', () => undo(), { keys: ['mod+z'], enabled: () => hist.length > 0 });
+command('edit.redo', 'Redo', () => redo(), { keys: ['mod+shift+z', 'mod+y'], enabled: () => future.length > 0 });
+command('edit.copy', 'Copy shapes', () => copyObjects(), { keys: ['mod+c'], enabled: hasSel });
+command('edit.paste', 'Paste shapes', () => pasteObjects(), { hint: 'mod+v', enabled: () => !!(objClipboard && objClipboard.length) });
+command('edit.duplicate', 'Duplicate', () => duplicateSelection(), { keys: ['mod+j'] });
+command('edit.delete', 'Delete', () => deleteSelection(), { hint: 'delete', enabled: () => hasSel() || !!ui.selPath });
+command('edit.selectAll', 'Select all shapes', () => selectAllObjects(), { keys: ['mod+a'], enabled: () => doc.objects.length > 0 });
+command('edit.deselect', 'Deselect', () => deselectAll(), { keys: ['mod+d'] });
+[['left', 'Left edges'], ['center', 'Centers across'], ['right', 'Right edges'], ['top', 'Top edges'], ['middle', 'Centers down'], ['bottom', 'Bottom edges']]
+  .forEach(([h, t]) => command('edit.align.' + h, t, () => alignObjects(h), { enabled: hasSel }));
+[['front', 'Bring to front'], ['forward', 'Bring forward'], ['backward', 'Send backward'], ['back', 'Send to back']]
+  .forEach(([h, t]) => command('edit.arrange.' + h, t, () => arrangeObjects(h), { enabled: hasSel }));
+// Image
+command('image.crop', 'Crop', () => setTool('crop'), { enabled: hasImg });
+command('image.cropApply', 'Apply crop', () => cropApply(), { enabled: () => !!ui.cropDraft });
+command('image.cropReset', 'Reset crop', () => cropReset(), { enabled: () => !!(doc.photo.crop || ui.cropDraft) });
+command('image.rotateLeft', 'Rotate left', () => rotateImage(-1), { enabled: hasImg });
+command('image.rotateRight', 'Rotate right', () => rotateImage(1), { enabled: hasImg });
+command('image.flipH', 'Flip across', () => flipImage('x'), { enabled: hasImg });
+command('image.flipV', 'Flip up and down', () => flipImage('y'), { enabled: hasImg });
+command('image.canvas', 'Canvas size…', () => openCanvasSize(), { enabled: hasImg });
+command('image.removeBg', 'Remove background', () => removeBackground(), { enabled: hasImg });
+command('image.removeSel', 'Remove the selected area', () => selRemove(), { enabled: () => hasSelection });
+command('image.keepSel', 'Keep only the selected area', () => selKeepOnly(), { enabled: () => hasSelection });
+command('image.invertSel', 'Invert the selection', () => selInvert(), { enabled: () => hasSelection });
+command('image.restoreAll', 'Bring everything back', () => clearRemoval(), { enabled: () => hasRemoval });
+command('image.trace', 'Trace lines from the photo', () => { ui.tab = 'lines'; buildTabs(); buildPanel(); traceNow(); }, { enabled: hasImg });
+// Layer
+['text', 'lines', 'photo'].forEach((id) => command('layer.show.' + id, LAYER_NAMES[id], () => toggleLayerVisible(id), { checked: () => !!layerOf(id).visible }));
+command('layer.lock', 'Keep text art while I edit the photo', () => lockText(!doc.text.locked), { checked: () => !!doc.text.locked, enabled: () => doc.text.applied });
+command('layer.addText', 'Add a text art layer', () => { if (!doc.text.applied) applyTextArt(); ui.tab = 'text'; buildTabs(); addTextLayer(); });
+command('layer.dupText', 'Duplicate the text art layer', () => duplicateLayer(doc.text.sel), { enabled: () => doc.text.applied });
+const curStackId = () => (ui.tab === 'photo' ? 'photo' : ui.tab === 'lines' ? 'lines' : 'text');
+command('layer.up', 'Move the current layer up', () => moveLayerTo(curStackId(), doc.order.indexOf(curStackId()) - 1), { enabled: () => doc.order.indexOf(curStackId()) > 0 });
+command('layer.down', 'Move the current layer down', () => moveLayerTo(curStackId(), doc.order.indexOf(curStackId()) + 1), { enabled: () => doc.order.indexOf(curStackId()) < doc.order.length - 1 });
+// Text art
+command('type.apply', 'Apply text art', () => applyTextArt(), { enabled: () => hasImg() && !doc.text.applied });
+command('type.variations', 'Variations…', () => { if (!doc.text.applied) applyTextArt(); ui.tab = 'text'; buildTabs(); buildPanel(); showVariations(); }, { enabled: hasImg });
+// View
+[['photo', 'Photo view', '1'], ['mix', 'Mix view', '2'], ['text', 'Text view', '3']].forEach(([v, t, k]) => command('view.' + v, t, () => showView(v), { keys: [k], checked: () => ui.view === v, enabled: hasImg }));
+command('view.compare', 'Compare with a divider', () => toggleSplit(), { keys: ['/'], checked: () => !!ui.compare.on, enabled: hasImg });
+command('view.zoomIn', 'Zoom in', () => stepZoom(1), { keys: ['mod+=', 'mod+shift++', 'mod++'], typing: true });
+command('view.zoomOut', 'Zoom out', () => stepZoom(-1), { keys: ['mod+-'], typing: true });
+command('view.fit', 'Fit to window', () => zoomTo('fit'), { keys: ['mod+0'], typing: true });
+command('view.actual', 'Actual size', () => zoomTo(1), { keys: ['mod+1'], typing: true });
+command('view.zoomSel', 'Zoom to selection', () => zoomToSelection(), { keys: ['mod+2'], typing: true });
+QUALITY.forEach(([v, t]) => command('view.quality.' + v, t + ' preview', () => setQuality(v), { checked: () => ui.quality === v }));
+command('view.grid', 'Show grid', () => { prefs.grid.show = !prefs.grid.show; savePrefs(); drawOverlay(); }, { keys: ["mod+'"], checked: () => !!prefs.grid.show });
+command('snap.on', 'Snapping', () => setSnap('on'), { keys: ['mod+;'], checked: () => !!prefs.snap.on });
+SNAP_KINDS.forEach(([k, t]) => command('snap.' + k, t, () => setSnap(k), { checked: () => !!prefs.snap[k], enabled: () => !!prefs.snap.on }));
+command('snap.gridSize', 'Grid size…', () => openSettings());
+// Tools (palette and keys; the rail on the left shows them too)
+[['hand', 'h'], ['zoom', 'z'], ['crop', 'c'], ['wand', 'w'], ['lasso', 'l'], ['brush', 'b'], ['select', 'v'], ['shape', 'u'], ['text', 't'], ['pen', 'p'], ['pencil', 'n'], ['direct', 'a']]
+  .forEach(([id, k]) => { const t = TOOLS.find((x) => x.id === id); command('tool.' + id, 'Tool: ' + (t ? t.name.split(/[:.]/)[0] : id), () => setTool(id), { keys: [k], checked: () => ui.tool === id }); });
+// Plugins
+command('plugins.manage', 'Plugins…', () => openPlugins());
+command('plugins.load', 'Load plugin…', () => pluginInput.click());
+command('plugins.template', 'Get the plugin template', () => saveFile('sungfluence-plugin-template.js', PLUGIN_FILES['sungfluence-plugin-template.js']));
+// Help
+command('help.help', 'SungFluence Help', () => openHelp(), { keys: ['f1'], typing: true });
+command('help.tutorial', 'Getting started', () => openHelp('getting-started'));
+command('help.shortcuts', 'Keyboard shortcuts', () => openHelp('shortcuts'));
+command('help.palette', 'Find a command…', () => openPalette(), { keys: ['mod+k'], typing: true });
+command('help.feedback', 'Send feedback or report a bug', () => openURL(ISSUES_URL));
+command('help.source', 'Project page and source code', () => openURL('https://github.com/datakeen/Sungfluence'));
+command('help.about', 'About SungFluence', () => openAbout());
+
+/* styles, recipes, samples and export formats are commands too, made from their own lists */
+function dynamicCommands() {
+  // made fresh each time, so removed plugins and renamed recipes disappear
+  for (const id of Array.from(COMMANDS.keys())) if (/^(style|recipe|sample|export)\./.test(id)) COMMANDS.delete(id);
+  Object.entries(MODES).forEach(([k, m]) => command('style.' + k, (m.plugin ? 'Extra effect: ' : 'Style: ') + m.name, () => usePluginStyle(k), { checked: () => doc.text.applied && curLayer().mode === k, enabled: hasImg }));
+  RECIPES.forEach((r, i) => command('recipe.' + i, 'Recipe: ' + r.name, () => applyRecipe(r), { enabled: hasImg }));
+  Object.keys(SAMPLES).forEach((k) => command('sample.' + k, 'Sample: ' + k, () => useSample(k)));
+  EXPORTS.forEach((x, i) => { if (x.title) command('export.' + i, 'Export: ' + x.title, () => { if (origImg) x.run(); }, { enabled: () => hasImg() && (x.always || doc.text.applied) && (!x.when || x.when()) }); });
+}
+
+/* ---------- menus ---------- */
+const item = (id) => ({ id });
+const SEP = { sep: true };
+function menuSpec() {
+  dynamicCommands();
+  const styles = Object.entries(MODES).filter(([, m]) => !m.plugin).map(([k]) => item('style.' + k));
+  const extras = Object.entries(MODES).filter(([, m]) => m.plugin).map(([k]) => item('style.' + k));
+  const exportsList = [];
+  EXPORTS.forEach((x, i) => {
+    if (x.head) { if (exportsList.length) exportsList.push(SEP); exportsList.push({ head: x.head }); }
+    else if (x.sep) exportsList.push(SEP);
+    else exportsList.push(Object.assign(item('export.' + i), { label: x.title }));
+  });
+  return [
+    { label: 'File', items: [item('file.new'), item('file.square'), item('file.open'),
+      { label: 'Samples', items: Object.keys(SAMPLES).map((k) => Object.assign(item('sample.' + k), { label: k[0].toUpperCase() + k.slice(1) })) },
+      SEP, item('file.save'), item('file.export'), SEP, item('file.settings')] },
+    { label: 'Edit', items: [item('edit.undo'), item('edit.redo'), SEP, { clipboard: true }, item('edit.copy'), item('edit.paste'), item('edit.duplicate'), item('edit.delete'), SEP,
+      item('edit.selectAll'), item('edit.deselect'), SEP,
+      { label: 'Line up', items: ['left', 'center', 'right', SEP, 'top', 'middle', 'bottom'].map((h) => (h === SEP ? SEP : item('edit.align.' + h))) },
+      { label: 'Arrange', items: ['front', 'forward', 'backward', 'back'].map((h) => item('edit.arrange.' + h)) }] },
+    { label: 'Image', items: [item('image.crop'), item('image.cropApply'), item('image.cropReset'), SEP, item('image.rotateLeft'), item('image.rotateRight'), item('image.flipH'), item('image.flipV'), item('image.canvas'), SEP,
+      item('image.removeBg'), item('image.removeSel'), item('image.keepSel'), item('image.invertSel'), item('image.restoreAll'), SEP, item('image.trace')] },
+    { label: 'Layer', items: [{ head: 'Show' }, item('layer.show.text'), item('layer.show.lines'), item('layer.show.photo'), SEP, item('layer.up'), item('layer.down'), SEP,
+      item('layer.lock'), item('layer.addText'), item('layer.dupText')] },
+    { label: 'Text art', items: [item('type.apply'), item('type.variations'), SEP, { label: 'Style', items: styles }, { label: 'Recipes', items: RECIPES.map((r, i) => Object.assign(item('recipe.' + i), { label: r.name })) }] },
+    { label: 'Effects', items: [{ label: 'Extra effects', items: extras.length ? extras : [{ head: 'None yet' }] }, SEP, item('plugins.manage'), item('plugins.load'), item('plugins.template')] },
+    { label: 'Export', items: exportsList },
+    { label: 'View', items: [item('view.photo'), item('view.mix'), item('view.text'), item('view.compare'), SEP, item('view.zoomIn'), item('view.zoomOut'), item('view.fit'), item('view.actual'), item('view.zoomSel'), SEP,
+      { label: 'Preview', items: QUALITY.map(([v]) => item('view.quality.' + v)) }, SEP, item('view.grid'),
+      { label: 'Snapping', items: [item('snap.on'), SEP].concat(SNAP_KINDS.map(([k]) => item('snap.' + k)), [SEP, item('snap.gridSize')]) }] },
+    { label: 'Help', items: [item('help.help'), item('help.tutorial'), item('help.shortcuts'), item('help.palette'), SEP, item('help.feedback'), item('help.source'), SEP, item('help.about')] }
+  ];
+}
+/* fill in labels, keys and states, so the page and the desktop app can draw the same menus */
+function resolveMenu(items) {
+  return items.map((it) => {
+    if (it.sep || it.head || it.clipboard) return it;
+    if (it.items) return { label: it.label, items: resolveMenu(it.items) };
+    const c = COMMANDS.get(it.id);
+    if (!c) return null;
+    return { id: c.id, label: it.label || c.label.replace(/^(Style|Extra effect|Recipe|Sample|Export|Tool): /, ''), keys: c.keys[0] || c.hint || '',
+      enabled: c.enabled ? !!c.enabled() : true, checked: c.checked ? !!c.checked() : undefined };
+  }).filter(Boolean);
+}
+function keyLabel(k) {
+  if (!k) return '';
+  const parts = k.split(/\+(?!$)/);
+  const key = parts.pop(), mods = parts;
+  const name = key.length === 1 ? key.toUpperCase() : ({ delete: 'Delete', f1: 'F1' })[key] || key;
+  if (isMac) return mods.map((m) => ({ mod: '⌘', shift: '⇧', alt: '⌥' })[m]).join('') + name;
+  return mods.map((m) => ({ mod: 'Ctrl', shift: 'Shift', alt: 'Alt' })[m]).sort((a, b) => (a === 'Ctrl' ? -1 : b === 'Ctrl' ? 1 : 0)).concat(name).join('+');
+}
+
+/* ---------- keyboard ---------- */
+function eventKeys(e) {
+  const mods = [];
+  if (e.metaKey || e.ctrlKey) mods.push('mod');
+  if (e.shiftKey) mods.push('shift');
+  if (e.altKey) mods.push('alt');
+  return mods.concat(e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase()).join('+');
+}
+let keyIndex = null;
+/* returns true when a command took the key */
+function runShortcut(e, typing) {
+  if (!keyIndex) { keyIndex = new Map(); COMMANDS.forEach((c) => c.keys.forEach((k) => keyIndex.set(k, c))); }
+  const c = keyIndex.get(eventKeys(e));
+  if (!c || (typing && !c.typing)) return false;
+  if (c.enabled && !c.enabled()) return false;
+  e.preventDefault();
+  runCommand(c.id);
+  return true;
+}
+
+/* ---------- the menu bar in the page (web version) and dropdown menus ---------- */
+let openDrop = [];
+function closeMenus() { openDrop.forEach((d) => d.remove()); openDrop = []; document.querySelectorAll('#menubar > button').forEach((b) => b.setAttribute('aria-expanded', 'false')); }
+function dropMenu(items, x, y, level) {
+  level = level || 0;
+  while (openDrop.length > level) openDrop.pop().remove();
+  const m = el('div', 'dropmenu'); m.setAttribute('role', 'menu');
+  items.forEach((it) => {
+    if (it.sep) { if (m.lastChild && m.lastChild.tagName !== 'HR') m.appendChild(el('hr')); return; }
+    if (it.clipboard) return;
+    if (it.head) { m.appendChild(el('div', 'menu-h', it.head)); return; }
+    const b = el('button', 'mi'); b.type = 'button'; b.setAttribute('role', it.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
+    if (it.checked !== undefined) b.setAttribute('aria-checked', String(it.checked));
+    b.append(el('span', 'ck', it.checked ? '✓' : ''), el('span', 'lb', it.label));
+    if (it.items) {
+      b.appendChild(el('span', 'kb', '›')); b.setAttribute('aria-haspopup', 'true');
+      const openSub = () => { const r = b.getBoundingClientRect(); dropMenu(it.items, r.right - 4, r.top - 5, level + 1); };
+      b.onmouseenter = openSub; b.onclick = openSub;
+    } else {
+      if (it.keys) b.appendChild(el('span', 'kb', keyLabel(it.keys)));
+      b.disabled = it.enabled === false;
+      b.onmouseenter = () => { while (openDrop.length > level + 1) openDrop.pop().remove(); };
+      b.onclick = () => runCommand(it.id);
+    }
+    m.appendChild(b);
+  });
+  document.body.appendChild(m);
+  openDrop.push(m);
+  // keep it on the screen
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+  m.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+  m.addEventListener('keydown', (e) => {
+    // keys here move through the menu; they must not also nudge shapes or switch tools
+    e.stopPropagation();
+    const bs = Array.from(m.querySelectorAll('button:not(:disabled)'));
+    const i = bs.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); (bs[i + 1] || bs[0]).focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); (bs[i - 1] || bs[bs.length - 1]).focus(); }
+    else if (e.key === 'ArrowRight' && document.activeElement && document.activeElement.getAttribute('aria-haspopup')) { e.preventDefault(); document.activeElement.click(); const sub = openDrop[level + 1]; if (sub) { const f = sub.querySelector('button:not(:disabled)'); if (f) f.focus(); } }
+    else if (e.key === 'ArrowLeft' && level > 0) { e.preventDefault(); openDrop.pop().remove(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenus(); }
+  });
+  return m;
+}
+function buildMenubar() {
+  const bar = $('menubar');
+  if (window.sungfluenceDesktop) { bar.hidden = true; return; }
+  bar.hidden = false; $('app').classList.add('has-menubar');
+  bar.replaceChildren();
+  menuSpec().forEach((menu) => {
+    const b = el('button', null, menu.label); b.type = 'button'; b.setAttribute('aria-haspopup', 'true'); b.setAttribute('aria-expanded', 'false');
+    const open = () => {
+      closeMenus(); b.setAttribute('aria-expanded', 'true');
+      const r = b.getBoundingClientRect();
+      const m = dropMenu(resolveMenu(menuSpec().find((x) => x.label === menu.label).items), r.left, r.bottom + 2, 0);
+      const f = m.querySelector('button:not(:disabled)'); if (f) f.focus({ preventScroll: true });
+    };
+    b.onclick = (e) => { e.stopPropagation(); if (b.getAttribute('aria-expanded') === 'true') closeMenus(); else open(); };
+    // once a menu is open, moving across the bar opens the next one
+    b.onmouseenter = () => { if (openDrop.length && b.getAttribute('aria-expanded') !== 'true') open(); };
+    bar.appendChild(b);
+  });
+}
+document.addEventListener('mousedown', (e) => { if (openDrop.length && !e.target.closest('.dropmenu, #menubar')) closeMenus(); });
+window.addEventListener('blur', () => closeMenus());
+
+/* ---------- the desktop app's native menu ---------- */
+let menuTimer = null, lastMenu = '';
+function syncMenus() {
+  if (!window.sungfluenceDesktop) return;
+  clearTimeout(menuTimer);
+  menuTimer = setTimeout(() => {
+    const spec = menuSpec().map((m) => ({ label: m.label, items: resolveMenu(m.items) }));
+    const s = JSON.stringify(spec);
+    if (s === lastMenu) return;
+    lastMenu = s;
+    window.sungfluenceDesktop.setMenu(spec);
+  }, 120);
+}
+/* the desktop menu calls this; old names from earlier versions still work */
+window.__sungfluenceMenu = (cmd) => {
+  const old = { 'load-plugin': 'plugins.load', plugins: 'plugins.manage', 'plugin-template': 'plugins.template', new: 'file.new', open: 'file.open', export: 'file.export',
+    settings: 'file.settings', undo: 'edit.undo', redo: 'edit.redo', about: 'help.about', help: 'help.help', tutorial: 'help.tutorial' };
+  runCommand(old[cmd] || cmd);
+};
+
+/* ---------- command palette ---------- */
+function paletteEntries() {
+  dynamicCommands();
+  const where = new Map();
+  const walk = (items, path) => items.forEach((it) => { if (it.items) walk(it.items, path.concat(it.label)); else if (it.id) where.set(it.id, path.join(' › ')); });
+  menuSpec().forEach((m) => walk(m.items, [m.label]));
+  return Array.from(COMMANDS.values()).map((c) => ({ c, where: where.get(c.id) || (c.id.startsWith('tool.') ? 'Tools' : '') }));
+}
+function openPalette() {
+  closeMenus();
+  if ($('palette')) { $('palette').querySelector('input').focus(); return; }
+  const sc = el('div', 'palette-scrim'); sc.id = 'palette';
+  const box = el('div', 'palette'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Find a command');
+  const inp = el('input'); inp.type = 'text'; inp.placeholder = 'Type a command, a style, a recipe or a tool'; inp.setAttribute('aria-label', 'Find a command');
+  const list = el('div', 'palette-list'); list.setAttribute('role', 'listbox');
+  box.append(inp, list); sc.appendChild(box); document.body.appendChild(sc);
+  const all = paletteEntries();
+  let shown = [], active = 0;
+  const close = () => sc.remove();
+  const render = () => {
+    const words = inp.value.toLowerCase().split(/\s+/).filter(Boolean);
+    shown = all.filter(({ c, where }) => { const hay = (c.label + ' ' + where).toLowerCase(); return words.every((w) => hay.includes(w)); })
+      .map((x) => Object.assign(x, { score: (x.c.label.toLowerCase().startsWith(words[0] || '') ? 0 : 1) + (x.c.enabled && !x.c.enabled() ? 2 : 0) }))
+      .sort((a, b) => a.score - b.score).slice(0, 60);
+    active = Math.min(active, Math.max(0, shown.length - 1));
+    list.replaceChildren();
+    shown.forEach(({ c, where }, i) => {
+      const b = el('button', 'pi-row'); b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('aria-selected', String(i === active));
+      const off = c.enabled && !c.enabled();
+      if (off) b.classList.add('off');
+      b.append(el('span', 'lb', (c.checked && c.checked() ? '✓ ' : '') + c.label), el('span', 'wh', where), el('span', 'kb', keyLabel(c.keys[0] || c.hint || '')));
+      b.onmousemove = () => { if (active !== i) { active = i; mark(); } };
+      b.onclick = () => go(i);
+      list.appendChild(b);
+    });
+    if (!shown.length) list.appendChild(el('div', 'note', 'Nothing found.'));
+  };
+  const mark = () => list.querySelectorAll('.pi-row').forEach((b, i) => { b.setAttribute('aria-selected', String(i === active)); if (i === active) b.scrollIntoView({ block: 'nearest' }); });
+  const go = (i) => { const x = shown[i]; if (!x) return; if (x.c.enabled && !x.c.enabled()) { toast('Not available right now.'); return; } close(); runCommand(x.c.id); };
+  inp.oninput = () => { active = 0; render(); };
+  inp.onkeydown = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(shown.length - 1, active + 1); mark(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); mark(); }
+    else if (e.key === 'Enter') { e.preventDefault(); go(active); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+  };
+  sc.addEventListener('mousedown', (e) => { if (e.target === sc) close(); });
+  render(); inp.focus();
+}
+
 /* ===== 06-io.js ===== */
 /* ===================== Part 5: history, files, export, Claude, keys, boot ===================== */
 const hist = [], future = [];
@@ -3928,7 +4581,7 @@ function applyDoc(d) {
 }
 function undo() { clearTimeout(histTimer); commitHistory(); if (!hist.length) return; future.push(lastDoc); applyDoc(hist.pop()); }
 function redo() { if (!future.length) return; hist.push(lastDoc); applyDoc(future.pop()); }
-function updateUndoButtons() { $('undoBtn').disabled = !hist.length; $('redoBtn').disabled = !future.length; }
+function updateUndoButtons() { $('undoBtn').disabled = !hist.length; $('redoBtn').disabled = !future.length; syncMenus(); }
 $('undoBtn').onclick = undo; $('redoBtn').onclick = redo;
 
 const SAVE_KEY = 'sungfluence-session-v3';
@@ -4056,19 +4709,21 @@ function sampleThumb(k) {
   });
   return thumbCache[k];
 }
+function useSample(k) { return loadImageURL(SAMPLES[k], k + '.jpg').then(() => { doc.sample = k; buildSamples(); freshImage(); }); }
+function newSquare() { createArtboard(Object.assign({ dpi: 300, cell: 24, bg: '#ffffff' }, ARTBOARDS[0])); }
 function buildSamples() {
   const box = $('samples'); box.replaceChildren();
   const blank = el('button', 'thumb-new', '+'); blank.type = 'button';
   blank.setAttribute('aria-label', 'Blank square artboard, 2000 by 2000 pixels'); blank.title = 'Blank square artboard (2000 × 2000 px). Shift-click for more sizes.';
   blank.setAttribute('aria-pressed', String(!!doc.blank));
-  blank.onclick = (e) => { if (e.shiftKey) openNewArtboard(); else createArtboard(Object.assign({ dpi: 300, cell: 24, bg: '#ffffff' }, ARTBOARDS[0])); };
+  blank.onclick = (e) => { if (e.shiftKey) openNewArtboard(); else newSquare(); };
   box.appendChild(blank);
   Object.keys(SAMPLES).forEach((k) => {
     const b = el('button', 'thumb'); b.type = 'button';
     sampleThumb(k).then((u) => { b.style.backgroundImage = 'url(' + u + ')'; });
     b.setAttribute('aria-label', 'Use sample image ' + k); b.title = 'Sample: ' + k;
     b.setAttribute('aria-pressed', String(doc.sample === k));
-    b.onclick = () => loadImageURL(SAMPLES[k], k + '.jpg').then(() => { doc.sample = k; buildSamples(); freshImage(); });
+    b.onclick = () => useSample(k);
     box.appendChild(b);
   });
 }
@@ -4082,17 +4737,40 @@ document.addEventListener('paste', (e) => {
   const it = items.find((i) => i.type.startsWith('image/'));
   const vectorish = ui.tab === 'lines' || ['select', 'shape', 'text'].includes(ui.tool);
   if (it) { e.preventDefault(); if (vectorish && origImg) placeImageFile(it.getAsFile()); else loadFile(it.getAsFile()); return; }
-  if (objClipboard && objClipboard.length && origImg) {
-    e.preventDefault();
-    const off = Math.max(10, Math.round(iw / 60));
-    const copies = objClipboard.map((o) => cloneObj(o, off, off));
-    objClipboard = copies.map((o) => clone(o));
-    doc.objects.push(...copies); ui.selObjs = copies.map((o) => o.id);
-    if (ui.tool !== 'select') setTool('select');
-    objChanged({ final: true, list: copies });
-  }
+  if (objClipboard && objClipboard.length && origImg) { e.preventDefault(); pasteObjects(); }
+});
+/* In the desktop app on a Mac, Cmd C goes through the menu, so shapes are also copied on the copy event */
+document.addEventListener('copy', (e) => {
+  if (/INPUT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName) || !ui.selObjs.length) return;
+  e.preventDefault(); copyObjects();
 });
 let objClipboard = null;
+function copyObjects() {
+  if (!ui.selObjs.length) return false;
+  objClipboard = clone(selectedObjs());
+  toast('Copied ' + objClipboard.length + ' object' + (objClipboard.length === 1 ? '' : 's'));
+  return true;
+}
+function pasteObjects() {
+  if (!objClipboard || !objClipboard.length || !origImg) return false;
+  const off = Math.max(10, Math.round(iw / 60));
+  const copies = objClipboard.map((o) => cloneObj(o, off, off));
+  objClipboard = copies.map((o) => clone(o));
+  doc.objects.push(...copies); ui.selObjs = copies.map((o) => o.id);
+  if (ui.tool !== 'select') setTool('select');
+  objChanged({ final: true, list: copies });
+  return true;
+}
+function saveProject() { if (origImg) saveFile(baseName() + '.json', JSON.stringify(projectData())); }
+function duplicateSelection() { if (ui.selObjs.length) duplicateObjects(); else duplicateLayer(doc.text.sel); }
+function deselectAll() { selClear(); if (ui.selObjs.length) { ui.selObjs = []; drawOverlay(); buildOptbar(); } }
+function selectAllObjects() {
+  const all = doc.objects.filter((o) => !o.hidden && layerOf(o.layer).visible).map((o) => o.id);
+  if (!all.length) return;
+  if (ui.tool !== 'select') setTool('select');
+  ui.selObjs = all; ui.selPath = null; drawOverlay(); buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel();
+}
+function showView(v) { if (v !== 'photo' && !doc.text.applied) applyTextArt(); else setView(v); }
 
 /* ---------------- compare with the original ---------------- */
 function showOriginal(on) {
@@ -4480,6 +5158,8 @@ const SHORTCUTS = [
   ['V', 'Select objects'], ['U', 'Shapes'], ['T', 'Text'], ['P', 'Pen'], ['N', 'Pencil'], ['A', 'Edit points of lines'],
   ['Shift / Alt', 'Add to or subtract from a selection'], ['Alt drag', 'Copy objects while moving'], ['Arrows', 'Nudge objects, Shift for 10 px'], ['Space', 'Hold to move with any tool'],
   ['Enter', 'Finish a pen line, apply a crop'], ['Delete', 'Delete the selected object, line or point'],
+  ['Alt while dragging', 'Move freely, without snapping'], ['Shift while drawing', 'Straight lines in 15° steps'],
+  [MOD + ' K', 'Find any command'], [MOD + ' O', 'Open an image or a project'], [MOD + ' A', 'Select all shapes'], [MOD + ' ;', 'Snapping on or off'], [MOD + " '", 'Show the grid'],
   [MOD + ' C / V', 'Copy and paste objects'], [MOD + ' D', 'Deselect'], [MOD + ' J', 'Duplicate objects or text layer'], [MOD + ' Z', 'Undo'], ['Shift ' + MOD + ' Z', 'Redo'], [MOD + ' S', 'Save project'], [MOD + ' E', 'Export menu'],
   [MOD + ' + / − / 0', 'Zoom in, out, fit'], [MOD + ' 1 / 2', 'Actual size, zoom to selection'], [MOD + ' scroll or pinch', 'Smooth zoom'], ['Shift N', 'New artboard'],
   ['/', 'Compare with a divider'], ['Hold \\', 'Show the original photo'], ['F1', 'Help and tutorial'], ['Esc', 'Cancel, close menus']
@@ -4501,34 +5181,22 @@ $('helpBtn').onclick = (e) => { e.stopPropagation(); toggleHelp(); };
 document.addEventListener('keydown', (e) => {
   const ae = document.activeElement;
   const typing = ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.type !== 'range' && ae.type !== 'checkbox';
-  const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
-  if (e.key === 'F1') { e.preventDefault(); toggleHelp(false); openHelp(); return; }
+  const mod = e.metaKey || e.ctrlKey;
   if (e.key === 'Escape') {
-    closeMenu(); toggleHelp(false); toggleZoomMenu(false);
+    closeMenu(); closeMenus(); toggleHelp(false); toggleZoomMenu(false);
     if (!$('dlgScrim').hidden) { closeDialog(); return; }
     if (!$('libScrim').hidden) closeLibrary();
-    if (pen) { pen = null; drawOverlay(); }
+    if (pen) { pen = null; ui.snapHint = null; drawOverlay(); }
     if (ui.tool === 'crop') setTool('hand');
     else if (ui.selObjs.length && !typing) { ui.selObjs = []; drawOverlay(); buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel(); }
     return;
   }
-  if (!$('libScrim').hidden || !$('dlgScrim').hidden) return;
-  if (mod && key === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
-  if (mod && key === 'y' && !typing) { e.preventDefault(); redo(); return; }
-  if (mod && key === 's') { e.preventDefault(); if (origImg) saveFile(baseName() + '.json', JSON.stringify(projectData())); return; }
-  if (mod && key === 'e') { e.preventDefault(); openMenu(); return; }
-  if (mod && key === 'd' && !typing) { e.preventDefault(); selClear(); if (ui.selObjs.length) { ui.selObjs = []; drawOverlay(); buildOptbar(); } return; }
-  if (mod && key === 'j' && !typing) { e.preventDefault(); if (ui.selObjs.length) duplicateObjects(); else duplicateLayer(doc.text.sel); return; }
-  if (mod && key === 'c' && !typing && ui.selObjs.length) { objClipboard = clone(selectedObjs()); toast('Copied ' + objClipboard.length + ' object' + (objClipboard.length === 1 ? '' : 's')); return; }
-  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); stepZoom(1); return; }
-  if (mod && e.key === '-') { e.preventDefault(); stepZoom(-1); return; }
-  if (mod && e.key === '0') { e.preventDefault(); zoomTo('fit'); return; }
-  if (mod && e.key === '1') { e.preventDefault(); zoomTo(1); return; }
-  if (mod && e.key === '2') { e.preventDefault(); zoomToSelection(); return; }
+  if (!$('libScrim').hidden || !$('dlgScrim').hidden) { if (e.key === 'F1') { e.preventDefault(); openHelp(); } return; }
+  // every other shortcut belongs to a command (05c-commands.js)
+  if (runShortcut(e, typing)) { toggleHelp(false); return; }
   if (typing || mod) return;
   if (e.key === ' ' && !spaceDown) { spaceDown = true; wrapClass(); e.preventDefault(); return; }
   if (e.key === '\\' && !e.repeat) { showOriginal(true); return; }
-  if (e.key === '/') { e.preventDefault(); toggleSplit(); return; }
   if (e.key === 'Enter' && ui.tool === 'pen') { finishPen(); return; }
   if (e.key === 'Enter' && ui.tool === 'crop') { cropApply(); return; }
   if (e.key === 'Enter' && ui.tool === 'select' && ui.selObjs.length === 1 && selectedObjs()[0].type === 'text') { e.preventDefault(); editText(selectedObjs()[0]); return; }
@@ -4538,10 +5206,6 @@ document.addEventListener('keydown', (e) => {
     if (nudgeObjects(e.key === 'ArrowLeft' ? -st : e.key === 'ArrowRight' ? st : 0, e.key === 'ArrowUp' ? -st : e.key === 'ArrowDown' ? st : 0)) e.preventDefault();
     return;
   }
-  if (['1', '2', '3'].includes(e.key)) { const v = ['photo', 'mix', 'text'][+e.key - 1]; if (v !== 'photo' && !doc.text.applied) applyTextArt(); else setView(v); return; }
-  if (e.key === 'N' && e.shiftKey) { openNewArtboard(); return; }
-  const tool = { h: 'hand', z: 'zoom', c: 'crop', w: 'wand', l: 'lasso', b: 'brush', v: 'select', u: 'shape', t: 'text', p: 'pen', n: 'pencil', a: 'direct' }[key];
-  if (tool && !e.shiftKey) setTool(tool);
 });
 document.addEventListener('keyup', (e) => {
   if (e.key === ' ') { spaceDown = false; wrapClass(); }
@@ -4549,17 +5213,18 @@ document.addEventListener('keyup', (e) => {
 });
 
 /* ---------------- boot ---------------- */
+function setQuality(v) { if (ui.quality === v) return; ui.quality = v; buildQuality(); rebuildPhotoView(); compose(); if (doc.text.applied) scheduleText(0); statusIdle(); syncMenus(); }
 function buildQuality() {
   const s = $('qualitySeg'); s.replaceChildren();
   QUALITY.forEach(([v, t]) => {
     const b = el('button', null, t); b.type = 'button'; b.setAttribute('aria-pressed', String(ui.quality === v));
     b.title = v === 'full' ? 'Work at full size' : 'Work on a smaller copy for speed; exports stay full size';
-    b.onclick = () => { ui.quality = v; buildQuality(); rebuildPhotoView(); compose(); if (doc.text.applied) scheduleText(0); statusIdle(); };
+    b.onclick = () => setQuality(v);
     s.appendChild(b);
   });
 }
 function buildAll() { buildStack(); buildTabs(); buildPanel(); buildOptbar(); }
-buildRail(); buildQuality(); buildOptbar(); buildTabs();
+buildRail(); buildQuality(); buildOptbar(); buildTabs(); buildMenubar(); syncMenus();
 $('newBtn').onclick = openNewArtboard;
 let restored = null;
 try { const raw = localStorage.getItem(SAVE_KEY); if (raw) restored = JSON.parse(raw); } catch (e) { restored = null; }
@@ -4577,6 +5242,8 @@ Promise.resolve(boot).then(() => {
   const faces = ['400 20px Inter', '900 20px Inter', '200 20px Inter', '400 20px "JetBrains Mono"', '700 20px "Playfair Display"', '600 20px Oswald', '700 20px Oswald', '400 20px "Special Elite"'];
   Promise.race([Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null)).concat(['400 20px "Noto Naskh Arabic"', '700 20px "Noto Naskh Arabic"', '400 20px "Noto Nastaliq Urdu"', '700 20px "Noto Nastaliq Urdu"'].map((f) => document.fonts.load(f, 'خودی کو').catch(() => null)))), new Promise((r) => setTimeout(r, 5000))]).then(() => { C.resetCaches(); if (doc.text.applied) scheduleText(0); thumbsSoon(); });
 });
-window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp };
+window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp, runCommand, COMMANDS, snapAt, gridSize, linesChanged,
+  toScreen: (x, y) => { const g = artGeom(), q = img2art(x, y, g), r = canvas.getBoundingClientRect(); return [r.left + q[0] * r.width / canvas.width, r.top + q[1] * r.height / canvas.height]; },
+  get snapHint() { return ui.snapHint; }, get pen() { return pen; } };
 
 })();

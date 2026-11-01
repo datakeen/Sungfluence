@@ -373,6 +373,11 @@ function openSettings() {
     s1.appendChild(makeControl(prefs, T('zoomHud', 'Show the zoom size while zooming', { idp: 'pf-' }), () => savePrefs()));
     const rs = optBtn('Reset zoom settings', () => { ['zoomSpeed', 'zoomSmooth', 'zoomDuration', 'wheel', 'zoomAnchor', 'zoomStep', 'zoomMax', 'zoomInvert', 'dblClick', 'pixelated', 'zoomHud'].forEach((k) => set(k, PREF_DEFAULTS[k])); openSettings(); });
     rs.classList.add('btn-quiet'); s1.appendChild(rs);
+    const sn = sec(body, 'Snapping and grid');
+    sn.appendChild(makeControl(prefs.snap, T('on', 'Snap while drawing and moving', { idp: 'pf-sn-' }), () => { savePrefs(); buildOptbar(); }));
+    sn.appendChild(makeControl(prefs.grid, T('show', 'Show the grid', { idp: 'pf-g-' }), () => { savePrefs(); drawOverlay(); }));
+    sn.appendChild(numInput('Grid size', prefs.grid.size || gridSize(), (v) => { prefs.grid.size = Math.max(1, Math.round(v)); savePrefs(); drawOverlay(); }, { min: 1, max: 2000, step: 1, unit: 'image pixels' }));
+    sn.appendChild(el('span', 'note', 'Choose what to snap to under View → Snapping, or with the small arrow next to Snap. Hold Alt to place something freely.'));
     const s2 = sec(body, 'Look');
     s2.appendChild(makeControl(prefs, Object.assign(S('theme', 'Theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]), { idp: 'pf-', rebuild: () => { applyTheme(); openSettings(); } }), () => savePrefs()));
     const s3 = sec(body, 'This computer');

@@ -38,6 +38,12 @@ function buildTabs() {
   TABS.forEach(([id, name]) => { const b = el('button', null, name); b.type = 'button'; b.setAttribute('aria-pressed', String(ui.tab === id)); b.onclick = () => { ui.tab = id; buildTabs(); buildPanel(); }; t.appendChild(b); });
 }
 const GRIP = SVGI('<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>');
+function toggleLayerVisible(id) {
+  const L = layerOf(id);
+  L.visible = !L.visible;
+  if (id === 'text' && L.visible && !doc.text.applied) { applyTextArt(); return; }
+  buildStack(); compose();
+}
 function buildStack() {
   const box = $('stack'); box.replaceChildren();
   const tl = activeLayers();
@@ -54,7 +60,7 @@ function buildStack() {
     const grip = el('span', 'grip'); grip.innerHTML = GRIP; grip.title = 'Drag to change the order';
     const eye = el('button', 'icon-btn'); eye.type = 'button'; eye.innerHTML = EYE;
     eye.setAttribute('aria-label', (L.visible ? 'Hide ' : 'Show ') + name); eye.setAttribute('aria-pressed', String(L.visible));
-    eye.onclick = () => { L.visible = !L.visible; if (id === 'text' && L.visible && !doc.text.applied) { applyTextArt(); return; } buildStack(); compose(); };
+    eye.onclick = () => toggleLayerVisible(id);
     const nm = el('button', 'nm'); nm.type = 'button';
     const ic = el('span', 'ic'); ic.innerHTML = info[id].ic;
     const tx = el('span'); tx.style.display = 'grid'; tx.style.minWidth = '0'; tx.append(el('b', null, name + ((L.opacity ?? 1) < 1 ? '  ' + Math.round(L.opacity * 100) + '%' : '') + (L.blend && L.blend !== 'normal' ? ' · ' + (BLENDS.find((b) => b[0] === L.blend) || ['', ''])[1] : '')), el('small', null, info[id].sub));
@@ -99,6 +105,7 @@ function buildPanel() {
   else buildOutputPanel(p);
   buildStack();
   drawOverlay();
+  syncMenus();
 }
 function sec(parent, title, right) {
   const s = el('div', 'sec');

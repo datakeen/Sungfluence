@@ -7,7 +7,7 @@ New here? Start with **[Getting started](getting-started.md)**. It takes five mi
 ## Learn
 
 - [Getting started](getting-started.md): from a photo to a finished piece, step by step.
-- [The window](workspace.md): what each part of the screen does, views, compare and zoom.
+- [The window](workspace.md): the menus, finding any command with Ctrl K, views, compare and zoom.
 - [Writing in Urdu and Arabic](urdu-and-arabic.md): Nastaliq, joined words, right to left.
 
 ## Reference

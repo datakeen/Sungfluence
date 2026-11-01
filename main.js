@@ -1,6 +1,6 @@
 // SungFluence desktop shell. The whole app lives in src/ and runs offline.
 // Copyright (C) 2026 Ahmed Bilal. SPDX-License-Identifier: AGPL-3.0-or-later
-const { app, BrowserWindow, shell, Menu, dialog } = require('electron');
+const { app, BrowserWindow, shell, Menu, dialog, ipcMain } = require('electron');
 const path = require('path');
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -20,7 +20,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      spellcheck: false
+      spellcheck: false,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
@@ -114,6 +115,63 @@ function buildMenu() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+
+// The page sends its menus (the same list as its in-page menu bar and command palette); they become the native menu bar.
+// Keys are handled by the page, so the menu only shows them. On a Mac the system menu always takes its keys,
+// so there only keys that are safe while typing are attached.
+const isMac = process.platform === 'darwin';
+const SAFE_WHILE_TYPING = /^(mod\+(o|s|e|k|=|-|0|1|2|\+|shift\+\+)|f1)$/;
+function accel(k) {
+  if (!k || typeof k !== 'string' || k.length > 24) return undefined;
+  if (isMac && !SAFE_WHILE_TYPING.test(k)) return undefined;
+  const parts = k.split(/\+(?!$)/), key = parts.pop();
+  const names = { mod: 'CmdOrCtrl', shift: 'Shift', alt: 'Alt' };
+  const special = { '+': 'Plus', ' ': 'Space', delete: 'Delete', f1: 'F1' };
+  const kk = special[key] || (key.length === 1 ? key.toUpperCase() : null);
+  if (!kk || !parts.every((m) => names[m])) return undefined;
+  return parts.map((m) => names[m]).concat(kk).join('+');
+}
+const text = (s, n) => String(s == null ? '' : s).slice(0, n || 80);
+function fromSpec(items, depth) {
+  if (!Array.isArray(items) || depth > 3) return [];
+  const out = [];
+  for (const it of items.slice(0, 80)) {
+    if (!it || typeof it !== 'object') continue;
+    if (it.sep) { if (out.length && out[out.length - 1].type !== 'separator') out.push({ type: 'separator' }); continue; }
+    if (it.head) { out.push({ label: text(it.head), enabled: false }); continue; }
+    if (it.clipboard) {
+      // text boxes need these; on a Mac the system menu provides the keys
+      ['cut', 'copy', 'paste', 'selectAll'].forEach((role) => out.push({ role, registerAccelerator: isMac }));
+      continue;
+    }
+    if (Array.isArray(it.items)) { out.push({ label: text(it.label), submenu: fromSpec(it.items, depth + 1) }); continue; }
+    if (typeof it.id !== 'string' || !/^[\w.:-]{1,80}$/.test(it.id)) continue;
+    const m = { label: text(it.label), enabled: it.enabled !== false, click: run(it.id) };
+    if (typeof it.checked === 'boolean') { m.type = 'checkbox'; m.checked = it.checked; }
+    const a = accel(it.keys);
+    if (a) { m.accelerator = a; m.registerAccelerator = isMac; }
+    out.push(m);
+  }
+  while (out.length && out[out.length - 1].type === 'separator') out.pop();
+  return out;
+}
+function menuFromSpec(spec) {
+  const menus = (Array.isArray(spec) ? spec.slice(0, 12) : []).map((m) => ({ label: text(m && m.label, 30), submenu: fromSpec(m && m.items, 1) }));
+  const view = menus.find((m) => m.label === 'View');
+  if (view) view.submenu.push({ type: 'separator' }, { role: 'togglefullscreen' }, { role: 'toggleDevTools' });
+  const help = menus.findIndex((m) => m.label === 'Help');
+  if (help >= 0) menus.splice(help, 0, { role: 'windowMenu' });
+  if (isMac) menus.unshift({ role: 'appMenu' });
+  else {
+    const file = menus.find((m) => m.label === 'File');
+    if (file) file.submenu.push({ type: 'separator' }, { role: 'quit' });
+  }
+  return Menu.buildFromTemplate(menus);
+}
+ipcMain.on('menu:set', (event, spec) => {
+  if (!win || event.sender !== win.webContents) return;
+  try { Menu.setApplicationMenu(menuFromSpec(spec)); } catch (e) { console.error('Menu from the page failed', e); }
+});
 
 app.on('second-instance', () => {
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }

@@ -151,24 +151,6 @@ function openPlugins() {
   });
 }
 $('pluginsBtn').onclick = openPlugins;
-/* The desktop app's menu bar calls these. The web version has the same actions on its buttons. */
-window.__sungfluenceMenu = (cmd) => {
-  const acts = {
-    'load-plugin': () => pluginInput.click(),
-    'plugins': openPlugins,
-    'plugin-template': () => saveFile('sungfluence-plugin-template.js', PLUGIN_FILES['sungfluence-plugin-template.js']),
-    'new': () => $('newBtn').click(),
-    'open': () => $('fileInput').click(),
-    'export': () => $('exportBtn').click(),
-    'settings': () => $('settingsBtn').click(),
-    'undo': () => $('undoBtn').click(),
-    'redo': () => $('redoBtn').click(),
-    'about': () => openAbout(),
-    'help': () => openHelp(),
-    'tutorial': () => openHelp('getting-started')
-  };
-  if (acts[cmd]) acts[cmd]();
-};
 /* plugins the user loaded before come back on start */
 const pluginsReady = (async () => {
   for (const p of savedPlugins()) {

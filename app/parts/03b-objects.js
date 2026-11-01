@@ -224,13 +224,16 @@ function selectDown(p, ix, iy, e) {
   }
   drawOverlay(); buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel();
 }
-function objDragMove(ix, iy, e) {
+function objDragMove(ix, iy, e, p) {
   const d = drag;
   if (d.kind === 'marquee') { d.b = [ix, iy]; drawOverlay(); return; }
-  if (d.kind === 'shapeDraw') { shapeDrag(ix, iy, e); return; }
+  if (d.kind === 'shapeDraw') { shapeDrag(ix, iy, e, p); return; }
   if (d.kind === 'objMove') {
     let dx = ix - d.start[0], dy = iy - d.start[1];
     if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+    // snap the moved box: measure from where the shapes started
+    d.objs.forEach((o, i) => { o.x = d.orig[i][0]; o.y = d.orig[i][1]; });
+    [dx, dy] = snapMove(d.objs, dx, dy, e, p);
     d.objs.forEach((o, i) => { o.x = d.orig[i][0] + dx; o.y = d.orig[i][1] + dy; });
     d.moved = true;
     objChanged({ list: d.objs });
@@ -290,8 +293,9 @@ function shapeDown(ix, iy, e) {
   doc.objects.push(o); ui.selObjs = [o.id]; ui.selPath = null;
   drag = { kind: 'shapeDraw', o, start: [ix, iy] };
 }
-function shapeDrag(ix, iy, e) {
+function shapeDrag(ix, iy, e, p) {
   const d = drag;
+  if (!e.shiftKey) [ix, iy] = snapAt(ix, iy, { e, p, anchor: d.line ? d.start : null, skipPath: d.line || null, skipObjs: d.o ? new Set([d.o.id]) : null });
   let dx = ix - d.start[0], dy = iy - d.start[1];
   if (d.line) {
     if (e.shiftKey) { const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI / 4, L = Math.hypot(dx, dy); dx = Math.cos(a) * L; dy = Math.sin(a) * L; }

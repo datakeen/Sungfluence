@@ -201,7 +201,7 @@ function setTool(id) {
   if (ui.tool === 'pen' && id !== 'pen') finishPen();
   if (ui.tool === 'crop' && id !== 'crop') cropCancel();
   commitTextEdit();
-  ui.tool = id;
+  ui.tool = id; ui.snapHint = null;
   const t = TOOLS.find((x) => x.id === id);
   const tab = t && t.group ? ((id === 'shape' || id === 'text') && ui.objLayer === 'photo' ? 'photo' : t.group) : null;
   if (tab && ui.tab !== tab) { ui.tab = tab; buildTabs(); buildPanel(); }
@@ -315,8 +315,8 @@ wrap.addEventListener('pointerdown', (e) => {
   if (ui.tool === 'zoom') { drag = { kind: 'zoomRect', a: [p.ax, p.ay], b: [p.ax, p.ay], alt: e.altKey, wr: wrap.getBoundingClientRect(), cx: e.clientX, cy: e.clientY }; return; }
   if (ui.tool === 'crop') { cropDown(p, ix, iy); return; }
   if (ui.tool === 'select') { selectDown(p, ix, iy, e); return; }
-  if (ui.tool === 'shape') { shapeDown(ix, iy, e); return; }
-  if (ui.tool === 'text') { textDown(p, ix, iy); return; }
+  if (ui.tool === 'shape') { const s = snapAt(ix, iy, { e, p }); shapeDown(s[0], s[1], e); return; }
+  if (ui.tool === 'text') { const s = snapAt(ix, iy, { e, p }); textDown(p, s[0], s[1]); return; }
   if (ui.tool === 'wand') {
     const [mx, my] = toMaster(ix, iy);
     if (mx < 0 || my < 0 || mx >= master.w || my >= master.h) return;
@@ -327,7 +327,8 @@ wrap.addEventListener('pointerdown', (e) => {
     drag = { kind: 'brush', sub: e.altKey || ui.brush.mode === 'sub', last: null };
     brushAt(p);
   } else if (ui.tool === 'pen') {
-    penDown(p, ix, iy);
+    const s = snapAt(ix, iy, penSnap(e, p));
+    penDown(p, s[0], s[1]);
   } else if (ui.tool === 'pencil') {
     drag = { kind: 'pencil', pts: [[ix, iy]], last: [p.cx, p.cy] };
   } else if (ui.tool === 'direct') {
@@ -346,7 +347,12 @@ wrap.addEventListener('pointermove', (e) => {
   }
   const p = evPos(e);
   if (ui.tool === 'brush') { const ring = $('brushRing'); const vr = viewport.getBoundingClientRect(); ring.style.left = (e.clientX - vr.left) + 'px'; ring.style.top = (e.clientY - vr.top) + 'px'; ring.style.width = ring.style.height = ui.brush.size + 'px'; }
-  if (ui.tool === 'pen' && pen) { hover = toImg(p); if (!drag) drawOverlay(); }
+  if (!drag && ['pen', 'shape', 'text'].includes(ui.tool)) {
+    const before = JSON.stringify(ui.snapHint);
+    const s = snapAt(...toImg(p), ui.tool === 'pen' ? penSnap(e, p) : { e, p });
+    if (ui.tool === 'pen' && pen) { hover = s; drawOverlay(); }
+    else if (JSON.stringify(ui.snapHint) !== before) drawOverlay();
+  }
   if (!drag) { if (guideHit(p)) wrap.style.cursor = 'grab'; else if (ui.tool === 'select' || ui.tool === 'crop') hoverCursor(p); else wrap.style.cursor = ''; return; }
   if (drag.kind === 'pan') { wrap.scrollLeft = drag.sl - (e.clientX - drag.x); wrap.scrollTop = drag.st - (e.clientY - drag.y); return; }
   const [ix, iy] = toImg(p);
@@ -354,8 +360,8 @@ wrap.addEventListener('pointermove', (e) => {
   else if (drag.kind === 'lasso') { drag.pts.push([ix, iy]); drawOverlay(); }
   else if (drag.kind === 'brush') brushAt(p);
   else if (drag.kind === 'pencil') { if (Math.hypot(p.cx - drag.last[0], p.cy - drag.last[1]) >= 2) { drag.pts.push([ix, iy]); drag.last = [p.cx, p.cy]; drawOverlay(); } }
-  else if (drag.kind === 'penHandle') { const n = pen.nodes[pen.nodes.length - 1]; n.ox = ix - n.x; n.oy = iy - n.y; n.ix = -n.ox; n.iy = -n.oy; drawOverlay(); }
-  else if (drag.kind === 'node' || drag.kind === 'handle' || drag.kind === 'path') directMove(ix, iy, e);
+  else if (drag.kind === 'penHandle') { const n = pen.nodes[pen.nodes.length - 1]; const s = snapAt(ix, iy, { e, p, anchor: [n.x, n.y] }); n.ox = s[0] - n.x; n.oy = s[1] - n.y; n.ix = -n.ox; n.iy = -n.oy; drawOverlay(); }
+  else if (drag.kind === 'node' || drag.kind === 'handle' || drag.kind === 'path') directMove(ix, iy, e, p);
   else if (drag.kind.startsWith('crop')) cropMove(ix, iy, e);
   else if (drag.kind === 'guide') guideMove(p, e);
   else if (drag.kind.startsWith('obj') || drag.kind === 'marquee' || drag.kind === 'shapeDraw') objDragMove(ix, iy, e, p);
@@ -364,6 +370,7 @@ const endDrag = (e) => {
   if (e && e.pointerType === 'touch') { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; }
   if (!drag) return;
   const d = drag; drag = null;
+  ui.snapHint = null;
   wrapClass();
   if (d.kind === 'zoomRect') {
     const moved = Math.hypot((d.b[0] - d.a[0]) * evPos(e).k, (d.b[1] - d.a[1]) * evPos(e).k) > 6;
@@ -398,7 +405,7 @@ wrap.addEventListener('dblclick', (e) => {
     zoomTo(ui.zoom === 'fit' ? 1 : 'fit', { x: e.clientX - r.left, y: e.clientY - r.top });
   }
 });
-wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush') $('brushRing').hidden = true; });
+wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush') $('brushRing').hidden = true; if (ui.snapHint && !drag) { ui.snapHint = null; drawOverlay(); } });
 wrap.addEventListener('pointerenter', () => { if (ui.tool === 'brush') $('brushRing').hidden = false; });
 
 function brushAt(p) {
@@ -502,11 +509,16 @@ function segDist(px, py, ax, ay, bx, by) {
   const t = clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1);
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
-function directMove(ix, iy, e) {
+function directMove(ix, iy, e, p) {
   const d = drag;
-  if (d.kind === 'node') { const n = d.path.nodes[d.i]; n.x = ix; n.y = iy; }
+  if (d.kind === 'node') {
+    const N = d.path.nodes, nb = N[d.i - 1] || N[d.i + 1];
+    [ix, iy] = snapAt(ix, iy, { e, p, skipPath: d.path, skipNode: [d.path, d.i], anchor: nb ? [nb.x, nb.y] : null });
+    const n = N[d.i]; n.x = ix; n.y = iy;
+  }
   else if (d.kind === 'handle') {
     const n = d.path.nodes[d.i];
+    [ix, iy] = snapAt(ix, iy, { e, p, skipPath: d.path, anchor: [n.x, n.y] });
     const hx = ix - n.x, hy = iy - n.y;
     if (d.which === 'o') { n.ox = hx; n.oy = hy; if (!e.altKey) { const L = Math.hypot(n.ix, n.iy) || Math.hypot(hx, hy); const a = Math.atan2(hy, hx) + Math.PI; n.ix = Math.cos(a) * L; n.iy = Math.sin(a) * L; } }
     else { n.ix = hx; n.iy = hy; if (!e.altKey) { const L = Math.hypot(n.ox, n.oy) || Math.hypot(hx, hy); const a = Math.atan2(hy, hx) + Math.PI; n.ox = Math.cos(a) * L; n.oy = Math.sin(a) * L; } }
@@ -582,6 +594,7 @@ function drawOverlay() {
   if (ui.cropDraft) parts.push(cropOverlay(g, k));
   if (doc.out.mock === 'artboard' && !ui.cropDraft) parts.push(objectOverlay(g, k));
   parts.push(guideOverlay(g, k));
+  parts.push(snapOverlay(g, k));
   overlay.innerHTML = parts.join('');
 }
 
@@ -659,4 +672,22 @@ function buildOptbar() {
     bar.appendChild(el('span', 'hint', 'Click a line to select it. Drag points, handles or the whole line. Alt breaks a handle pair. Delete removes.'));
     bar.appendChild(optBtn('Delete', () => deleteSelection(), false, !ui.selPath));
   }
+  if (['select', 'shape', 'text', 'pen', 'direct'].includes(t)) snapButtons(bar);
+  syncMenus();
+}
+/* Snap on or off, and a menu of what it snaps to. Alt turns it off while you drag. */
+function snapButtons(bar) {
+  const box = el('div', 'snapbox');
+  const on = el('button', 'btn' + (prefs.snap.on ? ' on' : ''), 'Snap'); on.type = 'button';
+  on.setAttribute('aria-pressed', String(!!prefs.snap.on)); on.title = 'Snap to points and lines (' + keyLabel('mod+;') + '). Hold Alt to drag freely.';
+  on.onclick = () => runCommand('snap.on');
+  const more = el('button', 'btn', '▾'); more.type = 'button'; more.setAttribute('aria-label', 'What to snap to'); more.title = 'What to snap to';
+  more.onclick = (ev) => { ev.stopPropagation(); const r = more.getBoundingClientRect(); dropMenu(resolveMenu([{ id: 'snap.on' }, { sep: true }].concat(SNAP_KINDS.map(([k]) => ({ id: 'snap.' + k })), [{ sep: true }, { id: 'view.grid' }, { id: 'snap.gridSize' }])), r.left, r.bottom + 4, 0); };
+  box.append(on, more);
+  bar.appendChild(box);
+}
+/* the pen snaps to its own points too, and draws from its last point */
+function penSnap(e, p) {
+  const N = pen ? pen.nodes : [], last = N[N.length - 1];
+  return { e, p, anchor: last ? [last.x, last.y] : null, live: N.map((n) => [n.x, n.y]) };
 }

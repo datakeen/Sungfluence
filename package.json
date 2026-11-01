@@ -26,7 +26,7 @@
     "prestart": "node scripts/build.js",
     "start": "electron .",
     "web": "npx --yes http-server src -p 8080 -c-1",
-    "test": "node tests/regression.test.js && node tests/plugins.test.js && node tests/studio.test.js && node tests/effects.test.js",
+    "test": "node tests/regression.test.js && node tests/plugins.test.js && node tests/studio.test.js && node tests/effects.test.js && node tests/commands.test.js",
     "predist": "node scripts/build.js",
     "dist": "electron-builder --publish never",
     "dist:linux": "electron-builder --linux --publish never",
@@ -57,6 +57,7 @@
     "copyright": "Copyright (C) 2026 Ahmed Bilal. Licensed under the GNU AGPL v3 or later.",
     "files": [
       "main.js",
+      "preload.js",
       "package.json",
       "LICENSE",
       "src/**/*"

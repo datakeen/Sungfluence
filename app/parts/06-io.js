@@ -37,7 +37,7 @@ function applyDoc(d) {
 }
 function undo() { clearTimeout(histTimer); commitHistory(); if (!hist.length) return; future.push(lastDoc); applyDoc(hist.pop()); }
 function redo() { if (!future.length) return; hist.push(lastDoc); applyDoc(future.pop()); }
-function updateUndoButtons() { $('undoBtn').disabled = !hist.length; $('redoBtn').disabled = !future.length; }
+function updateUndoButtons() { $('undoBtn').disabled = !hist.length; $('redoBtn').disabled = !future.length; syncMenus(); }
 $('undoBtn').onclick = undo; $('redoBtn').onclick = redo;
 
 const SAVE_KEY = 'sungfluence-session-v3';
@@ -165,19 +165,21 @@ function sampleThumb(k) {
   });
   return thumbCache[k];
 }
+function useSample(k) { return loadImageURL(SAMPLES[k], k + '.jpg').then(() => { doc.sample = k; buildSamples(); freshImage(); }); }
+function newSquare() { createArtboard(Object.assign({ dpi: 300, cell: 24, bg: '#ffffff' }, ARTBOARDS[0])); }
 function buildSamples() {
   const box = $('samples'); box.replaceChildren();
   const blank = el('button', 'thumb-new', '+'); blank.type = 'button';
   blank.setAttribute('aria-label', 'Blank square artboard, 2000 by 2000 pixels'); blank.title = 'Blank square artboard (2000 × 2000 px). Shift-click for more sizes.';
   blank.setAttribute('aria-pressed', String(!!doc.blank));
-  blank.onclick = (e) => { if (e.shiftKey) openNewArtboard(); else createArtboard(Object.assign({ dpi: 300, cell: 24, bg: '#ffffff' }, ARTBOARDS[0])); };
+  blank.onclick = (e) => { if (e.shiftKey) openNewArtboard(); else newSquare(); };
   box.appendChild(blank);
   Object.keys(SAMPLES).forEach((k) => {
     const b = el('button', 'thumb'); b.type = 'button';
     sampleThumb(k).then((u) => { b.style.backgroundImage = 'url(' + u + ')'; });
     b.setAttribute('aria-label', 'Use sample image ' + k); b.title = 'Sample: ' + k;
     b.setAttribute('aria-pressed', String(doc.sample === k));
-    b.onclick = () => loadImageURL(SAMPLES[k], k + '.jpg').then(() => { doc.sample = k; buildSamples(); freshImage(); });
+    b.onclick = () => useSample(k);
     box.appendChild(b);
   });
 }
@@ -191,17 +193,40 @@ document.addEventListener('paste', (e) => {
   const it = items.find((i) => i.type.startsWith('image/'));
   const vectorish = ui.tab === 'lines' || ['select', 'shape', 'text'].includes(ui.tool);
   if (it) { e.preventDefault(); if (vectorish && origImg) placeImageFile(it.getAsFile()); else loadFile(it.getAsFile()); return; }
-  if (objClipboard && objClipboard.length && origImg) {
-    e.preventDefault();
-    const off = Math.max(10, Math.round(iw / 60));
-    const copies = objClipboard.map((o) => cloneObj(o, off, off));
-    objClipboard = copies.map((o) => clone(o));
-    doc.objects.push(...copies); ui.selObjs = copies.map((o) => o.id);
-    if (ui.tool !== 'select') setTool('select');
-    objChanged({ final: true, list: copies });
-  }
+  if (objClipboard && objClipboard.length && origImg) { e.preventDefault(); pasteObjects(); }
+});
+/* In the desktop app on a Mac, Cmd C goes through the menu, so shapes are also copied on the copy event */
+document.addEventListener('copy', (e) => {
+  if (/INPUT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName) || !ui.selObjs.length) return;
+  e.preventDefault(); copyObjects();
 });
 let objClipboard = null;
+function copyObjects() {
+  if (!ui.selObjs.length) return false;
+  objClipboard = clone(selectedObjs());
+  toast('Copied ' + objClipboard.length + ' object' + (objClipboard.length === 1 ? '' : 's'));
+  return true;
+}
+function pasteObjects() {
+  if (!objClipboard || !objClipboard.length || !origImg) return false;
+  const off = Math.max(10, Math.round(iw / 60));
+  const copies = objClipboard.map((o) => cloneObj(o, off, off));
+  objClipboard = copies.map((o) => clone(o));
+  doc.objects.push(...copies); ui.selObjs = copies.map((o) => o.id);
+  if (ui.tool !== 'select') setTool('select');
+  objChanged({ final: true, list: copies });
+  return true;
+}
+function saveProject() { if (origImg) saveFile(baseName() + '.json', JSON.stringify(projectData())); }
+function duplicateSelection() { if (ui.selObjs.length) duplicateObjects(); else duplicateLayer(doc.text.sel); }
+function deselectAll() { selClear(); if (ui.selObjs.length) { ui.selObjs = []; drawOverlay(); buildOptbar(); } }
+function selectAllObjects() {
+  const all = doc.objects.filter((o) => !o.hidden && layerOf(o.layer).visible).map((o) => o.id);
+  if (!all.length) return;
+  if (ui.tool !== 'select') setTool('select');
+  ui.selObjs = all; ui.selPath = null; drawOverlay(); buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel();
+}
+function showView(v) { if (v !== 'photo' && !doc.text.applied) applyTextArt(); else setView(v); }
 
 /* ---------------- compare with the original ---------------- */
 function showOriginal(on) {
@@ -589,6 +614,8 @@ const SHORTCUTS = [
   ['V', 'Select objects'], ['U', 'Shapes'], ['T', 'Text'], ['P', 'Pen'], ['N', 'Pencil'], ['A', 'Edit points of lines'],
   ['Shift / Alt', 'Add to or subtract from a selection'], ['Alt drag', 'Copy objects while moving'], ['Arrows', 'Nudge objects, Shift for 10 px'], ['Space', 'Hold to move with any tool'],
   ['Enter', 'Finish a pen line, apply a crop'], ['Delete', 'Delete the selected object, line or point'],
+  ['Alt while dragging', 'Move freely, without snapping'], ['Shift while drawing', 'Straight lines in 15° steps'],
+  [MOD + ' K', 'Find any command'], [MOD + ' O', 'Open an image or a project'], [MOD + ' A', 'Select all shapes'], [MOD + ' ;', 'Snapping on or off'], [MOD + " '", 'Show the grid'],
   [MOD + ' C / V', 'Copy and paste objects'], [MOD + ' D', 'Deselect'], [MOD + ' J', 'Duplicate objects or text layer'], [MOD + ' Z', 'Undo'], ['Shift ' + MOD + ' Z', 'Redo'], [MOD + ' S', 'Save project'], [MOD + ' E', 'Export menu'],
   [MOD + ' + / − / 0', 'Zoom in, out, fit'], [MOD + ' 1 / 2', 'Actual size, zoom to selection'], [MOD + ' scroll or pinch', 'Smooth zoom'], ['Shift N', 'New artboard'],
   ['/', 'Compare with a divider'], ['Hold \\', 'Show the original photo'], ['F1', 'Help and tutorial'], ['Esc', 'Cancel, close menus']
@@ -610,34 +637,22 @@ $('helpBtn').onclick = (e) => { e.stopPropagation(); toggleHelp(); };
 document.addEventListener('keydown', (e) => {
   const ae = document.activeElement;
   const typing = ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.type !== 'range' && ae.type !== 'checkbox';
-  const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
-  if (e.key === 'F1') { e.preventDefault(); toggleHelp(false); openHelp(); return; }
+  const mod = e.metaKey || e.ctrlKey;
   if (e.key === 'Escape') {
-    closeMenu(); toggleHelp(false); toggleZoomMenu(false);
+    closeMenu(); closeMenus(); toggleHelp(false); toggleZoomMenu(false);
     if (!$('dlgScrim').hidden) { closeDialog(); return; }
     if (!$('libScrim').hidden) closeLibrary();
-    if (pen) { pen = null; drawOverlay(); }
+    if (pen) { pen = null; ui.snapHint = null; drawOverlay(); }
     if (ui.tool === 'crop') setTool('hand');
     else if (ui.selObjs.length && !typing) { ui.selObjs = []; drawOverlay(); buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel(); }
     return;
   }
-  if (!$('libScrim').hidden || !$('dlgScrim').hidden) return;
-  if (mod && key === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
-  if (mod && key === 'y' && !typing) { e.preventDefault(); redo(); return; }
-  if (mod && key === 's') { e.preventDefault(); if (origImg) saveFile(baseName() + '.json', JSON.stringify(projectData())); return; }
-  if (mod && key === 'e') { e.preventDefault(); openMenu(); return; }
-  if (mod && key === 'd' && !typing) { e.preventDefault(); selClear(); if (ui.selObjs.length) { ui.selObjs = []; drawOverlay(); buildOptbar(); } return; }
-  if (mod && key === 'j' && !typing) { e.preventDefault(); if (ui.selObjs.length) duplicateObjects(); else duplicateLayer(doc.text.sel); return; }
-  if (mod && key === 'c' && !typing && ui.selObjs.length) { objClipboard = clone(selectedObjs()); toast('Copied ' + objClipboard.length + ' object' + (objClipboard.length === 1 ? '' : 's')); return; }
-  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); stepZoom(1); return; }
-  if (mod && e.key === '-') { e.preventDefault(); stepZoom(-1); return; }
-  if (mod && e.key === '0') { e.preventDefault(); zoomTo('fit'); return; }
-  if (mod && e.key === '1') { e.preventDefault(); zoomTo(1); return; }
-  if (mod && e.key === '2') { e.preventDefault(); zoomToSelection(); return; }
+  if (!$('libScrim').hidden || !$('dlgScrim').hidden) { if (e.key === 'F1') { e.preventDefault(); openHelp(); } return; }
+  // every other shortcut belongs to a command (05c-commands.js)
+  if (runShortcut(e, typing)) { toggleHelp(false); return; }
   if (typing || mod) return;
   if (e.key === ' ' && !spaceDown) { spaceDown = true; wrapClass(); e.preventDefault(); return; }
   if (e.key === '\\' && !e.repeat) { showOriginal(true); return; }
-  if (e.key === '/') { e.preventDefault(); toggleSplit(); return; }
   if (e.key === 'Enter' && ui.tool === 'pen') { finishPen(); return; }
   if (e.key === 'Enter' && ui.tool === 'crop') { cropApply(); return; }
   if (e.key === 'Enter' && ui.tool === 'select' && ui.selObjs.length === 1 && selectedObjs()[0].type === 'text') { e.preventDefault(); editText(selectedObjs()[0]); return; }
@@ -647,10 +662,6 @@ document.addEventListener('keydown', (e) => {
     if (nudgeObjects(e.key === 'ArrowLeft' ? -st : e.key === 'ArrowRight' ? st : 0, e.key === 'ArrowUp' ? -st : e.key === 'ArrowDown' ? st : 0)) e.preventDefault();
     return;
   }
-  if (['1', '2', '3'].includes(e.key)) { const v = ['photo', 'mix', 'text'][+e.key - 1]; if (v !== 'photo' && !doc.text.applied) applyTextArt(); else setView(v); return; }
-  if (e.key === 'N' && e.shiftKey) { openNewArtboard(); return; }
-  const tool = { h: 'hand', z: 'zoom', c: 'crop', w: 'wand', l: 'lasso', b: 'brush', v: 'select', u: 'shape', t: 'text', p: 'pen', n: 'pencil', a: 'direct' }[key];
-  if (tool && !e.shiftKey) setTool(tool);
 });
 document.addEventListener('keyup', (e) => {
   if (e.key === ' ') { spaceDown = false; wrapClass(); }
@@ -658,17 +669,18 @@ document.addEventListener('keyup', (e) => {
 });
 
 /* ---------------- boot ---------------- */
+function setQuality(v) { if (ui.quality === v) return; ui.quality = v; buildQuality(); rebuildPhotoView(); compose(); if (doc.text.applied) scheduleText(0); statusIdle(); syncMenus(); }
 function buildQuality() {
   const s = $('qualitySeg'); s.replaceChildren();
   QUALITY.forEach(([v, t]) => {
     const b = el('button', null, t); b.type = 'button'; b.setAttribute('aria-pressed', String(ui.quality === v));
     b.title = v === 'full' ? 'Work at full size' : 'Work on a smaller copy for speed; exports stay full size';
-    b.onclick = () => { ui.quality = v; buildQuality(); rebuildPhotoView(); compose(); if (doc.text.applied) scheduleText(0); statusIdle(); };
+    b.onclick = () => setQuality(v);
     s.appendChild(b);
   });
 }
 function buildAll() { buildStack(); buildTabs(); buildPanel(); buildOptbar(); }
-buildRail(); buildQuality(); buildOptbar(); buildTabs();
+buildRail(); buildQuality(); buildOptbar(); buildTabs(); buildMenubar(); syncMenus();
 $('newBtn').onclick = openNewArtboard;
 let restored = null;
 try { const raw = localStorage.getItem(SAVE_KEY); if (raw) restored = JSON.parse(raw); } catch (e) { restored = null; }
@@ -686,4 +698,6 @@ Promise.resolve(boot).then(() => {
   const faces = ['400 20px Inter', '900 20px Inter', '200 20px Inter', '400 20px "JetBrains Mono"', '700 20px "Playfair Display"', '600 20px Oswald', '700 20px Oswald', '400 20px "Special Elite"'];
   Promise.race([Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null)).concat(['400 20px "Noto Naskh Arabic"', '700 20px "Noto Naskh Arabic"', '400 20px "Noto Nastaliq Urdu"', '700 20px "Noto Nastaliq Urdu"'].map((f) => document.fonts.load(f, 'خودی کو').catch(() => null)))), new Promise((r) => setTimeout(r, 5000))]).then(() => { C.resetCaches(); if (doc.text.applied) scheduleText(0); thumbsSoon(); });
 });
-window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp };
+window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp, runCommand, COMMANDS, snapAt, gridSize, linesChanged,
+  toScreen: (x, y) => { const g = artGeom(), q = img2art(x, y, g), r = canvas.getBoundingClientRect(); return [r.left + q[0] * r.width / canvas.width, r.top + q[1] * r.height / canvas.height]; },
+  get snapHint() { return ui.snapHint; }, get pen() { return pen; } };
