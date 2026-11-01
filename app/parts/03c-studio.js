@@ -397,7 +397,7 @@ function openAbout() {
     const links = el('div', 'row2');
     const a1 = el('a', 'btn', 'Source code'); a1.href = 'https://github.com/datakeen/Sungfluence'; a1.target = '_blank'; a1.rel = 'noopener';
     const a2 = el('a', 'btn', 'GNU AGPL v3 license'); a2.href = 'https://www.gnu.org/licenses/agpl-3.0.html'; a2.target = '_blank'; a2.rel = 'noopener';
-    const a3 = el('a', 'btn', 'Ahmed Bilal on LinkedIn'); a3.href = 'https://www.linkedin.com/in/abilal/'; a3.target = '_blank'; a3.rel = 'noopener';
+    const a3 = el('a', 'btn', 'LinkedIn'); a3.href = 'https://www.linkedin.com/in/abilal/'; a3.target = '_blank'; a3.rel = 'noopener';
     const a4 = el('a', 'btn', 'Send feedback'); a4.href = 'https://github.com/datakeen/Sungfluence/issues'; a4.target = '_blank'; a4.rel = 'noopener'; a4.title = 'Report a bug or share an idea on GitHub';
     links.append(a1, a2, a3, a4); body.appendChild(links);
     body.appendChild(el('p', 'note', 'If you change SungFluence and let people use it over a network, the license asks you to offer them your changed source code too.'));

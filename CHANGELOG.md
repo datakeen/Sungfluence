@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- The About window's LinkedIn button is now just called LinkedIn.
+
 ## [3.2.0] - 2026-11-01
 
 Menus for everything, a command finder, snapping, and help inside the app.
