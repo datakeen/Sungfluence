@@ -7,8 +7,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- `ROADMAP.md`: where the project is heading.
-- This changelog.
+- **Help inside the app.** Press F1, or choose **?** → **Help and tutorial**, or **Help → SungFluence Help** in the desktop app. Topics on the left, search, links between pages. It works offline and ships with every installer.
+- **Getting started tutorial** in five steps, with pictures. New users see a one-time hint that points to it.
+- **User reference** for the window, the Photo, Vector, Text art and Output panels, export, plugins, Urdu and Arabic, and common problems.
+- **Style reference** with every style, setting, range and starting value. It is written from the app's own definitions on every build, so it always matches the app. The keyboard shortcut page is made the same way.
+- A one-sentence description under each style's name in the Text art panel.
+- `docs/RELEASING.md`: the release checklist. `docs/wiki`: pages for the GitHub wiki.
+- `ROADMAP.md`: where the project is heading. This changelog.
+
+### Changed
+
+- New icon: a light S and a gold F on deep ink, in the style of the wordmark.
+- The desktop Help menu has Help and Getting started at the top.
 
 ## [3.1.0] - 2026-11-01
 

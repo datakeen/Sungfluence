@@ -1,6 +1,6 @@
 # SungFluence
 
-<img src="app/icon.svg" alt="SungFluence icon: the letters SF on a gold sun. The S is a letter, the F is typed in ASCII characters." width="96" align="right">
+<img src="app/icon.svg" alt="SungFluence icon: a light S and a gold F on deep ink" width="96" align="right">
 
 A small design studio that turns pictures into art made only of letters and characters.
 
@@ -152,6 +152,10 @@ docs/                     screenshots, the plugin guide, the installer and GitHu
 4. **Place glyphs:** the style turns the ink map, or the lines, into a list of glyphs and rectangles.
 5. **Output:** the same list is drawn to the screen and written to SVG, PDF and text, so every export matches the preview.
 6. **Compose:** the three layers are stacked in your order with their opacity and blend mode.
+
+## Help
+
+Press **F1** in the app, or click **?** and then **Help and tutorial**. The same pages are in [docs/help](docs/help/index.md); start with [Getting started](docs/help/getting-started.md).
 
 ## What is new, and what is next
 

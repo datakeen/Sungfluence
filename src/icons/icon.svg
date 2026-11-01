@@ -1,38 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024">
-  <!-- SungFluence icon: SF on a quiet gold sun, ringed by its own name like a seal. S is a letter, F is ASCII art. SPDX-License-Identifier: AGPL-3.0-or-later -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- SungFluence icon: S and F in the style of the wordmark, a light S and a gold F on deep ink.
+       The letters are drawn as shapes, so the icon looks the same everywhere. SPDX-License-Identifier: AGPL-3.0-or-later -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1d2846"/>
-      <stop offset="1" stop-color="#0c1222"/>
+      <stop offset="0" stop-color="#22232a"/>
+      <stop offset="1" stop-color="#121317"/>
     </linearGradient>
-    <radialGradient id="glow" cx=".5" cy=".5" r=".5">
-      <stop offset="0" stop-color="#f2b85b" stop-opacity=".30"/>
-      <stop offset=".55" stop-color="#f2b85b" stop-opacity=".08"/>
-      <stop offset="1" stop-color="#f2b85b" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f9d58c"/>
-      <stop offset=".55" stop-color="#eeb457"/>
-      <stop offset="1" stop-color="#d98f35"/>
+    <linearGradient id="gold" gradientUnits="userSpaceOnUse" x1="0" y1="281" x2="0" y2="743">
+      <stop offset="0" stop-color="#f2c066"/>
+      <stop offset="1" stop-color="#d9932f"/>
     </linearGradient>
-    <path id="ring" d="M512 512 m-318 0 a318 318 0 1 1 636 0 a318 318 0 1 1 -636 0"/>
+    <linearGradient id="ivory" gradientUnits="userSpaceOnUse" x1="0" y1="281" x2="0" y2="743">
+      <stop offset="0" stop-color="#fbf7ef"/>
+      <stop offset="1" stop-color="#e6dfd2"/>
+    </linearGradient>
   </defs>
   <rect x="40" y="40" width="944" height="944" rx="216" fill="url(#bg)"/>
-  <circle cx="512" cy="512" r="420" fill="url(#glow)"/>
-  <!-- rays: short strokes of light between the letters of the ring -->
-  <g stroke="#eeb457" stroke-width="9" stroke-linecap="round" opacity=".5">
-    <path d="M512 90v40M512 894v40M90 512h40M894 512h40"/>
-    <path d="M206 206l24 24M794 794l24 24M818 206l-24 24M206 818l24-24"/>
-  </g>
-  <!-- the name as a ring of letters: the app turns pictures into letters -->
-  <text font-family="Georgia, 'Playfair Display', 'Times New Roman', serif" font-size="60" font-weight="700" fill="#f3c877" opacity=".9">
-    <textPath xlink:href="#ring" href="#ring" startOffset="0" textLength="1990" lengthAdjust="spacing">SUNGFLUENCE · SUNGFLUENCE · </textPath>
-  </text>
-  <circle cx="512" cy="512" r="258" fill="none" stroke="#eeb457" stroke-width="6" opacity=".7"/>
-  <circle cx="512" cy="512" r="226" fill="url(#gold)"/>
-  <!-- SF: a serif S, and an F typed in ASCII characters, the way the app draws pictures -->
-  <text x="422" y="520" text-anchor="middle" dominant-baseline="central" font-family="Georgia, 'Playfair Display', 'Times New Roman', serif" font-size="290" font-weight="700" fill="#141c33">S</text>
-  <g font-family="Consolas, 'JetBrains Mono', 'Courier New', monospace" font-size="34" font-weight="700" fill="#141c33" text-anchor="middle" dominant-baseline="central">
-    <text x="559.5" y="416">@</text><text x="586.5" y="416">#</text><text x="613.5" y="416">%</text><text x="640.5" y="416">&amp;</text><text x="667.5" y="416">@</text><text x="559.5" y="441">#</text><text x="586.5" y="441">$</text><text x="613.5" y="441">%</text><text x="640.5" y="441">#</text><text x="667.5" y="441">@</text><text x="559.5" y="466">&amp;</text><text x="586.5" y="466">#</text><text x="559.5" y="491">@</text><text x="586.5" y="491">#</text><text x="559.5" y="516">%</text><text x="586.5" y="516">&amp;</text><text x="613.5" y="516">@</text><text x="640.5" y="516">#</text><text x="559.5" y="541">$</text><text x="586.5" y="541">%</text><text x="613.5" y="541">#</text><text x="640.5" y="541">@</text><text x="559.5" y="566">&amp;</text><text x="586.5" y="566">#</text><text x="559.5" y="591">@</text><text x="586.5" y="591">#</text><text x="559.5" y="616">%</text><text x="586.5" y="616">&amp;</text>
+  <!-- S -->
+  <path d="M452 368 C432 334 394 321 344 321 C278 321 232 352 232 414 C232 476 288 494 344 508 C404 523 456 545 456 612 C456 675 404 703 342 703 C282 703 240 682 222 642"
+        fill="none" stroke="url(#ivory)" stroke-width="80" stroke-linecap="butt" stroke-linejoin="round"/>
+  <!-- F -->
+  <g fill="url(#gold)">
+    <rect x="566" y="281" width="80" height="462"/>
+    <rect x="566" y="281" width="252" height="80"/>
+    <rect x="566" y="478" width="214" height="76"/>
   </g>
 </svg>

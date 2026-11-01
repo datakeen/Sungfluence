@@ -591,7 +591,7 @@ const SHORTCUTS = [
   ['Enter', 'Finish a pen line, apply a crop'], ['Delete', 'Delete the selected object, line or point'],
   [MOD + ' C / V', 'Copy and paste objects'], [MOD + ' D', 'Deselect'], [MOD + ' J', 'Duplicate objects or text layer'], [MOD + ' Z', 'Undo'], ['Shift ' + MOD + ' Z', 'Redo'], [MOD + ' S', 'Save project'], [MOD + ' E', 'Export menu'],
   [MOD + ' + / − / 0', 'Zoom in, out, fit'], [MOD + ' 1 / 2', 'Actual size, zoom to selection'], [MOD + ' scroll or pinch', 'Smooth zoom'], ['Shift N', 'New artboard'],
-  ['/', 'Compare with a divider'], ['Hold \\', 'Show the original photo'], ['Esc', 'Cancel, close menus']
+  ['/', 'Compare with a divider'], ['Hold \\', 'Show the original photo'], ['F1', 'Help and tutorial'], ['Esc', 'Cancel, close menus']
 ];
 function toggleHelp(force) {
   const h = $('help');
@@ -600,7 +600,7 @@ function toggleHelp(force) {
     h.replaceChildren(el('span', 'sec-t', 'Keyboard shortcuts'));
     SHORTCUTS.forEach(([k, t]) => { const d = el('div'); d.append(el('span', null, t), el('kbd', null, k)); h.appendChild(d); });
     const ab = el('div', 'help-foot');
-    ab.append(optBtn('Settings…', () => { toggleHelp(false); openSettings(); }), optBtn('About and license', () => { toggleHelp(false); openAbout(); }));
+    ab.append(optBtn('Help and tutorial (F1)', () => { toggleHelp(false); openHelp(); }, true), optBtn('Settings…', () => { toggleHelp(false); openSettings(); }), optBtn('About and license', () => { toggleHelp(false); openAbout(); }));
     h.appendChild(ab);
     const r = $('helpBtn').getBoundingClientRect(); h.style.top = (r.bottom + 6 + window.scrollY) + 'px';
   }
@@ -611,6 +611,7 @@ document.addEventListener('keydown', (e) => {
   const ae = document.activeElement;
   const typing = ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.type !== 'range' && ae.type !== 'checkbox';
   const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
+  if (e.key === 'F1') { e.preventDefault(); toggleHelp(false); openHelp(); return; }
   if (e.key === 'Escape') {
     closeMenu(); toggleHelp(false); toggleZoomMenu(false);
     if (!$('dlgScrim').hidden) { closeDialog(); return; }
@@ -679,10 +680,10 @@ function startFresh() {
 }
 const boot = pluginsReady.then(() => ((restored && ['sungfluence', 'charcoal'].includes(restored.app) && restored.image)
   ? openProject(restored).then((ok) => { if (ok) toast('Restored your last session', { label: 'Start fresh', fn: startFresh }); else startFresh(); })
-  : loadImageURL(SAMPLES.cat, 'cat.jpg').then(() => { buildSamples(); freshImage(); lastDoc = docOf(); })));
+  : loadImageURL(SAMPLES.cat, 'cat.jpg').then(() => { buildSamples(); freshImage(); lastDoc = docOf(); welcomeOnce(); })));
 Promise.resolve(boot).then(() => {
   buildSamples(); statusIdle();
   const faces = ['400 20px Inter', '900 20px Inter', '200 20px Inter', '400 20px "JetBrains Mono"', '700 20px "Playfair Display"', '600 20px Oswald', '700 20px Oswald', '400 20px "Special Elite"'];
   Promise.race([Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null)).concat(['400 20px "Noto Naskh Arabic"', '700 20px "Noto Naskh Arabic"', '400 20px "Noto Nastaliq Urdu"', '700 20px "Noto Nastaliq Urdu"'].map((f) => document.fonts.load(f, 'خودی کو').catch(() => null)))), new Promise((r) => setTimeout(r, 5000))]).then(() => { C.resetCaches(); if (doc.text.applied) scheduleText(0); thumbsSoon(); });
 });
-window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette };
+window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp };

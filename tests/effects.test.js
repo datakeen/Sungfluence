@@ -121,6 +121,19 @@ const VERSE = 'خودی کو کر بلند اتنا کہ ہر تقدیر سے پ
   await S(() => { document.getElementById('dlgScrim').hidden = true; });
   check('the template is not loaded as a style', await S(() => !window.Sungfluence.plugins().some((x) => x.def.id === 'my-scatter')));
 
+  // Help: F1 opens it offline, pages link to each other, search finds pages, pictures load
+  await p.keyboard.press('F1'); await p.waitForTimeout(300);
+  check('F1 opens Help', await S(() => !document.getElementById('dlgScrim').hidden && document.getElementById('dlgTitle').textContent === 'Help'));
+  check('Help lists every page', (await S(() => document.querySelectorAll('.help-item').length)) >= 12);
+  await p.click('.help-content a[href="#help:getting-started"]'); await p.waitForTimeout(400);
+  check('a link opens another help page', await S(() => /Getting started/.test(document.querySelector('.help-content h1').textContent)));
+  check('help pictures load', await S(() => { const im = document.querySelector('.help-content img'); return !!im && im.complete && im.naturalWidth > 100; }));
+  await p.fill('.help-nav input[type=search]', 'nastaliq'); await p.waitForTimeout(200);
+  check('help search finds the Urdu page', await S(() => Array.from(document.querySelectorAll('.help-item')).some((b) => /Urdu/.test(b.textContent))));
+  await p.screenshot({ path: __dirname + '/out/fx11-help.png' });
+  check('the style reference lists every style', await S(() => ['Calligram', 'Typewriter', 'Confetti', 'Focus and fade'].every((t) => HELP.pages.styles.html.includes(t))));
+  await p.keyboard.press('Escape');
+
   check('no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   await b.close();
   console.log(failed ? failed + ' check(s) failed' : 'all effect checks passed');

@@ -678,6 +678,8 @@ function buildControls() {
   head.appendChild(vb);
   box.replaceChildren(head);
   const vbox = el('div'); vbox.id = 'varBox'; vbox.hidden = true; box.appendChild(vbox);
+  const about = M.about || (M.plugin && M.plugin.description);
+  if (about) box.appendChild(el('p', 'note style-about', String(about).slice(0, 220)));
   M.controls.forEach((c) => { const n = makeControl(L, c); if (n) box.appendChild(n); });
   const letters = letterControls(L, M);
   if (letters.length) box.appendChild(disclosure('letters', 'Letters: weight, spacing, italic' + (L.italic ? ' (italic)' : ''), letters, L));

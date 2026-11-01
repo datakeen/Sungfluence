@@ -95,10 +95,12 @@ function buildMenu() {
     {
       role: 'help',
       submenu: [
+        { label: 'SungFluence Help', accelerator: 'F1', registerAccelerator: false, click: run('help') },
+        { label: 'Getting started', click: run('tutorial') },
+        { type: 'separator' },
         { label: 'Project page and source code', click: () => shell.openExternal(require('./package.json').homepage || 'https://github.com') },
         { label: 'Send feedback or report a bug', click: () => shell.openExternal('https://github.com/datakeen/Sungfluence/issues') },
         { label: 'License: GNU AGPL v3', click: () => shell.openExternal('https://www.gnu.org/licenses/agpl-3.0.html') },
-        { label: 'Ahmed Bilal on LinkedIn', click: () => shell.openExternal('https://www.linkedin.com/in/abilal/') },
         { type: 'separator' },
         {
           label: 'About SungFluence',

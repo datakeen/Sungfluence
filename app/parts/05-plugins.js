@@ -163,7 +163,9 @@ window.__sungfluenceMenu = (cmd) => {
     'settings': () => $('settingsBtn').click(),
     'undo': () => $('undoBtn').click(),
     'redo': () => $('redoBtn').click(),
-    'about': () => openAbout()
+    'about': () => openAbout(),
+    'help': () => openHelp(),
+    'tutorial': () => openHelp('getting-started')
   };
   if (acts[cmd]) acts[cmd]();
 };

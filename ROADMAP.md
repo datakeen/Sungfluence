@@ -8,6 +8,7 @@ These are the directions the project is heading in. They are not promises, and t
 
 - A full menu bar and a command palette, so every action is easy to find.
 - More layers, which you can duplicate, mask and blend, so effects can be stacked.
+- Better vector drawing and editing.
 - One project file that keeps everything, and lets you choose what to save.
 - No freezing, even on large prints, by moving the heavy work off the main window.
 - Help that ships with the app, a user reference and a short tutorial.

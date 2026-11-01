@@ -65,7 +65,7 @@ const FONT = { key: 'font', label: 'Typeface', type: 'select', options: FONT_OPT
 
 const MODES = {
   paths: {
-    name: 'Line text', lines: true,
+    name: 'Line text', about: 'Writes your text along the lines of the Vector layer. Letters grow and shrink with the width of each line.', lines: true,
     glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M2 13c4-8 9-8 12-4s6 3 8-2" fill="none" stroke="currentColor" stroke-width="1.4"/><text x="3" y="9" font-size="5.5" font-weight="700" fill="currentColor" transform="rotate(-24 6 9)">ABC</text></svg>',
     defaults: { text: LINE_TEXT, color: 'ink', inkColor: '#ffffff', font: 'condensed', weight: 700, upper: true, fill: 0.85, sizeFrom: 'line', size: 14, minSize: 3, maxSize: 200, tracking: 0.06, restart: false, sep: ' · ' },
     controls: [TA('text', 'Text along the lines'), { key: 'printOn', label: 'Print on', type: 'printon' }, R('fill', 'Letter height', 0.3, 1.6, 0.05, { show: (L) => L.sizeFrom !== 'fixed' }),
@@ -73,50 +73,50 @@ const MODES = {
     more: [COL(['ink', 'image', 'duotone']), T('restart', 'Start the text again on every line'), TX('sep', 'Separator between repeats')]
   },
   rows: {
-    name: 'Text portrait', glyph: '<span style="font-family:Oswald,sans-serif;font-weight:600;letter-spacing:-.02em">ABC</span>',
+    name: 'Text portrait', about: 'Your text in rows across the whole picture. Each letter takes the color or tone of the photo under it.', glyph: '<span style="font-family:Oswald,sans-serif;font-weight:600;letter-spacing:-.02em">ABC</span>',
     defaults: { text: PASSAGE, size: 12, color: 'image', font: 'condensed', weight: 600, upper: true, weightMod: false, sizeMod: false, saturation: 1.35, leading: 1, tracking: 0 },
     controls: [TA('text', 'Text'), R('size', 'Letter size', 5, 40, 0.5), COL(['image', 'ink', 'tone', 'duotone']), FONT, T('weightMod', 'Weight follows tone'), T('sizeMod', 'Size follows tone')],
     more: [R('leading', 'Line spacing', 0.8, 1.6, 0.05)]
   },
   flow: {
-    name: 'Flow lines', glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M1 4c5-4 9 4 14 0s7-1 8 0M1 9c5-4 9 4 14 0s7-1 8 0M1 14c5-4 9 4 14 0s7-1 8 0" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+    name: 'Flow lines', about: 'Text that follows the edges and forms of the photo, like an engraving.', glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M1 4c5-4 9 4 14 0s7-1 8 0M1 9c5-4 9 4 14 0s7-1 8 0M1 14c5-4 9 4 14 0s7-1 8 0" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
     defaults: { text: PASSAGE, spacing: 12, minInk: 0.15, font: 'sans', weight: 600, color: 'ink', smooth: 5, weightMod: true, sizeMod: true, tracking: 0.05 },
     controls: [TA('text', 'Text'), R('spacing', 'Line spacing', 6, 30, 0.5), R('minInk', 'Leave light areas empty', 0, 0.7, 0.01), COL(['ink', 'image', 'tone', 'duotone']), FONT],
     more: [R('smooth', 'Smoothness', 1, 14, 1), T('weightMod', 'Weight follows tone'), T('sizeMod', 'Size follows tone')]
   },
   mosaic: {
-    name: 'Word mosaic', glyph: '<b style="font-size:14px">wo</b><span style="font-size:9px">rd</span><b style="font-size:11px">s</b>',
+    name: 'Word mosaic', about: 'Words packed into the picture: large in calm areas, small in detailed ones.', glyph: '<b style="font-size:14px">wo</b><span style="font-size:9px">rd</span><b style="font-size:11px">s</b>',
     defaults: { words: WORDS, maxSize: 90, minSize: 6, threshold: 0.3, vertical: 0.25, font: 'sans', weight: 700, color: 'image', saturation: 1.3, detail: 0.85, density: 1, gap: 1, upper: false, order: 'seq' },
     controls: [TA('words', 'Words, one per line, most important first'), R('threshold', 'Leave light areas empty', 0, 0.9, 0.01), R('maxSize', 'Largest word', 20, 220, 1), R('minSize', 'Smallest word', 4, 30, 1), R('vertical', 'Vertical words', 0, 1, 0.05), COL(['image', 'ink', 'tone', 'duotone']), FONT],
     more: [R('detail', 'Small words in detail', 0, 1, 0.05), R('density', 'Attempts', 0.3, 3, 0.1), R('gap', 'Gap', 0, 3, 1), S('order', 'Word order', [['seq', 'In order'], ['random', 'Random']])]
   },
   grid: {
-    name: 'ASCII', glyph: '<span style="font-family:var(--mono);font-weight:700">#%@</span>',
+    name: 'ASCII', about: 'Classic ASCII art. Each cell gets the character whose ink best matches the tone there.', glyph: '<span style="font-family:var(--mono);font-weight:700">#%@</span>',
     defaults: { cols: 120, rampName: 'Classic', ramp: RAMPS.Classic, color: 'ink', edges: 0, dither: false },
     controls: [R('cols', 'Columns', 30, 260, 1), { key: 'rampName', label: 'Character set', type: 'ramp' }, COL(['ink', 'image', 'fill', 'tone'])],
     more: [R('edges', 'Edge strokes', 0, 1, 0.05), T('dither', 'Dither')]
   },
   unicode: {
-    name: 'Braille', glyph: '<span style="font-family:var(--mono)">⣿⣶⡆</span>',
+    name: 'Braille', about: 'Braille dots or half blocks: fine detail that still copies as plain text.', glyph: '<span style="font-family:var(--mono)">⣿⣶⡆</span>',
     defaults: { style: 'braille', cols: 150, threshold: 0.5, color: 'ink' },
     controls: [S('style', 'Characters', [['braille', 'Braille dots'], ['half', 'Half blocks']]), R('cols', 'Columns', 40, 320, 1), R('threshold', 'Threshold', 0.1, 0.9, 0.01, { show: (L) => L.style === 'braille' }), COL(['ink', 'image'])],
     more: []
   },
   halftone: {
-    name: 'Halftone', glyph: '<b style="font-size:18px">O</b><b style="font-size:12px">o</b><b style="font-size:8px">o</b>',
+    name: 'Halftone', about: 'A halftone screen where every dot is a letter. The tone sets its size, its weight, or both.', glyph: '<b style="font-size:18px">O</b><b style="font-size:12px">o</b><b style="font-size:8px">o</b>',
     defaults: { text: 'O', cols: 80, modulate: 'size', grid: 'hex', rotate: 'none', font: 'sans', weight: 900, color: 'ink', scale: 1.35, power: 0.75 },
     controls: [TX('text', 'Glyphs'), R('cols', 'Columns', 16, 200, 1), S('modulate', 'Tone changes', [['size', 'Size'], ['weight', 'Weight'], ['both', 'Both']]), S('grid', 'Grid', [['square', 'Square'], ['hex', 'Offset']]), SEL('rotate', 'Rotation', [['none', 'Upright'], ['flow', 'Follow edges'], ['random', 'Scattered']]), COL(['ink', 'image', 'tone', 'duotone']), FONT],
     more: [R('scale', 'Glyph scale', 0.5, 2.5, 0.05), R('power', 'Tone curve', 0.3, 1.5, 0.05)]
   },
   calligram: {
-    name: 'Calligram', glyph: '<svg width="22" height="20" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21C5 15 2 11.5 2 7.5A5 5 0 0 1 12 5a5 5 0 0 1 10 2.5c0 4-3 7.5-10 13.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 1.6"/></svg>',
+    name: 'Calligram', about: 'Text poured into a shape: one or more words, a heart, a circle, a star, the dark parts of the photo, or your cutout.', glyph: '<svg width="22" height="20" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21C5 15 2 11.5 2 7.5A5 5 0 0 1 12 5a5 5 0 0 1 10 2.5c0 4-3 7.5-10 13.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 1.6"/></svg>',
     defaults: { maskSource: 'text', maskText: 'WAH', text: PASSAGE, size: 14, font: 'condensed', weight: 700, upper: true, color: 'duotone', inkColor: '#1b2a4a', inkColor2: '#c8553d', threshold: 0.5, leading: 1, tracking: 0, dir: 'auto', verseMark: 'none' },
     controls: [S('maskSource', 'Shape', [['image', 'Photo'], ['cutout', 'Cutout'], ['text', 'Word'], ['heart', 'Heart'], ['circle', 'Circle'], ['star', 'Star']]), TA('maskText', 'Shape word or words. Press Enter for a new line.', { show: (L) => L.maskSource === 'text', rows: 2 }), R('threshold', 'Photo threshold', 0.05, 0.95, 0.01, { show: (L) => L.maskSource === 'image' }), TA('text', 'Text'), R('size', 'Letter size', 5, 40, 0.5), COL(['image', 'ink', 'tone', 'duotone']), FONT],
     more: [R('leading', 'Line spacing', 0.8, 1.6, 0.05), S('dir', 'Writing', [['auto', 'Auto'], ['rtl', 'Right to left'], ['ltr', 'Left to right']]),
       SEL('verseMark', 'Mark between lines of the text', [['none', 'None, just a space'], ['۔', '۔  Urdu full stop'], ['✦', '✦  Star'], ['❁', '❁  Flower'], ['·', '·  Dot'], ['/', '/  Slash']])]
   },
   spiral: {
-    name: 'Spiral', glyph: '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-1 1-1.6 2-1 1.6.9 1 3.6-1 4-2.8.6-4.6-2.4-3.6-4.8 1.3-3.2 6-3.8 8.2-1C20 12.6 18.6 18 14 19c-5 1.2-9.6-2.6-9.4-7.6C4.8 5.6 11 2.4 16 4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    name: 'Spiral', about: 'One sentence on a spiral or on rings. Letters thicken where the photo is dark.', glyph: '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-1 1-1.6 2-1 1.6.9 1 3.6-1 4-2.8.6-4.6-2.4-3.6-4.8 1.3-3.2 6-3.8 8.2-1C20 12.6 18.6 18 14 19c-5 1.2-9.6-2.6-9.4-7.6C4.8 5.6 11 2.4 16 4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     defaults: { text: PASSAGE, path: 'spiral', spacing: 11, cx: 0.5, cy: 0.5, font: 'sans', weight: 700, color: 'ink', minScale: 0.12, weightMod: true, start: 'inside', turn: 'auto', a0: -90, r0: 0, r1: 1, tracking: 0.04 },
     controls: [TA('text', 'Text'), S('path', 'Path', [['spiral', 'Spiral'], ['rings', 'Rings']]), R('spacing', 'Ring spacing', 5, 30, 0.5),
       S('start', 'Text starts', [['inside', 'At the center'], ['outside', 'Outside']]), S('turn', 'Direction', [['auto', 'Auto'], ['cw', 'Clockwise'], ['ccw', 'Anticlockwise']]),
@@ -126,13 +126,13 @@ const MODES = {
       R('minScale', 'Thinnest letters', 0, 0.6, 0.01), T('weightMod', 'Weight follows tone')]
   },
   relief: {
-    name: 'Relief', glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M1 7h6l2-5 2 5h12M1 12h4l3-4 3 6 2-2h10M1 17h22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+    name: 'Relief', about: 'Rows of text lifted by the tones, like a terrain map. Rows behind can be hidden.', glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M1 7h6l2-5 2 5h12M1 12h4l3-4 3 6 2-2h10M1 17h22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
     defaults: { text: PASSAGE, spacing: 13, amp: 2.2, occlude: true, font: 'sans', weight: 600, color: 'ink', weightMod: true, sizeMod: true, tracking: 0.05 },
     controls: [TA('text', 'Text'), R('spacing', 'Row spacing', 6, 30, 0.5), R('amp', 'Lift', 0, 5, 0.1), T('occlude', 'Hide lines behind'), COL(['ink', 'image', 'tone', 'duotone']), FONT],
     more: [T('weightMod', 'Weight follows tone'), T('sizeMod', 'Size follows tone'), R('minInk', 'Skip flat parts', 0, 0.5, 0.01)]
   },
   typewriter: {
-    name: 'Typewriter', glyph: '<span style="font-family:\'Special Elite\',\'Courier New\',monospace;font-size:15px">X<span style="margin-left:-.55em;opacity:.8">O</span></span>',
+    name: 'Typewriter', about: 'Typed and overstruck characters with ribbon ink and a little wobble, like 1960s typewriter art.', glyph: '<span style="font-family:\'Special Elite\',\'Courier New\',monospace;font-size:15px">X<span style="margin-left:-.55em;opacity:.8">O</span></span>',
     defaults: { cols: 96, color: 'ink', inkColor: '#1f1d1a', wobble: 1, edges: 0.4, dither: true, leading: 1.1, curve: 1.6 },
     controls: [R('cols', 'Columns', 30, 200, 1), R('curve', 'Lightness', 0.6, 3, 0.05), R('wobble', 'Wobble and ribbon', 0, 2, 0.05), R('edges', 'Edge strokes', 0, 1, 0.05), COL(['ink', 'image', 'tone', 'duotone'])],
     more: [T('dither', 'Dither'), R('leading', 'Line feed', 0.9, 1.6, 0.05)]
@@ -3253,6 +3253,8 @@ function buildControls() {
   head.appendChild(vb);
   box.replaceChildren(head);
   const vbox = el('div'); vbox.id = 'varBox'; vbox.hidden = true; box.appendChild(vbox);
+  const about = M.about || (M.plugin && M.plugin.description);
+  if (about) box.appendChild(el('p', 'note style-about', String(about).slice(0, 220)));
   M.controls.forEach((c) => { const n = makeControl(L, c); if (n) box.appendChild(n); });
   const letters = letterControls(L, M);
   if (letters.length) box.appendChild(disclosure('letters', 'Letters: weight, spacing, italic' + (L.italic ? ' (italic)' : ''), letters, L));
@@ -3809,7 +3811,9 @@ window.__sungfluenceMenu = (cmd) => {
     'settings': () => $('settingsBtn').click(),
     'undo': () => $('undoBtn').click(),
     'redo': () => $('redoBtn').click(),
-    'about': () => openAbout()
+    'about': () => openAbout(),
+    'help': () => openHelp(),
+    'tutorial': () => openHelp('getting-started')
   };
   if (acts[cmd]) acts[cmd]();
 };
@@ -3819,6 +3823,70 @@ const pluginsReady = (async () => {
     try { await runPluginCode(p.code); } catch (e) { console.warn('Saved plugin did not load', p.file, e); }
   }
 })();
+
+/* ===== 05b-help.js ===== */
+/* ===================== Part 4c: help ===================== */
+/* The Help window shows the pages from docs/help, which the build bundles into HELP (src/help.js),
+   so help works offline. Links to other help pages open here; other links open in the browser. */
+const helpState = { page: 'index' };
+function openHelp(page, anchor) {
+  if (typeof HELP === 'undefined' || !HELP.order.length) { toast('Help is not included in this copy of SungFluence.'); return; }
+  helpState.page = HELP.pages[page] ? page : helpState.page;
+  openDialog('Help', (body, d) => {
+    d.classList.add('help-dlg');
+    const box = el('div', 'help-wrap');
+    const nav = el('nav', 'help-nav'); nav.setAttribute('aria-label', 'Help topics');
+    const search = el('input'); search.type = 'search'; search.placeholder = 'Search help'; search.setAttribute('aria-label', 'Search help');
+    const list = el('div', 'help-list');
+    const content = el('article', 'help-content'); content.tabIndex = -1;
+    nav.append(search, list);
+    box.append(nav, content);
+    body.appendChild(box);
+    const show = (id, anchorId) => {
+      if (!HELP.pages[id]) return;
+      helpState.page = id;
+      content.innerHTML = HELP.pages[id].html;
+      list.querySelectorAll('button').forEach((b) => b.setAttribute('aria-current', String(b.dataset.id === id)));
+      const target = anchorId && content.querySelector('#' + CSS.escape(anchorId));
+      if (target) target.scrollIntoView(); else content.scrollTop = 0;
+    };
+    const renderList = (q) => {
+      list.replaceChildren();
+      HELP.order.forEach((id) => {
+        const P = HELP.pages[id];
+        if (q && !P.text.includes(q) && !P.title.toLowerCase().includes(q)) return;
+        const b = el('button', 'help-item', P.title); b.type = 'button'; b.dataset.id = id;
+        b.setAttribute('aria-current', String(id === helpState.page));
+        b.onclick = () => show(id);
+        list.appendChild(b);
+      });
+      if (!list.children.length) list.appendChild(el('span', 'note', 'Nothing found.'));
+    };
+    search.oninput = () => {
+      const q = search.value.trim().toLowerCase();
+      renderList(q);
+      // jump to the first page that has it
+      const first = list.querySelector('button');
+      if (q && first && first.dataset.id !== helpState.page && !HELP.pages[helpState.page].text.includes(q)) show(first.dataset.id);
+    };
+    content.addEventListener('click', (e) => {
+      const a = e.target.closest('a');
+      if (!a) return;
+      const href = a.getAttribute('href') || '';
+      if (href.startsWith('#help:')) { e.preventDefault(); const [pg, an] = href.slice(6).split('#'); show(pg || helpState.page, an); return; }
+      if (href.startsWith('#')) { e.preventDefault(); const t = content.querySelector(href); if (t) t.scrollIntoView(); return; }
+      a.target = '_blank'; a.rel = 'noopener';
+    });
+    renderList('');
+    show(helpState.page, anchor);
+  }, true);
+}
+/* A first visit gets one gentle pointer to the tutorial, never again after that */
+function welcomeOnce() {
+  if (prefs.welcomed) return;
+  prefs.welcomed = true; savePrefs();
+  toast('New to SungFluence? The getting started guide takes five minutes.', { label: 'Open it', fn: () => openHelp('getting-started') });
+}
 
 /* ===== 06-io.js ===== */
 /* ===================== Part 5: history, files, export, Claude, keys, boot ===================== */
@@ -4414,7 +4482,7 @@ const SHORTCUTS = [
   ['Enter', 'Finish a pen line, apply a crop'], ['Delete', 'Delete the selected object, line or point'],
   [MOD + ' C / V', 'Copy and paste objects'], [MOD + ' D', 'Deselect'], [MOD + ' J', 'Duplicate objects or text layer'], [MOD + ' Z', 'Undo'], ['Shift ' + MOD + ' Z', 'Redo'], [MOD + ' S', 'Save project'], [MOD + ' E', 'Export menu'],
   [MOD + ' + / − / 0', 'Zoom in, out, fit'], [MOD + ' 1 / 2', 'Actual size, zoom to selection'], [MOD + ' scroll or pinch', 'Smooth zoom'], ['Shift N', 'New artboard'],
-  ['/', 'Compare with a divider'], ['Hold \\', 'Show the original photo'], ['Esc', 'Cancel, close menus']
+  ['/', 'Compare with a divider'], ['Hold \\', 'Show the original photo'], ['F1', 'Help and tutorial'], ['Esc', 'Cancel, close menus']
 ];
 function toggleHelp(force) {
   const h = $('help');
@@ -4423,7 +4491,7 @@ function toggleHelp(force) {
     h.replaceChildren(el('span', 'sec-t', 'Keyboard shortcuts'));
     SHORTCUTS.forEach(([k, t]) => { const d = el('div'); d.append(el('span', null, t), el('kbd', null, k)); h.appendChild(d); });
     const ab = el('div', 'help-foot');
-    ab.append(optBtn('Settings…', () => { toggleHelp(false); openSettings(); }), optBtn('About and license', () => { toggleHelp(false); openAbout(); }));
+    ab.append(optBtn('Help and tutorial (F1)', () => { toggleHelp(false); openHelp(); }, true), optBtn('Settings…', () => { toggleHelp(false); openSettings(); }), optBtn('About and license', () => { toggleHelp(false); openAbout(); }));
     h.appendChild(ab);
     const r = $('helpBtn').getBoundingClientRect(); h.style.top = (r.bottom + 6 + window.scrollY) + 'px';
   }
@@ -4434,6 +4502,7 @@ document.addEventListener('keydown', (e) => {
   const ae = document.activeElement;
   const typing = ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.type !== 'range' && ae.type !== 'checkbox';
   const mod = e.metaKey || e.ctrlKey, key = e.key.toLowerCase();
+  if (e.key === 'F1') { e.preventDefault(); toggleHelp(false); openHelp(); return; }
   if (e.key === 'Escape') {
     closeMenu(); toggleHelp(false); toggleZoomMenu(false);
     if (!$('dlgScrim').hidden) { closeDialog(); return; }
@@ -4502,12 +4571,12 @@ function startFresh() {
 }
 const boot = pluginsReady.then(() => ((restored && ['sungfluence', 'charcoal'].includes(restored.app) && restored.image)
   ? openProject(restored).then((ok) => { if (ok) toast('Restored your last session', { label: 'Start fresh', fn: startFresh }); else startFresh(); })
-  : loadImageURL(SAMPLES.cat, 'cat.jpg').then(() => { buildSamples(); freshImage(); lastDoc = docOf(); })));
+  : loadImageURL(SAMPLES.cat, 'cat.jpg').then(() => { buildSamples(); freshImage(); lastDoc = docOf(); welcomeOnce(); })));
 Promise.resolve(boot).then(() => {
   buildSamples(); statusIdle();
   const faces = ['400 20px Inter', '900 20px Inter', '200 20px Inter', '400 20px "JetBrains Mono"', '700 20px "Playfair Display"', '600 20px Oswald', '700 20px Oswald', '400 20px "Special Elite"'];
   Promise.race([Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null)).concat(['400 20px "Noto Naskh Arabic"', '700 20px "Noto Naskh Arabic"', '400 20px "Noto Nastaliq Urdu"', '700 20px "Noto Nastaliq Urdu"'].map((f) => document.fonts.load(f, 'خودی کو').catch(() => null)))), new Promise((r) => setTimeout(r, 5000))]).then(() => { C.resetCaches(); if (doc.text.applied) scheduleText(0); thumbsSoon(); });
 });
-window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette };
+window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp };
 
 })();
