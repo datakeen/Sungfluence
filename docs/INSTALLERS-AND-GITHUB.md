@@ -14,7 +14,7 @@ Words used here:
 
 ## Part 1. Put the code on GitHub
 
-Your empty private repository is `https://github.com/datakeen/Sungfluence`.
+Your repository is `https://github.com/datakeen/Sungfluence`.
 
 > If Claude already pushed the code for you, open that address in your browser. If you see the files and this README, skip to Part 2.
 
@@ -108,7 +108,7 @@ The file `.github/workflows/release.yml` already tells GitHub how to build insta
 5. Scroll to **Workflow permissions**. Choose **Read and write permissions**.
 6. Click **Save**.
 
-Private repositories get a monthly allowance of free Actions minutes. One full build uses roughly 30 to 40 minutes of it, because macOS minutes count ten times. You can see your usage under your profile picture → **Settings** → **Billing and plans**.
+Public repositories, like SungFluence, can use GitHub Actions for free. (Private repositories get a monthly allowance instead; one full build uses roughly 30 to 40 minutes of it, because macOS minutes count ten times.) You can see your usage under your profile picture → **Settings** → **Billing and plans**.
 
 ### 2.2 Option A: build without a release (good for testing)
 

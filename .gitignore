@@ -4,3 +4,6 @@ single/
 .DS_Store
 *.log
 tests/out/
+
+# Owner notes and the detailed plan. Never pushed.
+private/

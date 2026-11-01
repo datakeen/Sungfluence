@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- `ROADMAP.md`: the plan toward a full design studio, in phases.
+- `ROADMAP.md`: where the project is heading.
 - This changelog.
 
 ## [3.1.0] - 2026-11-01

@@ -69,14 +69,17 @@ Arabic script joins its letters, so styles must never draw it one letter at a ti
 1. License: AGPL-3.0-or-later (decided). Keep SPDX lines in new files. The plugin template stays MIT on purpose.
 2. Samples: all pictures in `app/samples/` were made by the owner with AI image tools, and the owner holds the rights (confirmed November 2026). Keep new samples under about 450 KB (1600 px JPEG).
 3. Add the release to `CHANGELOG.md` (move the Unreleased items under the new version and date), and raise `version` in `package.json` to match the tag.
-4. The GitHub repository is `datakeen/Sungfluence` (private for now). Installer steps: `docs/INSTALLERS-AND-GITHUB.md`.
+4. The GitHub repository is `datakeen/Sungfluence` (public since November 2026). Installer steps: `docs/INSTALLERS-AND-GITHUB.md`.
 5. Run the build and all tests, and check the screenshots.
 
 ## Where the project is going
 
-See `ROADMAP.md`. The owner wants a proper design studio, not a toy. The roadmap is in phases; build them in order, because later phases stand on earlier ones.
+The owner wants a proper design studio, not a toy. Two plans:
 
-New code should already fit the target building blocks listed at the top of the roadmap, even before their phase starts:
+- `private/ROADMAP-DETAILED.md`: the real plan, with phases in build order, dependencies and status. It is on the owner's computer only (`private/` is in `.gitignore`). Read it before planning work, and update its Status column when something is done. Never copy its specific ideas into public files: they are the owner's.
+- `ROADMAP.md`: a short public version with broad directions only. Keep it in step, without details.
+
+New code should already fit the target building blocks listed at the top of the detailed plan, even before their phase starts:
 
 - An action belongs in one function that a menu, a shortcut, a button and a test can all call. Do not bury logic in a click handler.
 - A new export goes through one function that takes the scene and options and returns a file, so it can move into the exporter registry later.
