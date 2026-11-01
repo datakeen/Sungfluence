@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-01
+
+Menus for everything, a command finder, snapping, and help inside the app.
+
 ### Added
 
 - **Menu bar** with File, Edit, Image, Layer, Text art, Effects, Export, View and Help. The desktop app shows it as its normal menu bar; the web version shows it at the top of the page. Every item shows its shortcut, and checkmarks show what is on.
@@ -53,5 +57,6 @@ First public release.
 
 - Licensed under the GNU Affero General Public License, version 3 or later.
 
-[Unreleased]: https://github.com/datakeen/Sungfluence/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/datakeen/Sungfluence/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/datakeen/Sungfluence/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/datakeen/Sungfluence/releases/tag/v3.1.0
