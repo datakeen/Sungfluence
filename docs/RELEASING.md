@@ -1,6 +1,6 @@
 # Releasing a new version
 
-A checklist, so every release is complete. Version numbers follow [Semantic Versioning](https://semver.org/): a bug fix raises the last number (3.1.1), a new feature the middle one (3.2.0), and a change that can break old projects or plugins the first one (4.0.0).
+A checklist for maintainers, so every release is complete. Version numbers follow [Semantic Versioning](https://semver.org/): a bug fix raises the last number (3.1.1), a new feature the middle one (3.2.0), and a change that can break old projects or plugins the first one (4.0.0).
 
 ## 1. Prepare
 
@@ -48,7 +48,7 @@ git tag -a v3.2.0 -m "SungFluence 3.2.0"
 git push origin v3.2.0
 ```
 
-GitHub builds the installers for Windows, macOS and Linux (about 15 minutes) and makes a **draft** release. Step by step: [INSTALLERS-AND-GITHUB.md](INSTALLERS-AND-GITHUB.md).
+GitHub builds the installers for Windows, macOS and Linux (about 15 minutes) and makes a **draft** release. More about the build: [BUILDING.md](BUILDING.md).
 
 ## 4. Announce
 

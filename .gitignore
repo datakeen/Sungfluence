@@ -5,5 +5,6 @@ single/
 *.log
 tests/out/
 
-# Owner notes and the detailed plan. Never pushed.
+# Local notes that are not part of the project
 private/
+CLAUDE.local.md

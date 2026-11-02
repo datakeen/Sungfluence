@@ -116,7 +116,7 @@ The tests use the two images in `tests/images`; the effects test also uses the s
 
 ## Build installers
 
-Step by step, with every click, in **[docs/INSTALLERS-AND-GITHUB.md](docs/INSTALLERS-AND-GITHUB.md)**. In short:
+Details, GitHub Actions and troubleshooting are in **[docs/BUILDING.md](docs/BUILDING.md)**. In short:
 
 ```bash
 npm run dist:win     # on Windows: setup .exe and portable .exe
@@ -154,7 +154,7 @@ src/                      generated app: desktop, web and double-click
 main.js                   desktop window and its menu bar (Electron)
 preload.js                the small bridge that gives the desktop app its menus
 tests/                    browser tests with Playwright, and tests/images
-docs/                     help pages (docs/help), the plugin guide, the installer guide, the release checklist, wiki pages
+docs/                     help pages (docs/help), the plugin guide, the build guide, the release checklist, wiki pages
 .github/workflows/        installer builds and the web deploy
 ```
 
@@ -202,5 +202,5 @@ If you run a changed version of SungFluence on a server where other people use i
 - **Fonts:** Inter, JetBrains Mono, Playfair Display, Oswald, Noto Naskh Arabic and Noto Nastaliq Urdu use the SIL Open Font License 1.1. Special Elite uses the Apache License 2.0. The font files come from [Fontsource](https://fontsource.org).
 - **Libraries:** [jsPDF](https://github.com/parallax/jsPDF) (MIT) and [JSZip](https://github.com/Stuk/jszip) (MIT). [Electron](https://www.electronjs.org) and [electron-builder](https://www.electron.build) (MIT). Tests use [Playwright](https://playwright.dev) (Apache 2.0).
 - **Plugin template** and the built-in Contours and Confetti plugins are MIT licensed, so plugin authors can choose their own license.
-- **Sample pictures** cat, coffee, camera, rocket, animals, swirl and face were made with AI image tools for this project by its owner, who holds the rights to share them here.
+- **Sample pictures** cat, coffee, camera, rocket, animals, swirl and face were made with AI image tools by the author for this project.
 - **Sample "lines"** and the test images in `tests/images` were generated for this project.

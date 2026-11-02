@@ -1,6 +1,6 @@
 // Builds the app from app/ into:
 //   src/                  the desktop app, the web app on GitHub Pages, and what opens when you double-click src/index.html
-//   single/sungfluence.html  one self-contained file (used for the claude.ai artifact). Only with --single.
+//   single/sungfluence.html  one self-contained file, handy for quick tests and sharing. Only with --single.
 // Edit files in app/, never in src/. Then run: npm run build
 // Uses only Node's standard library.
 // SPDX-License-Identifier: AGPL-3.0-or-later
