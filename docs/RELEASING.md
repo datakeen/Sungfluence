@@ -54,4 +54,4 @@ GitHub builds the installers for Windows, macOS and Linux (about 15 minutes) and
 
 1. Open the draft release on GitHub. Paste the version's part of `CHANGELOG.md` as the description. Download one installer and try it.
 2. Click **Publish release**.
-3. On SourceForge, upload the installers (or let it mirror the GitHub release) and update the summary if needed.
+3. On SourceForge, upload the installers (or let it mirror the GitHub release). Upload `docs/downloads/README.md` into the same folder: SourceForge shows it under the file list. Update the summary if needed.

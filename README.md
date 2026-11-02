@@ -82,6 +82,8 @@ Get the installers from the **[latest release](https://github.com/datakeen/Sungf
 | Linux, any distro | `SungFluence-x.y.z-linux-x86_64.AppImage` | Make it executable, then run it. |
 | Ubuntu and Debian | `SungFluence-x.y.z-linux-amd64.deb` | `sudo apt install ./SungFluence-x.y.z-linux-amd64.deb` |
 
+Not sure which file you need? See [the download guide](docs/downloads/README.md).
+
 The builds are not code-signed yet, so each system warns the first time:
 
 - **Windows:** "Windows protected your PC". Click **More info**, then **Run anyway**.
@@ -173,7 +175,7 @@ Press **F1** in the app, or click **?** and then **Help and tutorial**. The same
 
 ## What is new, and what is next
 
-Every release is listed in [CHANGELOG.md](CHANGELOG.md). The plan toward a full design studio, with Urdu and Arabic in every style, print and maker exports, animation, batch work and optional AI, is in [ROADMAP.md](ROADMAP.md).
+Every release is listed in [CHANGELOG.md](CHANGELOG.md). The plan toward a full design studio is in [ROADMAP.md](ROADMAP.md): full support for right-to-left languages such as Urdu and Arabic, and for top-to-bottom languages such as Chinese; print and maker exports; animation; batch work; and optional AI.
 
 ## Feedback and contributing
 

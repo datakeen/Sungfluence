@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - README: links to the latest download and the web version, the 3.2 features, and an up-to-date project layout.
 - `docs/BUILDING.md` explains running from source, building installers and publishing the web version, for anyone working on their own copy.
 - `CLAUDE.md` is now a guide for all contributors and coding assistants.
+- A download guide, `docs/downloads/README.md`: which file to pick for each computer, and how to install it.
 
 ## [3.2.0] - 2026-11-01
 

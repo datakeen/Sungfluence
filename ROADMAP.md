@@ -13,10 +13,10 @@ These are the directions the project is heading in. They are not promises, and t
 - No freezing, even on large prints, by moving the heavy work off the main window.
 - Help that ships with the app, a user reference and a short tutorial.
 
-## Every script, done properly
+## Every language, done properly
 
-- Urdu, Arabic and Persian joined correctly in every style, not only in some.
-- Writing in every direction: left to right, right to left, and top to bottom.
+- Right-to-left languages, such as Urdu, Arabic and Persian, with their letters joined correctly in every style.
+- Top-to-bottom languages, such as Chinese and Japanese, written in columns.
 - Your own installed fonts, when you want them.
 - New ways to set text that no other tool offers.
 
