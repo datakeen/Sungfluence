@@ -4,7 +4,7 @@ A plugin is one JavaScript file. It adds a new style to the Text art panel, unde
 
 ## Quick start
 
-1. In SungFluence, click **Plugins** at the top (in the desktop app you can also use the **Plugins** menu), and press **Get the template**. You can also copy `app/plugins/sungfluence-plugin-template.js`.
+1. In SungFluence, click **Plugins** at the top (or **Effects → Get the plugin template** in the menu bar), and press **Get the template**. You can also copy `app/plugins/sungfluence-plugin-template.js`.
 2. Change `id`, `name` and `icon`. The id must be unique: lowercase letters, digits and dashes.
 3. Edit `render(api)`.
 4. Press **Load plugin** and pick your file. The new style appears under **Style**, in **Extra effects**. The **Add effect** tile there loads a file too.

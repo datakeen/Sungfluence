@@ -6,7 +6,7 @@
       1. Copy this file and give it a new name, for example my-style.js
       2. Change id, name and icon below. The id must be unique.
       3. Edit render(). Keep the rest as it is.
-      4. In SungFluence click Plugins at the top (or Plugins in the menu bar), then Load plugin, and pick your file.
+      4. In SungFluence click Plugins at the top (or Effects > Load plugin in the menu bar), then Load plugin, and pick your file.
       5. Your style now shows up under Style, in Extra effects. Change a setting and it redraws.
 
     Plugins run code inside SungFluence. Only load plugins you trust.

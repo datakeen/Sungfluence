@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Changed
 
 - The About window's LinkedIn button is now just called LinkedIn.
+- README: links to the latest download and the web version, the 3.2 features, and an up-to-date project layout.
 
 ## [3.2.0] - 2026-11-01
 

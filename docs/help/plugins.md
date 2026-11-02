@@ -4,7 +4,7 @@ A plugin is a small file that adds an effect. Its effects appear in the Text art
 
 ## Add a plugin
 
-1. Click **Plugins** at the top of the window. In the desktop app you can also use the **Plugins** menu.
+1. Click **Plugins** at the top of the window, or choose **Effects → Plugins…** in the menu bar.
 2. Click **Load plugin…** and pick the `.js` file.
 3. The new effect appears under Extra effects. SungFluence remembers it for next time.
 

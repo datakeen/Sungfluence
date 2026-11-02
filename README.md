@@ -6,6 +6,8 @@ A small design studio that turns pictures into art made only of letters and char
 
 SungFluence is a free, open-source desktop app for Windows, macOS and Linux. It also runs in a browser and can be installed from there. Everything happens on your own computer. Photos are never uploaded.
 
+**[Download the latest version](https://github.com/datakeen/Sungfluence/releases/latest)** · **[Try it in your browser](https://datakeen.github.io/Sungfluence/)** · [Help and tutorial](docs/help/index.md)
+
 ## How it started
 
 SungFluence began as a weekend side project, something to do on a slow and boring weekend. I did not expect to like it this much. I kept coming back to it, one idea after another, until it grew into the app you see here.
@@ -51,17 +53,26 @@ Every style can fade toward an oval, a circle, a band or a column. Drag the fade
 
 Urdu and Arabic text uses the bundled Noto Nastaliq Urdu and Noto Naskh Arabic fonts, set word by word so the letters stay joined.
 
-Exports:
+## Export
+
 
 - **What you see:** PNG or SVG of the visible layers in their order, photo and vector as PNG, the vector layer as SVG or PNG, and the edited photo layer.
 - **Text art:** PNG for print or screen, SVG with live text, PDF, vector CMYK PDF, CMYK plates, Braille or ASCII text.
 - **Project files** that keep the photo, crop, removed areas, lines, objects, layers and settings.
 
-Other features: word library, plugins for extra effects (the **Plugins** button at the top, or the Plugins menu in the desktop app; see [docs/PLUGINS.md](docs/PLUGINS.md)), undo and redo, autosave, keyboard shortcuts (press **?**), and a light and dark theme. Heavy work runs in small slices with a Cancel button, so slow computers stay responsive.
+## Working in SungFluence
+
+- **Menus for everything:** File, Edit, Image, Layer, Text art, Effects, Export, View and Help, with the shortcut next to each item.
+- **Find any command** with Ctrl K: type a few letters of a command, a style, a recipe or a tool.
+- **Snapping** while you draw and edit vectors: to ends, corners, middles, centers, crossings, extensions, perpendicular and tangent points, text baselines, edges in the photo, 15° angles and a grid. Hold Alt to place a point freely.
+- **Help inside the app:** press F1 for a getting started tutorial and a reference for every panel and style. It works offline.
+- **Plugins** add extra effects: the **Plugins** button at the top, or the **Effects** menu. See [docs/PLUGINS.md](docs/PLUGINS.md) to write your own.
+- **Word and phrase library**, undo and redo, autosave, and a light and dark theme.
+- **Never freezes:** heavy work runs in small steps with a progress bar and a Cancel button, so slow computers stay responsive.
 
 ## Download and install
 
-Get the installers from the **Releases** page of this repository.
+Get the installers from the **[latest release](https://github.com/datakeen/Sungfluence/releases/latest)**. Or skip installing and **[use it in your browser](https://datakeen.github.io/Sungfluence/)**; in Chrome or Edge you can then choose **Install** in the address bar to keep it as an app.
 
 | System | File | How to install |
 | --- | --- | --- |
@@ -69,7 +80,7 @@ Get the installers from the **Releases** page of this repository.
 | Windows, no install | `SungFluence-Portable-x.y.z.exe` | Run it from any folder or USB stick. |
 | macOS 11 or newer | `SungFluence-x.y.z-mac-universal.dmg` | Open it and drag SungFluence to Applications. |
 | Linux, any distro | `SungFluence-x.y.z-linux-x86_64.AppImage` | Make it executable, then run it. |
-| Ubuntu and Debian | `SungFluence-x.y.z-linux-amd64.deb` | `sudo apt install ./Sungfluence-x.y.z-linux-amd64.deb` |
+| Ubuntu and Debian | `SungFluence-x.y.z-linux-amd64.deb` | `sudo apt install ./SungFluence-x.y.z-linux-amd64.deb` |
 
 The builds are not code-signed yet, so each system warns the first time:
 
@@ -97,11 +108,11 @@ Edit the files in `app/`, never in `src/`. Then run `npm run build` (or `npm sta
 
 ```bash
 npx playwright install chromium   # once
-npm test                          # regression, plugin and studio tests
+npm test                          # regression, plugin, studio, effects, and command and snapping tests
 npm run test:smoke                # opens src/index.html from disk, like a double-click
 ```
 
-The tests use the two images in `tests/images`. If Playwright's own Chromium cannot start on your computer, the tests use the Chrome or Edge you already have. Screenshots go to `tests/out/`.
+The tests use the two images in `tests/images`; the effects test also uses the sample cat. If Playwright's own Chromium cannot start on your computer, the tests use the Chrome or Edge you already have. Screenshots go to `tests/out/`.
 
 ## Build installers
 
@@ -113,7 +124,7 @@ npm run dist:mac     # on a Mac: .dmg and .zip
 npm run dist:linux   # on Linux: .AppImage, .deb and .tar.gz
 ```
 
-Files appear in `dist/`. Each system builds its own installers best, so the GitHub workflow builds all three for you: push a tag such as `v3.1.0` and a draft release with every installer appears after about 15 minutes.
+Files appear in `dist/`. Each system builds its own installers best, so the GitHub workflow builds all three for you: push a tag such as `v3.2.0` and a draft release with every installer appears after about 15 minutes.
 
 ## Signing (optional)
 
@@ -132,15 +143,18 @@ app/                      the source: edit these
   styles.css              interface styles, light and dark
   icon.svg                the app icon (run npm run icons after changing it)
   engine.js               image to text engine: styles, tracing, color models, SVG and text export, plugin registry
-  parts/                  the interface, in load order: data, core, tools, objects, studio, ui, plugins, io
+  parts/                  the interface, in load order: data, core, tools, objects, studio, snapping, panels, plugins, help, commands, io
   plugins/                built-in plugins; sungfluence-plugin-template.js is the starter for plugin authors
   samples/                sample images; "01-cat.jpg" becomes the sample "cat"
-scripts/build.js          builds src/ (and single/sungfluence.html with --single)
+scripts/build.js          builds src/ (and single/sungfluence.html with --single), including the help pages
+scripts/docs.js           writes the style reference and the shortcut list from the code
+scripts/help-shots.js     takes the tutorial screenshots
 scripts/icons.js          draws build/icon.png and src/icons/*.png from app/icon.svg
 src/                      generated app: desktop, web and double-click
-main.js                   desktop window (Electron)
+main.js                   desktop window and its menu bar (Electron)
+preload.js                the small bridge that gives the desktop app its menus
 tests/                    browser tests with Playwright, and tests/images
-docs/                     screenshots, the plugin guide, the installer and GitHub guide
+docs/                     help pages (docs/help), the plugin guide, the installer guide, the release checklist, wiki pages
 .github/workflows/        installer builds and the web deploy
 ```
 
