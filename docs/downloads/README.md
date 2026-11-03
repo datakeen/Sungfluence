@@ -39,4 +39,4 @@ Open SungFluence and press **F1**: the Help window has a five-minute tutorial an
 - Source code and every release: [github.com/datakeen/Sungfluence](https://github.com/datakeen/Sungfluence)
 - Found a bug, or have an idea? [Open an issue](https://github.com/datakeen/Sungfluence/issues)
 
-SungFluence is free software under the [GNU Affero General Public License, version 3 or later](https://www.gnu.org/licenses/agpl-3.0.html).
+SungFluence is free and open source software under the [GNU Affero General Public License, version 3 or later](https://www.gnu.org/licenses/agpl-3.0.html).

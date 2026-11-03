@@ -107,7 +107,7 @@ function buildMenu() {
           label: 'About SungFluence',
           click: () => dialog.showMessageBox(win, {
             type: 'info', title: 'About SungFluence', message: 'SungFluence ' + app.getVersion(),
-            detail: 'Turn images into art made of letters.\n\nMade by Ahmed Bilal.\nCopyright (C) 2026 Ahmed Bilal.\n\nThis program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.\n\nThis program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.\n\nSource code: ' + (require('./package.json').homepage || '')
+            detail: 'Turn images into art made of letters.\n\nFree and open source software.\n\nMade by Ahmed Bilal.\nCopyright (C) 2026 Ahmed Bilal and contributors.\n\nThis program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.\n\nThis program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.\n\nSource code: ' + (require('./package.json').homepage || '')
           })
         }
       ]

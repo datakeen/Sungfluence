@@ -2446,7 +2446,7 @@ function openAbout() {
   openDialog('About SungFluence', (body) => {
     const v = window.SUNGFLUENCE_VERSION || '';
     body.append(el('p', null, 'SungFluence ' + v + '. A small design studio that turns images into art made of letters.'),
-      el('p', 'note', 'Made by Ahmed Bilal. Copyright (C) 2026 Ahmed Bilal.'),
+      el('p', 'note', 'Free and open source software. Made by Ahmed Bilal. Copyright (C) 2026 Ahmed Bilal and contributors.'),
       el('p', 'note', 'This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.'));
     const links = el('div', 'row2');
     const a1 = el('a', 'btn', 'Source code'); a1.href = 'https://github.com/datakeen/Sungfluence'; a1.target = '_blank'; a1.rel = 'noopener';

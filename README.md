@@ -189,9 +189,13 @@ SungFluence is made by Ahmed Bilal. You can find me on [LinkedIn](https://www.li
 
 ## License
 
-Copyright (C) 2026 Ahmed Bilal.
+SungFluence is free and open source software. You may use it, share it and change it, for free, for any purpose.
 
-SungFluence is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+It is released under the [GNU Affero General Public License](LICENSE), version 3 or any later version. If you share a changed version, or run one as a website or online service, you must share its source code under the same license.
+
+Copyright (C) 2026 Ahmed Bilal and contributors.
+
+The formal notice: SungFluence is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
 SungFluence is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 

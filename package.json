@@ -54,7 +54,7 @@
   "build": {
     "appId": "io.github.datakeen.sungfluence",
     "productName": "SungFluence",
-    "copyright": "Copyright (C) 2026 Ahmed Bilal. Licensed under the GNU AGPL v3 or later.",
+    "copyright": "Copyright (C) 2026 Ahmed Bilal and contributors. Free and open source software under the GNU AGPL v3 or later.",
     "files": [
       "main.js",
       "preload.js",
