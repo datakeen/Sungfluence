@@ -56,9 +56,14 @@ Urdu and Arabic text uses the bundled Noto Nastaliq Urdu and Noto Naskh Arabic f
 ## Export
 
 
-- **What you see:** PNG or SVG of the visible layers in their order, photo and vector as PNG, the vector layer as SVG or PNG, and the edited photo layer.
-- **Text art:** PNG for print or screen, SVG with live text, PDF, vector CMYK PDF, CMYK plates, Braille or ASCII text.
-- **Project files** that keep the photo, crop, removed areas, lines, objects, layers and settings.
+One **Export window** (Ctrl E) lists every format, with its options, the layers to include and the size of the result.
+
+- **Pictures:** PNG, JPG or SVG of the layers you choose, photo and vector as PNG, the vector layer as SVG or PNG, and the edited photo layer.
+- **Text art:** PNG for print or screen, SVG with live text, PDF, vector CMYK PDF and CMYK plates.
+- **Print:** 31 paper, photo, poster and clothing sizes or your own, portrait or landscape, the art at any angle, a page margin and any dpi. The Printing help page explains which dpi to use.
+- **Text twins:** any style as plain text, Markdown, an HTML page, terminal colors (16, 256 or full color) or an SVG for README files, at the width and with the characters you choose.
+- **Code:** the art as a string or a comment in 16 programming languages, a `--help` header, or a login message.
+- **Project files** (`.sungfluence`) that keep the photo, crop, removed areas, liquify, lines, objects, layers and settings. PNG and SVG files can also carry the style settings, so opening them brings the look back.
 
 ## Working in SungFluence
 
@@ -67,6 +72,9 @@ Urdu and Arabic text uses the bundled Noto Nastaliq Urdu and Noto Naskh Arabic f
 - **Snapping** while you draw and edit vectors: to ends, corners, middles, centers, crossings, extensions, perpendicular and tangent points, text baselines, edges in the photo, 15° angles and a grid. Hold Alt to place a point freely.
 - **Help inside the app:** press F1 for a getting started tutorial and a reference for every panel and style. It works offline.
 - **Plugins** add extra effects: the **Plugins** button at the top, or the **Effects** menu. See [docs/PLUGINS.md](docs/PLUGINS.md) to write your own.
+- **Liquify** the photo with a brush: push, bloat, pucker, twirl and restore.
+- **Compare** two looks with a divider that runs up and down, across or at any angle, also on the Paper and T-shirt previews.
+- **Smooth motion:** quiet transitions, and letters that fly in when text art appears. Settings can calm it or turn it off.
 - **Word and phrase library**, undo and redo, autosave, and a light and dark theme.
 - **Never freezes:** heavy work runs in small steps with a progress bar and a Cancel button, so slow computers stay responsive.
 
@@ -145,7 +153,7 @@ app/                      the source: edit these
   styles.css              interface styles, light and dark
   icon.svg                the app icon (run npm run icons after changing it)
   engine.js               image to text engine: styles, tracing, color models, SVG and text export, plugin registry
-  parts/                  the interface, in load order: data, core, tools, objects, studio, snapping, panels, plugins, help, commands, io
+  parts/                  the interface, in load order: data, core, reveal, tools, objects, studio, snapping, liquify, panels, plugins, help, commands, export, io
   plugins/                built-in plugins; sungfluence-plugin-template.js is the starter for plugin authors
   samples/                sample images; "01-cat.jpg" becomes the sample "cat"
 scripts/build.js          builds src/ (and single/sungfluence.html with --single), including the help pages

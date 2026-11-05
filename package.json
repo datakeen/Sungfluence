@@ -1,7 +1,7 @@
 {
   "name": "sungfluence",
   "productName": "SungFluence",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "A small design studio that turns images into art made of letters: word portraits, text along lines, ASCII, Braille, calligrams, plus photo, vector and text tools.",
   "main": "main.js",
   "author": {
