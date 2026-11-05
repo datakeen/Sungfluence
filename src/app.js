@@ -5988,6 +5988,10 @@ document.addEventListener('keyup', (e) => {
   if (e.key === '\\') showOriginal(false);
 });
 
+/* ---------------- a newer web version ---------------- */
+// src/pwa.js fires this when the offline copy has been replaced by a newer published version
+window.addEventListener('sungfluence-update', () => toast('A new version of SungFluence is ready. Your work is saved.', { label: 'Reload', fn: () => location.reload() }));
+
 /* ---------------- boot ---------------- */
 function setQuality(v) { if (ui.quality === v) return; ui.quality = v; buildQuality(); rebuildPhotoView(); compose(); if (doc.text.applied) scheduleText(0); statusIdle(); syncMenus(); }
 function buildQuality() {
