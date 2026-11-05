@@ -8,15 +8,18 @@ function fitScale() {
   return Math.max(0.02, Math.min(k, 1.6)) * canvas.width / designW();
 }
 let shirtSVG = null;
-function displayZoom() { return ui.zoom === 'fit' ? fitScale() : ui.zoom; }
-function clampZoom(z) { return clamp(z, ZOOM_MIN, prefs.zoomMax || 16); }
+/* the Paper and T-shirt previews zoom too: there 1 means "fit", and the page or shirt is scaled around that */
+const isMock = () => doc.out.mock !== 'artboard';
+function displayZoom() { if (isMock()) return ui.mockZoom || 1; return ui.zoom === 'fit' ? fitScale() : ui.zoom; }
+function clampZoom(z) { return isMock() ? clamp(z, 0.25, 8) : clamp(z, ZOOM_MIN, prefs.zoomMax || 16); }
 const canPan = () => wrap.scrollWidth > wrap.clientWidth + 1 || wrap.scrollHeight > wrap.clientHeight + 1;
 function wrapClass() { wrap.className = 'canvas-wrap tool-' + ui.tool + (spaceDown ? ' tool-hand' : '') + (canPan() ? ' can-pan' : '') + (drag && drag.kind === 'pan' ? ' panning' : ''); }
 function layoutStage() {
   const mock = doc.out.mock !== 'artboard';
-  ['zoomIn', 'zoomOut', 'zoomFit', 'zoomPct'].forEach((id) => { $(id).disabled = mock; });
-  $('zoomPct').textContent = mock ? 'Fit' : Math.round(displayZoom() * 100) + '%';
-  $('zoomFit').setAttribute('aria-pressed', String(!mock && ui.zoom === 'fit'));
+  const mz = ui.mockZoom || 1;
+  ['zoomIn', 'zoomOut', 'zoomFit', 'zoomPct'].forEach((id) => { $(id).disabled = false; });
+  $('zoomPct').textContent = mock ? (mz === 1 ? 'Fit' : Math.round(mz * 100) + '% of fit') : Math.round(displayZoom() * 100) + '%';
+  $('zoomFit').setAttribute('aria-pressed', String(mock ? mz === 1 : ui.zoom === 'fit'));
   frame.className = 'frame';
   frame.removeAttribute('style');
   canvas.removeAttribute('style');
@@ -36,13 +39,14 @@ function layoutStage() {
   const availW = wrap.clientWidth - 56, availH = wrap.clientHeight - 56;
   if (doc.out.mock === 'paper') {
     const g = printGeom();
-    const k = Math.min(availW / g.pw, availH / g.ph);
+    const k = Math.min(availW / g.pw, availH / g.ph) * mz;
     frame.classList.add('sheet');
     frame.style.width = Math.round(g.pw * k) + 'px'; frame.style.height = Math.round(g.ph * k) + 'px';
-    frame.style.setProperty('--sheet', doc.out.transparent ? '#ffffff' : doc.out.paper);
+    frame.style.setProperty('--sheet', doc.out.paper);
     canvas.style.width = Math.round(g.aw * k) + 'px'; canvas.style.height = Math.round(g.ah * k) + 'px';
+    if (g.rot) canvas.style.transform = 'rotate(' + g.rot + 'deg)';
   } else {
-    const k = Math.min(availW / 400, availH / 440);
+    const k = Math.min(availW / 400, availH / 440) * mz;
     frame.classList.add('shirt');
     frame.style.width = Math.round(400 * k) + 'px'; frame.style.height = Math.round(440 * k) + 'px';
     if (!shirtSVG) {
@@ -56,6 +60,7 @@ function layoutStage() {
     canvas.style.width = Math.round(w) + 'px'; canvas.style.height = Math.round(h) + 'px';
     canvas.style.left = Math.round(200 * k - w / 2) + 'px'; canvas.style.top = Math.round(96 * k) + 'px';
   }
+  layoutSplit();
   wrapClass();
 }
 
@@ -63,14 +68,14 @@ function layoutStage() {
    Zoom keeps the point under the cursor still. Wheel and pinch zoom are proportional to how far you scroll,
    and glide to the new size. Speed, glide, steps and limits are in Settings. */
 function setZoom(z, anchor, quick) {
-  if (doc.out.mock !== 'artboard') return;
   const before = displayZoom();
-  ui.zoom = z === 'fit' ? 'fit' : clampZoom(z);
+  if (isMock()) ui.mockZoom = z === 'fit' ? 1 : clampZoom(z);
+  else ui.zoom = z === 'fit' ? 'fit' : clampZoom(z);
   const after = displayZoom();
   const ax = anchor ? anchor.x : wrap.clientWidth / 2, ay = anchor ? anchor.y : wrap.clientHeight / 2;
   const fx = (wrap.scrollLeft + ax - frame.offsetLeft) / before, fy = (wrap.scrollTop + ay - frame.offsetTop) / before;
   layoutStage();
-  if (ui.zoom !== 'fit') { wrap.scrollLeft = fx * after + frame.offsetLeft - ax; wrap.scrollTop = fy * after + frame.offsetTop - ay; }
+  if (isMock() ? ui.mockZoom !== 1 : ui.zoom !== 'fit') { wrap.scrollLeft = fx * after + frame.offsetLeft - ax; wrap.scrollTop = fy * after + frame.offsetTop - ay; }
   else { wrap.scrollLeft = 0; wrap.scrollTop = 0; }
   wrapClass();
   if (!quick) drawOverlay();
@@ -134,7 +139,7 @@ function toggleZoomMenu(force) {
 }
 wrap.addEventListener('wheel', (e) => {
   const zoomGesture = e.ctrlKey || e.metaKey || (prefs.wheel === 'zoom' && !e.shiftKey);
-  if (!zoomGesture || doc.out.mock !== 'artboard') return;
+  if (!zoomGesture) return;
   e.preventDefault();
   let dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
   if (prefs.zoomInvert) dy = -dy;
@@ -165,6 +170,7 @@ const ICON = {
   shape: '<rect x="3" y="3" width="10" height="10" rx="1.5"/><circle cx="15.5" cy="15.5" r="5.5"/>',
   text: '<path d="M5 6.5V4h14v2.5M12 4v16M9 20h6"/>',
   pen: '<path d="M12 3l6 9-6 9-6-9z"/><circle cx="12" cy="12" r="1.6"/><path d="M12 13.6V21"/>',
+  liquify: '<path d="M4 16c3-6 6 2 9-4s5-5 7-3"/><path d="M4 20c3-4 6 1 9-3s5-3 7-2"/><circle cx="9" cy="7" r="3"/>',
   pencil: '<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>',
   direct: '<path d="M6 3l12 9-5.5 1.2L15 20l-2.6 1.1-2.6-6.6L6 18z"/>'
 };
@@ -176,6 +182,7 @@ const TOOLS = [
   { id: 'wand', name: 'Magic wand: select areas of similar color', key: 'W', group: 'photo' },
   { id: 'lasso', name: 'Lasso: draw around an area', key: 'L', group: 'photo' },
   { id: 'brush', name: 'Selection brush. Alt paints away', key: 'B', group: 'photo' },
+  { id: 'liquify', name: 'Liquify: push, bloat, pucker or twirl the photo with a brush. Alt restores', key: 'Y', group: 'photo' },
   { sep: true, label: 'Vector' },
   { id: 'select', name: 'Select: move, scale and rotate shapes, text and images', key: 'V', group: 'lines' },
   { id: 'shape', name: 'Shapes: rectangle, ellipse, polygon, star, line', key: 'U', group: 'lines' },
@@ -208,7 +215,7 @@ function setTool(id) {
   if (t && t.group === 'lines' && !doc.lines.visible) { doc.lines.visible = true; buildStack(); }
   if (t && t.group === 'photo' && !doc.photo.visible) setView('photo');
   if (id === 'crop') cropStart();
-  $('brushRing').hidden = id !== 'brush';
+  $('brushRing').hidden = id !== 'brush' && id !== 'liquify';
   wrapClass();
   buildRail(); buildOptbar(); drawOverlay(); layoutStage(); updateCTA();
 }
@@ -293,8 +300,13 @@ function toImg(p) { return art2img(p.ax, p.ay, artGeom()); }
 function toMaster(ix, iy) { return [ix * master.w / iw, iy * master.h / ih]; }
 let drag = null, spaceDown = false, pen = null, hover = null;
 wrap.addEventListener('pointerdown', (e) => {
-  if (!origImg || doc.out.mock !== 'artboard') return;
+  if (!origImg) return;
   if (e.target.closest('.hud, .cta, .split-h, .text-edit')) return;
+  // Paper and T-shirt previews: no drawing tools, but you can still drag to move around
+  if (isMock()) {
+    if ((e.button === 0 || e.button === 1) && canPan()) { e.preventDefault(); drag = { kind: 'pan', x: e.clientX, y: e.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop }; wrap.setPointerCapture(e.pointerId); wrapClass(); }
+    return;
+  }
   if (e.pointerType === 'touch') {
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size === 2) { drag = null; const s = pinchState(); pinch = { d: s.d, z: displayZoom(), x: s.x, y: s.y, sl: wrap.scrollLeft, st: wrap.scrollTop }; return; }
@@ -323,6 +335,8 @@ wrap.addEventListener('pointerdown', (e) => {
     combineSelection(C.wand(master.data.data, master.w, master.h, mx, my, ui.wand.tol, ui.wand.contiguous), selMode(e, ui.wand.mode));
   } else if (ui.tool === 'lasso') {
     drag = { kind: 'lasso', pts: [[ix, iy]], mode: selMode(e, ui.lasso.mode) };
+  } else if (ui.tool === 'liquify') {
+    liqDown(p, e);
   } else if (ui.tool === 'brush') {
     drag = { kind: 'brush', sub: e.altKey || ui.brush.mode === 'sub', last: null };
     brushAt(p);
@@ -346,7 +360,7 @@ wrap.addEventListener('pointermove', (e) => {
     }
   }
   const p = evPos(e);
-  if (ui.tool === 'brush') { const ring = $('brushRing'); const vr = viewport.getBoundingClientRect(); ring.style.left = (e.clientX - vr.left) + 'px'; ring.style.top = (e.clientY - vr.top) + 'px'; ring.style.width = ring.style.height = ui.brush.size + 'px'; }
+  if (ui.tool === 'brush' || ui.tool === 'liquify') { const ring = $('brushRing'); const vr = viewport.getBoundingClientRect(); ring.style.left = (e.clientX - vr.left) + 'px'; ring.style.top = (e.clientY - vr.top) + 'px'; ring.style.width = ring.style.height = (ui.tool === 'liquify' ? ui.liquify.size : ui.brush.size) + 'px'; }
   if (!drag && ['pen', 'shape', 'text'].includes(ui.tool)) {
     const before = JSON.stringify(ui.snapHint);
     const s = snapAt(...toImg(p), ui.tool === 'pen' ? penSnap(e, p) : { e, p });
@@ -359,6 +373,7 @@ wrap.addEventListener('pointermove', (e) => {
   if (drag.kind === 'zoomRect') { drag.b = [p.ax, p.ay]; drawOverlay(); }
   else if (drag.kind === 'lasso') { drag.pts.push([ix, iy]); drawOverlay(); }
   else if (drag.kind === 'brush') brushAt(p);
+  else if (drag.kind === 'liquify') liqMove(p);
   else if (drag.kind === 'pencil') { if (Math.hypot(p.cx - drag.last[0], p.cy - drag.last[1]) >= 2) { drag.pts.push([ix, iy]); drag.last = [p.cx, p.cy]; drawOverlay(); } }
   else if (drag.kind === 'penHandle') { const n = pen.nodes[pen.nodes.length - 1]; const s = snapAt(ix, iy, { e, p, anchor: [n.x, n.y] }); n.ox = s[0] - n.x; n.oy = s[1] - n.y; n.ix = -n.ox; n.iy = -n.oy; drawOverlay(); }
   else if (drag.kind === 'node' || drag.kind === 'handle' || drag.kind === 'path') directMove(ix, iy, e, p);
@@ -382,6 +397,8 @@ const endDrag = (e) => {
     d.pts.forEach(([ix, iy], i) => { const [mx, my] = toMaster(ix, iy); i ? x.lineTo(mx, my) : x.moveTo(mx, my); });
     x.closePath(); x.fill();
     combineSelection(alphaOf(c).map((v) => v > 127 ? 1 : 0), d.mode);
+  } else if (d.kind === 'liquify') {
+    liqUp();
   } else if (d.kind === 'brush') {
     hasSelection = anyAlpha(selCanvas); refreshSelTint(); compose(); buildOptbar();
   } else if (d.kind === 'pencil' && d.pts.length > 2) {
@@ -397,16 +414,17 @@ const endDrag = (e) => {
 wrap.addEventListener('pointerup', endDrag);
 wrap.addEventListener('pointercancel', endDrag);
 wrap.addEventListener('dblclick', (e) => {
+  if (isMock()) { const r = wrap.getBoundingClientRect(); zoomTo((ui.mockZoom || 1) === 1 ? 2 : 'fit', { x: e.clientX - r.left, y: e.clientY - r.top }); return; }
   if (ui.tool === 'pen') { finishPen(); return; }
   if (ui.tool === 'crop') { cropApply(); return; }
   if (ui.tool === 'select') { const [ix, iy] = toImg(evPos(e)); const o = hitObject(ix, iy); if (o && o.type === 'text') editText(o); return; }
-  if (ui.tool === 'hand' && prefs.dblClick === 'toggle' && doc.out.mock === 'artboard') {
+  if (ui.tool === 'hand' && prefs.dblClick === 'toggle') {
     const r = wrap.getBoundingClientRect();
     zoomTo(ui.zoom === 'fit' ? 1 : 'fit', { x: e.clientX - r.left, y: e.clientY - r.top });
   }
 });
-wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush') $('brushRing').hidden = true; if (ui.snapHint && !drag) { ui.snapHint = null; drawOverlay(); } });
-wrap.addEventListener('pointerenter', () => { if (ui.tool === 'brush') $('brushRing').hidden = false; });
+wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush' || ui.tool === 'liquify') $('brushRing').hidden = true; if (ui.snapHint && !drag) { ui.snapHint = null; drawOverlay(); } });
+wrap.addEventListener('pointerenter', () => { if (ui.tool === 'brush' || ui.tool === 'liquify') $('brushRing').hidden = false; });
 
 function brushAt(p) {
   const g = artGeom();
@@ -645,6 +663,12 @@ function buildOptbar() {
     bar.appendChild(optSeg([['new', 'New'], ['add', 'Add'], ['sub', 'Subtract']], ui.lasso.mode, (v) => { ui.lasso.mode = v; buildOptbar(); }, 'Selection mode'));
     bar.appendChild(el('span', 'hint', 'Draw around an area. Shift adds, Alt subtracts.'));
     selActions(bar);
+  } else if (t === 'liquify') {
+    bar.append(optSeg(LIQ_MODES, ui.liquify.mode, (v) => { ui.liquify.mode = v; buildOptbar(); }, 'Liquify mode'),
+      optRange('Size', 10, 500, 1, ui.liquify.size, (v) => Math.round(v) + ' px', (v) => { ui.liquify.size = v; }),
+      optRange('Strength', 0.05, 1, 0.01, ui.liquify.strength, (v) => Math.round(v * 100) + '%', (v) => { ui.liquify.strength = v; }));
+    bar.appendChild(el('span', 'hint', 'Brush on the photo. Hold still to keep going. Alt restores.'));
+    bar.appendChild(optBtn('Reset liquify', liqReset, false, !liqOn(doc.photo)));
   } else if (t === 'brush') {
     bar.append(optSeg([['add', 'Paint in'], ['sub', 'Paint away']], ui.brush.mode, (v) => { ui.brush.mode = v; buildOptbar(); }, 'Brush mode'),
       optRange('Size', 4, 200, 1, ui.brush.size, (v) => Math.round(v) + ' px', (v) => { ui.brush.size = v; }));

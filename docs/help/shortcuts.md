@@ -13,6 +13,7 @@ On a Mac, use Cmd where this page says Ctrl. Press **F1** at any time to open th
 | W | Magic wand |
 | L | Lasso |
 | B | Selection brush |
+| Y | Liquify, Alt restores |
 | V | Select objects |
 | U | Shapes |
 | T | Text |
@@ -38,7 +39,7 @@ On a Mac, use Cmd where this page says Ctrl. Press **F1** at any time to open th
 | Ctrl Z | Undo |
 | Shift Ctrl Z | Redo |
 | Ctrl S | Save project |
-| Ctrl E | Export menu |
+| Ctrl E | Export window |
 | Ctrl + / − / 0 | Zoom in, out, fit |
 | Ctrl 1 / 2 | Actual size, zoom to selection |
 | Ctrl scroll or pinch | Smooth zoom |

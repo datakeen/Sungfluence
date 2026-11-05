@@ -12,11 +12,12 @@ New here? Start with **[Getting started](getting-started.md)**. It takes five mi
 
 ## Reference
 
-- [Photo panel](photo.md): crop, turn, adjust, effects, remove areas.
+- [Photo panel](photo.md): crop, turn, adjust, effects, liquify, remove areas.
 - [Vector panel](vector.md): lines, shapes, text, images, step and repeat.
 - [Text art panel](text-art.md): recipes, layers, styles and their shared settings.
 - [Text art styles](styles.md): every style and every setting, with ranges and starting values.
 - [Output and export](output-and-export.md): paper, size, print, every export format, projects.
+- [Printing](printing.md): print sizes, page, angle, and which dpi to use.
 - [Plugins](plugins.md): extra effects, and how to add more.
 - [Keyboard shortcuts](shortcuts.md)
 - [Problems and answers](troubleshooting.md)

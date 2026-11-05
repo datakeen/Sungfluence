@@ -33,7 +33,18 @@ const COLOR_LABEL = { ink: 'Ink', image: 'Photo', fill: 'Cell fill', tone: 'Tone
 const INKS = ['#111111', '#ffffff', '#f2efe6', '#14213d', '#c8553d', '#e8a33d'];
 const PAPERS = [['#ffffff', 'White'], ['#f3efe6', 'Cream'], ['#e9e4d8', 'Stone'], ['#111113', 'Black'], ['#0b1626', 'Navy'], ['#07110b', 'Terminal']];
 const SHIRTS = [['#f6f6f4', 'White'], ['#1b1b1d', 'Black'], ['#8f9096', 'Heather gray'], ['#1f2a44', 'Navy'], ['#5a1f2b', 'Maroon'], ['#d8c7a6', 'Sand']];
-const PRINTS = { 'A4': [210, 297], 'A3': [297, 420], 'A2': [420, 594], 'A1': [594, 841], 'Letter': [215.9, 279.4], '16 × 20 in': [406.4, 508], '24 × 36 in': [609.6, 914.4], 'T-shirt chest 30 cm': [300, 400] };
+/* Print sizes in millimetres, short side first. A third value of 0 means no page margin (prints that fill the area). */
+const PRINT_GROUPS = [
+  ['ISO A paper', { 'A0': [841, 1189], 'A1': [594, 841], 'A2': [420, 594], 'A3': [297, 420], 'A4': [210, 297], 'A5': [148, 210], 'A6': [105, 148] }],
+  ['ISO B paper', { 'B3': [353, 500], 'B4': [250, 353], 'B5': [176, 250] }],
+  ['US paper', { 'Letter': [215.9, 279.4], 'Legal': [215.9, 355.6], 'Tabloid 11 × 17 in': [279.4, 431.8], 'Super B 13 × 19 in': [330.2, 482.6] }],
+  ['Photo prints', { '4 × 6 in': [101.6, 152.4], '5 × 7 in': [127, 177.8], '8 × 10 in': [203.2, 254], '11 × 14 in': [279.4, 355.6], '12 × 12 in': [304.8, 304.8] }],
+  ['Posters', { '12 × 18 in': [304.8, 457.2], '16 × 20 in': [406.4, 508], '18 × 24 in': [457.2, 609.6], '24 × 36 in': [609.6, 914.4], '50 × 70 cm': [500, 700], '70 × 100 cm': [700, 1000] }],
+  ['Clothes and small things', { 'T-shirt chest 30 cm': [300, 400, 0], 'T-shirt full front 12 × 16 in': [304.8, 406.4, 0], 'Left chest 4 × 4 in': [101.6, 101.6, 0], 'Sticker 3 × 3 in': [76.2, 76.2, 0], 'Business card 85 × 55 mm': [55, 85, 0] }]
+];
+const PRINTS = Object.assign({}, ...PRINT_GROUPS.map((g) => g[1]));
+const CUSTOM_PRINT = 'Custom size';
+const DPI_PRESETS = [[72, '72'], [150, '150'], [300, '300'], [600, '600']];
 const FRAMES = [['original', 'Original'], ['1:1', '1:1'], ['4:5', '4:5'], ['3:2', '3:2'], ['16:9', '16:9'], ['9:16', '9:16']];
 const MODELS = [['rgb', 'RGB'], ['cmyk', 'CMYK'], ['ansi', '16 colors'], ['gray', 'Gray'], ['bw', 'B/W']];
 const MODEL_NOTE = {
@@ -75,8 +86,8 @@ const MODES = {
   },
   flow: {
     name: 'Flow lines', about: 'Text that follows the edges and forms of the photo, like an engraving.', glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M1 4c5-4 9 4 14 0s7-1 8 0M1 9c5-4 9 4 14 0s7-1 8 0M1 14c5-4 9 4 14 0s7-1 8 0" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
-    defaults: { text: PASSAGE, spacing: 12, minInk: 0.15, font: 'sans', weight: 600, color: 'ink', smooth: 5, weightMod: true, sizeMod: true, tracking: 0.05 },
-    controls: [TA('text', 'Text'), R('spacing', 'Line spacing', 6, 30, 0.5), R('minInk', 'Leave light areas empty', 0, 0.7, 0.01), COL(['ink', 'image', 'tone', 'duotone']), FONT],
+    defaults: { text: PASSAGE, spacing: 12, scale: 0.95, minInk: 0.15, font: 'sans', weight: 600, color: 'ink', smooth: 5, weightMod: true, sizeMod: true, tracking: 0.05 },
+    controls: [TA('text', 'Text'), R('scale', 'Letter size', 0.4, 2.4, 0.05), R('spacing', 'Line spacing', 6, 30, 0.5), R('minInk', 'Leave light areas empty', 0, 0.7, 0.01), COL(['ink', 'image', 'tone', 'duotone']), FONT],
     more: [R('smooth', 'Smoothness', 1, 14, 1), T('weightMod', 'Weight follows tone'), T('sizeMod', 'Size follows tone')]
   },
   mosaic: {
@@ -88,20 +99,20 @@ const MODES = {
   grid: {
     name: 'ASCII', about: 'Classic ASCII art. Each cell gets the character whose ink best matches the tone there.', glyph: '<span style="font-family:var(--mono);font-weight:700">#%@</span>',
     defaults: { cols: 120, rampName: 'Classic', ramp: RAMPS.Classic, color: 'ink', edges: 0, dither: false },
-    controls: [R('cols', 'Columns', 30, 260, 1), { key: 'rampName', label: 'Character set', type: 'ramp' }, COL(['ink', 'image', 'fill', 'tone'])],
+    controls: [R('cols', 'Columns (fewer means bigger letters)', 30, 260, 1), { key: 'rampName', label: 'Character set', type: 'ramp' }, COL(['ink', 'image', 'fill', 'tone'])],
     more: [R('edges', 'Edge strokes', 0, 1, 0.05), T('dither', 'Dither')]
   },
   unicode: {
     name: 'Braille', about: 'Braille dots or half blocks: fine detail that still copies as plain text.', glyph: '<span style="font-family:var(--mono)">⣿⣶⡆</span>',
     defaults: { style: 'braille', cols: 150, threshold: 0.5, color: 'ink' },
-    controls: [S('style', 'Characters', [['braille', 'Braille dots'], ['half', 'Half blocks']]), R('cols', 'Columns', 40, 320, 1), R('threshold', 'Threshold', 0.1, 0.9, 0.01, { show: (L) => L.style === 'braille' }), COL(['ink', 'image'])],
+    controls: [S('style', 'Characters', [['braille', 'Braille dots'], ['half', 'Half blocks']]), R('cols', 'Columns (fewer means bigger dots)', 40, 320, 1), R('threshold', 'Threshold', 0.1, 0.9, 0.01, { show: (L) => L.style === 'braille' }), COL(['ink', 'image'])],
     more: []
   },
   halftone: {
     name: 'Halftone', about: 'A halftone screen where every dot is a letter. The tone sets its size, its weight, or both.', glyph: '<b style="font-size:18px">O</b><b style="font-size:12px">o</b><b style="font-size:8px">o</b>',
     defaults: { text: 'O', cols: 80, modulate: 'size', grid: 'hex', rotate: 'none', font: 'sans', weight: 900, color: 'ink', scale: 1.35, power: 0.75 },
-    controls: [TX('text', 'Glyphs'), R('cols', 'Columns', 16, 200, 1), S('modulate', 'Tone changes', [['size', 'Size'], ['weight', 'Weight'], ['both', 'Both']]), S('grid', 'Grid', [['square', 'Square'], ['hex', 'Offset']]), SEL('rotate', 'Rotation', [['none', 'Upright'], ['flow', 'Follow edges'], ['random', 'Scattered']]), COL(['ink', 'image', 'tone', 'duotone']), FONT],
-    more: [R('scale', 'Glyph scale', 0.5, 2.5, 0.05), R('power', 'Tone curve', 0.3, 1.5, 0.05)]
+    controls: [TX('text', 'Glyphs'), R('cols', 'Columns (fewer means bigger glyphs)', 16, 200, 1), R('scale', 'Letter size', 0.5, 2.5, 0.05), S('modulate', 'Tone changes', [['size', 'Size'], ['weight', 'Weight'], ['both', 'Both']]), S('grid', 'Grid', [['square', 'Square'], ['hex', 'Offset']]), SEL('rotate', 'Rotation', [['none', 'Upright'], ['flow', 'Follow edges'], ['random', 'Scattered']]), COL(['ink', 'image', 'tone', 'duotone']), FONT],
+    more: [R('power', 'Tone curve', 0.3, 1.5, 0.05)]
   },
   calligram: {
     name: 'Calligram', about: 'Text poured into a shape: one or more words, a heart, a circle, a star, the dark parts of the photo, or your cutout.', glyph: '<svg width="22" height="20" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21C5 15 2 11.5 2 7.5A5 5 0 0 1 12 5a5 5 0 0 1 10 2.5c0 4-3 7.5-10 13.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 1.6"/></svg>',
@@ -112,8 +123,8 @@ const MODES = {
   },
   spiral: {
     name: 'Spiral', about: 'One sentence on a spiral or on rings. Letters thicken where the photo is dark.', glyph: '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-1 1-1.6 2-1 1.6.9 1 3.6-1 4-2.8.6-4.6-2.4-3.6-4.8 1.3-3.2 6-3.8 8.2-1C20 12.6 18.6 18 14 19c-5 1.2-9.6-2.6-9.4-7.6C4.8 5.6 11 2.4 16 4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-    defaults: { text: PASSAGE, path: 'spiral', spacing: 11, cx: 0.5, cy: 0.5, font: 'sans', weight: 700, color: 'ink', minScale: 0.12, weightMod: true, start: 'inside', turn: 'auto', a0: -90, r0: 0, r1: 1, tracking: 0.04 },
-    controls: [TA('text', 'Text'), S('path', 'Path', [['spiral', 'Spiral'], ['rings', 'Rings']]), R('spacing', 'Ring spacing', 5, 30, 0.5),
+    defaults: { text: PASSAGE, path: 'spiral', spacing: 11, cx: 0.5, cy: 0.5, scale: 1.15, font: 'sans', weight: 700, color: 'ink', minScale: 0.12, weightMod: true, start: 'inside', turn: 'auto', a0: -90, r0: 0, r1: 1, tracking: 0.04 },
+    controls: [TA('text', 'Text'), S('path', 'Path', [['spiral', 'Spiral'], ['rings', 'Rings']]), R('scale', 'Letter size', 0.4, 2.4, 0.05), R('spacing', 'Ring spacing', 5, 30, 0.5),
       S('start', 'Text starts', [['inside', 'At the center'], ['outside', 'Outside']]), S('turn', 'Direction', [['auto', 'Auto'], ['cw', 'Clockwise'], ['ccw', 'Anticlockwise']]),
       { type: 'note', text: 'Drag the handles on the picture: the center, where the text starts and where it ends.' },
       COL(['ink', 'image', 'tone', 'duotone']), FONT],
@@ -122,14 +133,14 @@ const MODES = {
   },
   relief: {
     name: 'Relief', about: 'Rows of text lifted by the tones, like a terrain map. Rows behind can be hidden.', glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M1 7h6l2-5 2 5h12M1 12h4l3-4 3 6 2-2h10M1 17h22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
-    defaults: { text: PASSAGE, spacing: 13, amp: 2.2, occlude: true, font: 'sans', weight: 600, color: 'ink', weightMod: true, sizeMod: true, tracking: 0.05 },
-    controls: [TA('text', 'Text'), R('spacing', 'Row spacing', 6, 30, 0.5), R('amp', 'Lift', 0, 5, 0.1), T('occlude', 'Hide lines behind'), COL(['ink', 'image', 'tone', 'duotone']), FONT],
+    defaults: { text: PASSAGE, spacing: 13, scale: 0.9, amp: 2.2, occlude: true, font: 'sans', weight: 600, color: 'ink', weightMod: true, sizeMod: true, tracking: 0.05 },
+    controls: [TA('text', 'Text'), R('scale', 'Letter size', 0.4, 2.4, 0.05), R('spacing', 'Row spacing', 6, 30, 0.5), R('amp', 'Lift', 0, 5, 0.1), T('occlude', 'Hide lines behind'), COL(['ink', 'image', 'tone', 'duotone']), FONT],
     more: [T('weightMod', 'Weight follows tone'), T('sizeMod', 'Size follows tone'), R('minInk', 'Skip flat parts', 0, 0.5, 0.01)]
   },
   typewriter: {
     name: 'Typewriter', about: 'Typed and overstruck characters with ribbon ink and a little wobble, like 1960s typewriter art.', glyph: '<span style="font-family:\'Special Elite\',\'Courier New\',monospace;font-size:15px">X<span style="margin-left:-.55em;opacity:.8">O</span></span>',
     defaults: { cols: 96, color: 'ink', inkColor: '#1f1d1a', wobble: 1, edges: 0.4, dither: true, leading: 1.1, curve: 1.6 },
-    controls: [R('cols', 'Columns', 30, 200, 1), R('curve', 'Lightness', 0.6, 3, 0.05), R('wobble', 'Wobble and ribbon', 0, 2, 0.05), R('edges', 'Edge strokes', 0, 1, 0.05), COL(['ink', 'image', 'tone', 'duotone'])],
+    controls: [R('cols', 'Columns (fewer means bigger letters)', 30, 200, 1), R('curve', 'Lightness', 0.6, 3, 0.05), R('wobble', 'Wobble and ribbon', 0, 2, 0.05), R('edges', 'Edge strokes', 0, 1, 0.05), COL(['ink', 'image', 'tone', 'duotone'])],
     more: [T('dither', 'Dither'), R('leading', 'Line feed', 0.9, 1.6, 0.05)]
   }
 };
@@ -210,11 +221,15 @@ const UNITS = [['px', 'Pixels'], ['in', 'Inches'], ['mm', 'mm'], ['cm', 'cm'], [
 
 /* preferences belong to this computer, not to a project */
 const PREF_KEY = 'sungfluence-prefs-v1';
-const PREF_DEFAULTS = { zoomSpeed: 1, zoomSmooth: true, zoomDuration: 160, wheel: 'scroll', zoomAnchor: 'cursor', zoomStep: 1.25, zoomMax: 16, zoomInvert: false, dblClick: 'toggle', pixelated: true, zoomHud: true, theme: 'system' };
+const PREF_DEFAULTS = { zoomSpeed: 1, zoomSmooth: true, zoomDuration: 160, wheel: 'scroll', zoomAnchor: 'cursor', zoomStep: 1.25, zoomMax: 16, zoomInvert: false, dblClick: 'toggle', pixelated: true, zoomHud: true, theme: 'system', motion: 'full', reveal: 'fly' };
 const prefs = (() => { try { return Object.assign({}, PREF_DEFAULTS, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { return Object.assign({}, PREF_DEFAULTS); } })();
 function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* storage blocked */ } }
 function applyTheme() { if (prefs.theme === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', prefs.theme); }
 applyTheme();
+/* motion: smooth transitions in the interface, off when the person asked their computer for less motion */
+const reduceMotion = () => prefs.motion === 'off' || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+function applyMotion() { const de = document.documentElement; if (!de || !de.classList) return; de.classList.toggle('motion-off', reduceMotion()); de.classList.toggle('motion-calm', prefs.motion === 'calm'); }
+applyMotion();
 
 /* recipes for photos; line recipes live with the Lines source */
 const RECIPES = [

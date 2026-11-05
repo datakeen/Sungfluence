@@ -1,6 +1,6 @@
-# SungFluence: notes for coding assistants and contributors
+# SungFluence: developer guide
 
-SungFluence turns images into art made of letters. It is open source under the GNU AGPL, version 3 or later. These notes explain how the code is laid out and the rules that keep the app good. They apply to people and to AI coding assistants alike.
+SungFluence turns images into art made of letters. It is open source under the GNU AGPL, version 3 or later. These notes explain how the code is laid out and the rules that keep the app good. They apply to everyone who works on the code.
 
 The name is written **SungFluence** (capital F) wherever people read it: window title, About, installers, docs. Code names are different and must stay stable: the plugin API `Sungfluence.plugin` (`SungFluence.plugin` is an alias), the npm name `sungfluence`, the storage keys `sungfluence-*`, and the repository `datakeen/Sungfluence`. Some older storage keys and project files are still read for compatibility; keep that code.
 
@@ -27,7 +27,7 @@ The name is written **SungFluence** (capital F) wherever people read it: window 
 | `app/parts/05-plugins.js` | Plugin loading, plugin controls, the Plugins window |
 | `app/parts/05b-help.js` | The Help window (F1): shows the pages that the build bundles from `docs/help` into `HELP` (`src/help.js`), and the one-time welcome hint |
 | `app/parts/05c-commands.js` | `COMMANDS`: every action with its label, keys, enabled and checked state. Builds the menu bar in the page (web), sends the same menus to the desktop app (`syncMenus`), the command palette (Ctrl K) and `runShortcut`. Add new actions here, not as loose key handlers. |
-| `app/parts/06-io.js` | Undo, autosave, projects, export, the optional Claude features, shortcuts, boot |
+| `app/parts/06-io.js` | Undo, autosave, projects, export, the optional AI helpers, shortcuts, boot |
 | `app/plugins/` | Built-in plugins; their styles show under Extra effects. `sungfluence-plugin-template.js` is the starter for plugin authors: it is offered as a download, not loaded as a style. |
 | `app/samples/` | Sample images. `01-cat.jpg` becomes the sample "cat". The cat must stay: it is the first picture people see. |
 | `app/icon.svg` | The app icon. `npm run icons` draws `build/icon.png` and `src/icons/*.png` from it. The build copies it to `src/icons/icon.svg`. |
@@ -66,7 +66,7 @@ Arabic script joins its letters, so styles must never draw it one letter at a ti
 - **One drawing list.** Every style returns items `{t: 'text' | 'rect', ...}`. Canvas, SVG, PDF, CMYK and text exports all read the same list.
 - **Plugin API is public.** Do not change `Sungfluence.plugin` or the `api` object in `docs/PLUGINS.md` without raising `PLUGIN_API` and keeping old plugins working.
 - **Offline desktop.** No CDN or Google Fonts calls from `src/`. The Content Security Policy in `src/index.html` allows scripts from the app folder and `blob:` (for user plugins) only.
-- **Claude features** ("Direct" and "Suggest") use `window.claude`, which exists only on claude.ai. They hide themselves elsewhere. Keep it that way.
+- **Optional AI helpers** ("Direct" and "Suggest") use `window.claude`, which exists only when the page runs inside claude.ai. They hide themselves everywhere else. Keep it that way.
 - **Privacy.** Photos never leave the computer. No analytics without an explicit opt-in. Anything that would send data off the computer is opt-in, uses the user's own key, and never stores keys in project files. Never put personal email addresses in files.
 - **Writing in the UI and docs.** Short sentences. Plain US English. No em dashes. No hype. Every file in the repository speaks to its readers: users, contributors or plugin authors.
 
@@ -86,4 +86,3 @@ Before a large change, propose a short plan and wait for the maintainer's go-ahe
 
 See `docs/RELEASING.md`. In short: move the Unreleased changelog items under the new version, raise `version` in `package.json`, build, run all tests, check the screenshots, then push a `vX.Y.Z` tag. Keep SPDX lines in new files; the plugin template stays MIT on purpose.
 
-If a local file named `CLAUDE.local.md` exists, read it too: it holds the maintainer's own notes and is not part of the repository.

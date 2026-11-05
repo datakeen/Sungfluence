@@ -51,7 +51,7 @@ const wait = async (p) => { await p.waitForTimeout(300); while (await p.evaluate
   await p.waitForTimeout(300);
   await shot('fade.jpg');
 
-  // 4. the Export menu
+  // 4. the Export window
   await p.click('#exportBtn');
   await p.waitForTimeout(400);
   await shot('export.jpg');

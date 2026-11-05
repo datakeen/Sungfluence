@@ -42,12 +42,13 @@ Click **Variations** next to the style name to see several takes at once, and cl
 
 ## 5. Export
 
-Click **Export** at the top right.
+Click **Export** at the top right. The Export window opens: pick a format on the left, check its options on the right, and click **Export**.
 
-![The Export menu](img/export.jpg)
+![The Export window](img/export.jpg)
 
 - **PNG for print** or **PDF for print**: a page size such as A3 at 300 dpi. Choose the size in the **Output** panel.
 - **SVG with live text**: letters you can still edit in Illustrator, Inkscape or Figma.
-- **Save project** (Ctrl S): keeps everything, so you can open it later and carry on.
+- **Plain text**, **Terminal colors** and **Code**: the art as characters to paste into chats, terminals and programs.
+- **Save project** (Ctrl S): keeps everything in one `.sungfluence` file, so you can open it later and carry on.
 
 That is it. Next, try a calligram with your own word, or read about [the window](workspace.md) and the [text art styles](styles.md).

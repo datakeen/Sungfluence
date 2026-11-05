@@ -27,7 +27,7 @@ command('file.new', 'New artboard…', () => openNewArtboard(), { keys: ['shift+
 command('file.square', 'New square artboard', () => newSquare());
 command('file.open', 'Open image or project…', () => $('fileInput').click(), { keys: ['mod+o'], typing: true });
 command('file.save', 'Save project', () => saveProject(), { keys: ['mod+s'], typing: true, enabled: hasImg });
-command('file.export', 'Export…', () => openMenu(), { keys: ['mod+e'], typing: true, enabled: hasImg });
+command('file.export', 'Export…', () => openExport(), { keys: ['mod+e'], typing: true, enabled: hasImg });
 command('file.settings', 'Settings…', () => openSettings());
 // Edit
 command('edit.undo', 'Undo', () => undo(), { keys: ['mod+z'], enabled: () => hist.length > 0 });
@@ -82,7 +82,7 @@ command('snap.on', 'Snapping', () => setSnap('on'), { keys: ['mod+;'], checked: 
 SNAP_KINDS.forEach(([k, t]) => command('snap.' + k, t, () => setSnap(k), { checked: () => !!prefs.snap[k], enabled: () => !!prefs.snap.on }));
 command('snap.gridSize', 'Grid size…', () => openSettings());
 // Tools (palette and keys; the rail on the left shows them too)
-[['hand', 'h'], ['zoom', 'z'], ['crop', 'c'], ['wand', 'w'], ['lasso', 'l'], ['brush', 'b'], ['select', 'v'], ['shape', 'u'], ['text', 't'], ['pen', 'p'], ['pencil', 'n'], ['direct', 'a']]
+[['hand', 'h'], ['zoom', 'z'], ['crop', 'c'], ['wand', 'w'], ['lasso', 'l'], ['brush', 'b'], ['liquify', 'y'], ['select', 'v'], ['shape', 'u'], ['text', 't'], ['pen', 'p'], ['pencil', 'n'], ['direct', 'a']]
   .forEach(([id, k]) => { const t = TOOLS.find((x) => x.id === id); command('tool.' + id, 'Tool: ' + (t ? t.name.split(/[:.]/)[0] : id), () => setTool(id), { keys: [k], checked: () => ui.tool === id }); });
 // Plugins
 command('plugins.manage', 'Plugins…', () => openPlugins());
@@ -104,7 +104,7 @@ function dynamicCommands() {
   Object.entries(MODES).forEach(([k, m]) => command('style.' + k, (m.plugin ? 'Extra effect: ' : 'Style: ') + m.name, () => usePluginStyle(k), { checked: () => doc.text.applied && curLayer().mode === k, enabled: hasImg }));
   RECIPES.forEach((r, i) => command('recipe.' + i, 'Recipe: ' + r.name, () => applyRecipe(r), { enabled: hasImg }));
   Object.keys(SAMPLES).forEach((k) => command('sample.' + k, 'Sample: ' + k, () => useSample(k)));
-  EXPORTS.forEach((x, i) => { if (x.title) command('export.' + i, 'Export: ' + x.title, () => { if (origImg) x.run(); }, { enabled: () => hasImg() && (x.always || doc.text.applied) && (!x.when || x.when()) }); });
+  EXPORTS.forEach((x) => { if (x.title) command('export.' + x.id, 'Export: ' + x.title, () => { if (!origImg) return; if (x.noWindow) x.run(); else openExport(x.id); }, { enabled: () => exporterReady(x) }); });
 }
 
 /* ---------- menus ---------- */
@@ -118,7 +118,7 @@ function menuSpec() {
   EXPORTS.forEach((x, i) => {
     if (x.head) { if (exportsList.length) exportsList.push(SEP); exportsList.push({ head: x.head }); }
     else if (x.sep) exportsList.push(SEP);
-    else exportsList.push(Object.assign(item('export.' + i), { label: x.title }));
+    else exportsList.push(Object.assign(item('export.' + x.id), { label: x.title }));
   });
   return [
     { label: 'File', items: [item('file.new'), item('file.square'), item('file.open'),

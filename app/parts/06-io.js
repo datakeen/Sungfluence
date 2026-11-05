@@ -1,4 +1,4 @@
-/* ===================== Part 5: history, files, export, Claude, keys, boot ===================== */
+/* ===================== Part 5: history, files, export, AI helpers, keys, boot ===================== */
 const hist = [], future = [];
 let histTimer = null, restoring = false, lastDoc = null;
 /* a history step: everything except which layers are shown, and except image pixels (they live in imgStore and assets) */
@@ -101,13 +101,19 @@ function freshImage() {
   rebuildBase(); rebuildPhotoView();
   snapshotMask(); buildAll(); setView('photo'); statusIdle(); queueHistory();
 }
-function loadFile(file) {
+function loadFile(file, asPicture) {
   if (!file) return;
+  if (/\.sungfluence$/i.test(file.name) || /zip/.test(file.type)) { openProjectZip(file); return; }
   if (/\.json$/i.test(file.name) || file.type === 'application/json') {
     file.text().then((t) => openProject(JSON.parse(t))).catch(() => toast('That project file could not be opened.'));
     return;
   }
   if (!file.type.startsWith('image/')) { toast('Choose an image file, such as JPG or PNG.'); return; }
+  // a PNG or SVG exported with its style settings brings the look back onto the open photo
+  if (!asPicture && origImg && /png|svg/.test(file.type)) {
+    recipeInFile(file).then((r) => { if (!(r && applySavedRecipe(r, file.name, file))) loadFile(file, true); });
+    return;
+  }
   const fr = new FileReader();
   fr.onload = () => loadImageURL(fr.result, file.name).then(() => { doc.sample = null; buildSamples(); freshImage(); }).catch((e) => toast(e.message));
   fr.readAsDataURL(file);
@@ -217,7 +223,7 @@ function pasteObjects() {
   objChanged({ final: true, list: copies });
   return true;
 }
-function saveProject() { if (origImg) saveFile(baseName() + '.json', JSON.stringify(projectData())); }
+function saveProject() { saveProjectFile(); }
 function duplicateSelection() { if (ui.selObjs.length) duplicateObjects(); else duplicateLayer(doc.text.sel); }
 function deselectAll() { selClear(); if (ui.selObjs.length) { ui.selObjs = []; drawOverlay(); buildOptbar(); } }
 function selectAllObjects() {
@@ -304,7 +310,13 @@ function flatPNG(only, suffix, opt) {
   runLayersExport(only, async ({ g, S }) => {
     const c = mk(g.TW, g.TH);
     composeTo(c.getContext('2d'), g, S, Object.assign({ only, mixFade: !only && ui.view === 'mix', ground: doc.out.transparent ? null : 'paper' }, opt || {}));
-    await saveFile(baseName() + suffix + '.png', await toBlob(c, 'image/png'));
+    if (opt && opt.jpg) {
+      // JPG has no transparency: put the paper color under everything
+      const j = mk(c.width, c.height), jx = j.getContext('2d'); jx.fillStyle = doc.out.paper; jx.fillRect(0, 0, j.width, j.height); jx.drawImage(c, 0, 0);
+      await saveFile(baseName() + suffix + '.jpg', await toBlob(j, 'image/jpeg', opt.jpg)); return;
+    }
+    const png = await toBlob(c, 'image/png');
+    await saveFile(baseName() + suffix + '.png', opt && opt.recipe ? await pngWithRecipe(png, recipeData()) : png);
   });
 }
 function vectorSVG() {
@@ -314,14 +326,14 @@ function vectorSVG() {
   return '<svg xmlns="http://www.w3.org/2000/svg" width="' + g.TW + '" height="' + g.TH + '" viewBox="0 0 ' + g.TW + ' ' + g.TH + '">\n' + (needFonts ? '<style>' + FONT_IMPORT + '</style>\n' : '') + body + '\n</svg>\n';
 }
 /* everything as one SVG: the photo as an embedded picture, vector shapes, and text art as live letters, in the layer order */
-function fullSVG() {
-  runLayersExport(null, async ({ g, S, out: o }) => {
+function fullSVG(only, recipe) {
+  runLayersExport(only && only.length ? only : null, async ({ g, S, out: o }) => {
     const parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="' + g.TW + '" height="' + g.TH + '" viewBox="0 0 ' + g.TW + ' ' + g.TH + '">', '<style>' + FONT_IMPORT + '</style>'];
     if (!doc.out.transparent) parts.push('<rect width="100%" height="100%" fill="' + doc.out.paper + '"/>');
     const attrs = (L, extra) => ' opacity="' + nf((L.opacity ?? 1) * (extra || 1)) + '"' + (L.blend && L.blend !== 'normal' ? ' style="mix-blend-mode:' + L.blend + '"' : '');
     for (let i = doc.order.length - 1; i >= 0; i--) {
       const id = doc.order[i], L = layerOf(id);
-      if (!L.visible) continue;
+      if (only && only.length ? !only.includes(id) : !L.visible) continue;
       if (id === 'photo' && S.photo) {
         const fade = ui.view === 'mix' && doc.order.indexOf('text') < doc.order.indexOf('photo') && S.text ? doc.out.mixPhoto : 1;
         parts.push('<g id="photo"' + attrs(L, fade) + '><image x="' + g.m + '" y="' + g.m + '" width="' + g.W + '" height="' + g.H + '" preserveAspectRatio="none" href="' + S.photo.toDataURL('image/png') + '"/></g>');
@@ -333,7 +345,8 @@ function fullSVG() {
       }
     }
     parts.push('</svg>');
-    await saveFile(baseName() + '-layers.svg', parts.join('\n'));
+    const svg = parts.join('\n');
+    await saveFile(baseName() + '-layers.svg', recipe ? svgWithRecipe(svg, recipeData()) : svg);
   });
 }
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;family=JetBrains+Mono:wght@400;700&amp;family=Playfair+Display:wght@400..900&amp;family=Oswald:wght@200..700&amp;family=Noto+Naskh+Arabic:wght@400..700&amp;family=Special+Elite&amp;display=swap');";
@@ -425,71 +438,15 @@ async function photoCutout() {
   if (hasRemoval) { x.globalCompositeOperation = 'destination-out'; x.drawImage(remCanvas, cr.x * remCanvas.width, cr.y * remCanvas.height, cr.w * remCanvas.width, cr.h * remCanvas.height, 0, 0, c.width, c.height); }
   await saveFile((doc.fileName || 'photo').replace(/\.[a-z0-9]+$/i, '') + '-cutout.png', await toBlob(c, 'image/png'));
 }
-const EXPORTS = [
-  { head: 'What you see' },
-  { title: 'PNG of the visible layers', sub: () => { const g = artGeom(1); return 'Every shown layer in its order, ' + g.TW + ' × ' + g.TH + ' px'; }, always: true, run: () => flatPNG(null, '-view') },
-  { title: 'SVG of the visible layers', sub: () => 'Photo as a picture, vector shapes and live text art letters', always: true, run: () => fullSVG() },
-  { title: 'Photo and vector, PNG', sub: () => 'The photo layer with shapes and lines, no text art', always: true, run: () => flatPNG(['photo', 'lines'], '-photo-vector') },
-  { title: 'Vector layer, SVG', sub: () => 'Lines drawn as strokes, shapes, text and images', always: true, run: () => saveFile(baseName() + '-vector.svg', vectorSVG()) },
-  { title: 'Vector layer, PNG', sub: () => 'Transparent background', always: true, run: () => flatPNG(['lines'], '-vector', { ground: null, ignoreOpacity: true }) },
-  { title: 'Photo layer, edited', sub: () => 'Adjustments, effects, crop and photo objects, transparent where removed', always: true, run: () => photoCutout() },
-  { head: 'Text art' },
-  { title: 'PNG for print', sub: () => { const g = printGeom(); return g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px, ' + doc.out.print + ' at ' + doc.out.dpi + ' dpi' + (doc.out.transparent ? ', transparent' : ''); },
-    run: () => runExport(printScaleFor, async (r) => saveFile(baseName() + '-' + printTag() + '.png', await toBlob(r.canvas, 'image/png'))) },
-  { title: 'PNG at artboard size', sub: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px'; },
-    run: () => runExport(() => 1, async (r) => saveFile(baseName() + '.png', await toBlob(r.canvas, 'image/png'))) },
-  { title: 'SVG with live text', sub: () => 'Editable letters for Illustrator, Inkscape or Figma',
-    run: () => runExport(null, async (r) => saveFile(baseName() + '.svg', C.toSVG(r.out, FONT_IMPORT))) },
-  { title: 'PDF for print', sub: () => doc.out.print + ' page, artwork at ' + doc.out.dpi + ' dpi',
-    run: () => runExport(printScaleFor, async (r) => {
-      const jsPDF = await jsPDFReady(); const g = printGeom();
-      const pdf = new jsPDF({ orientation: g.land ? 'landscape' : 'portrait', unit: 'mm', format: [g.pw, g.ph].sort((a, b) => a - b), compress: true });
-      if (!doc.out.transparent) { pdf.setFillColor(r.out.paper); pdf.rect(0, 0, g.pw, g.ph, 'F'); pdf.addImage(r.canvas.toDataURL('image/jpeg', 0.93), 'JPEG', g.x, g.y, g.aw, g.ah); }
-      else pdf.addImage(r.canvas.toDataURL('image/png'), 'PNG', g.x, g.y, g.aw, g.ah);
-      await saveFile(baseName() + '-' + printTag() + '.pdf', pdf.output('blob'));
-    }) },
-  { title: 'CMYK PDF, vector', sub: () => 'Live letters with CMYK ink values, ' + doc.out.print, run: () => runExport(null, (r) => cmykPDF(r.out)) },
-  { title: 'CMYK plates', sub: () => 'Four PNG separations in one .zip, for screen print',
-    run: () => runExport((o) => Math.min(printScaleFor(o), 4000 / Math.max(o.W, o.H)), (r) => separations(r.canvas)) },
-  { sep: true },
-  { title: 'Text file, Braille', sub: () => 'Any style as black and white text, 120 characters wide', run: () => runExport(null, (r) => saveFile(baseName() + '-braille.txt', C.toText(r.out, 120, 'braille'))) },
-  { title: 'Text file, ASCII', sub: () => 'Any style as keyboard characters, 120 wide', run: () => runExport(null, (r) => saveFile(baseName() + '-ascii.txt', C.toText(r.out, 120, 'ascii'))) },
-  { title: 'Grid text, exact', sub: () => 'The exact characters of an ASCII or Braille layer', when: () => activeLayers().some((L) => L.mode === 'grid' || L.mode === 'unicode'),
-    run: () => runExport(null, (r) => saveFile(baseName() + '-grid.txt', r.out.layers.filter((L) => L.text).map((L) => L.text).join('\n\n'))) },
-  { title: 'Color terminal text', sub: () => 'ASCII layer with 16-color ANSI codes', when: () => activeLayers().some((L) => L.mode === 'grid'),
-    run: () => runExport(null, (r) => { const t = C.toANSI(r.out); if (t) return saveFile(baseName() + '-ansi.txt', t); }) },
-  { head: 'Project' },
-  { title: 'Save project', sub: () => 'Photo, removed areas, lines, objects, layers and settings (' + MOD + ' S)', always: true, run: () => saveFile(baseName() + '.json', JSON.stringify(projectData())) },
-  { title: 'Open project', sub: () => 'Pick a .json file saved from SungFluence', always: true, run: () => $('fileInput').click() }
-];
-function openMenu() {
-  const m = $('exportMenu'); m.replaceChildren();
-  EXPORTS.forEach((x) => {
-    if (x.sep) { m.appendChild(el('hr')); return; }
-    if (x.head) { if (m.childNodes.length) m.appendChild(el('hr')); m.appendChild(el('div', 'menu-h', x.head)); return; }
-    if (x.when && !x.when()) return;
-    const b = el('button'); b.type = 'button'; b.setAttribute('role', 'menuitem');
-    b.disabled = !x.always && !doc.text.applied;
-    b.append(el('b', null, x.title), el('span', null, x.sub()));
-    if (b.disabled) b.style.opacity = '.5';
-    b.onclick = () => { closeMenu(); if (!origImg) return; x.run(); };
-    m.appendChild(b);
-  });
-  if (!doc.text.applied) { const h = [...m.querySelectorAll('.menu-h')].find((q) => q.textContent === 'Text art'); if (h) h.after(el('div', 'note menu-note', 'Apply text art to unlock these.')); }
-  const r = $('exportBtn').getBoundingClientRect();
-  m.style.top = (r.bottom + 6 + window.scrollY) + 'px';
-  m.style.maxHeight = 'calc(100vh - ' + Math.round(r.bottom + 20) + 'px)'; m.style.overflowY = 'auto';
-  m.hidden = false; $('exportBtn').setAttribute('aria-expanded', 'true');
-  const f = m.querySelector('button:not(:disabled)'); if (f) f.focus();
-}
+/* the formats live in 06-export.js; the Export button opens the Export window */
 function closeMenu() { $('exportMenu').hidden = true; $('exportBtn').setAttribute('aria-expanded', 'false'); }
-$('exportBtn').onclick = (e) => { e.stopPropagation(); $('exportMenu').hidden ? openMenu() : closeMenu(); };
+$('exportBtn').onclick = (e) => { e.stopPropagation(); openExport(); };
 document.addEventListener('click', (e) => {
   if (!$('exportMenu').hidden && !$('exportMenu').contains(e.target)) closeMenu();
   if (!$('help').hidden && !$('help').contains(e.target) && e.target !== $('helpBtn')) toggleHelp(false);
 });
 
-/* ---------------- Claude ---------------- */
+/* ---------------- optional AI helpers (only inside claude.ai, through window.claude) ---------------- */
 let aiReady = false;
 async function photoBlob() {
   const cr = cropRect(), w0 = iw * cr.w, h0 = ih * cr.h, k = Math.min(1, 900 / Math.max(w0, h0));
@@ -505,11 +462,11 @@ async function imageOpts(sample) {
 function aiError(e) {
   const code = e && e.code;
   if (code === 'cancelled') return;
-  if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) { aiReady = false; $('aiForm').hidden = true; buildPanel(); toast('Claude is not available on this page.'); return; }
-  if (code === 'rate_limited') { toast('Claude is busy. Try again in a minute.'); return; }
-  if (code === 'invalid_json') { toast('Claude answered in an unexpected format. Try once more.'); return; }
-  if (code === 'refused') { toast('Claude declined that request. Try describing the look differently.'); return; }
-  toast('Claude could not answer just now. Try again.');
+  if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) { aiReady = false; $('aiForm').hidden = true; buildPanel(); toast('The AI helper is not available on this page.'); return; }
+  if (code === 'rate_limited') { toast('The AI helper is busy. Try again in a minute.'); return; }
+  if (code === 'invalid_json') { toast('The AI helper answered in an unexpected format. Try once more.'); return; }
+  if (code === 'refused') { toast('The AI helper declined that request. Try describing the look differently.'); return; }
+  toast('The AI helper could not answer just now. Try again.');
 }
 function allControls(mode) { return MODES[mode].controls.concat(MODES[mode].more, COMMON_MORE, FOCUS_CTL, EFFECT_CTL); }
 function specFor(mode) {
@@ -543,7 +500,7 @@ async function direct(request) {
   const sample = await sampleP;
   if (!sample || !request.trim() || !src) return;
   const btn = $('aiBtn'); btn.disabled = true;
-  $('status').textContent = 'Claude is designing';
+  $('status').textContent = 'Designing the look';
   try {
     const im = await imageOpts(sample);
     const modes = Object.keys(MODES).filter((m) => !MODES[m].plugin).map((m) => '- ' + m + ' (' + MODES[m].name + (m === 'paths' ? ', text along traced or drawn lines' : '') + '): ' + specFor(m)).join('\n');
@@ -559,7 +516,7 @@ async function direct(request) {
     ].join('\n\n');
     const res = await sample.json(prompt, im.has ? { images: im.images } : {});
     const layers = (res && Array.isArray(res.layers) ? res.layers : []).slice(0, 3).map(cleanLayer).filter(Boolean);
-    if (!layers.length) { toast('Claude answered without usable layers. Try once more.'); statusIdle(); return; }
+    if (!layers.length) { toast('The AI helper answered without usable layers. Try once more.'); statusIdle(); return; }
     if (res.paper && /^#[0-9a-f]{6}$/i.test(res.paper)) doc.out.paper = res.paper;
     if (typeof res.transparent === 'boolean') doc.out.transparent = res.transparent;
     if (MODELS.some((m) => m[0] === res.colorModel)) doc.out.colorModel = res.colorModel;
@@ -598,10 +555,10 @@ async function suggestText(L, key, btn) {
     let val = null;
     if (key === 'words' && Array.isArray(res)) val = res.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 24).join('\n');
     if (key !== 'words' && res && typeof res.text === 'string') val = res.text.trim();
-    if (!val) { toast('Claude answered in an unexpected format. Try once more.'); return; }
+    if (!val) { toast('The AI helper answered in an unexpected format. Try once more.'); return; }
     L[key] = val; buildPanel(); queueHistory();
     if (doc.lines.paths.includes(L)) linesChanged(); else scheduleText(0);
-    toast('New text from Claude', { label: 'Undo', fn: undo });
+    toast('New text from the AI helper', { label: 'Undo', fn: undo });
   } catch (e) { aiError(e); }
   finally { btn.disabled = false; btn.textContent = 'Suggest'; }
 }
@@ -610,13 +567,13 @@ sampleP.then((s) => { if (s) { aiReady = true; $('aiForm').hidden = false; build
 
 /* ---------------- keyboard ---------------- */
 const SHORTCUTS = [
-  ['1 / 2 / 3', 'Photo, Mix and Text views'], ['H', 'Move around'], ['Z', 'Zoom tool'], ['C', 'Crop'], ['W', 'Magic wand'], ['L', 'Lasso'], ['B', 'Selection brush'],
+  ['1 / 2 / 3', 'Photo, Mix and Text views'], ['H', 'Move around'], ['Z', 'Zoom tool'], ['C', 'Crop'], ['W', 'Magic wand'], ['L', 'Lasso'], ['B', 'Selection brush'], ['Y', 'Liquify, Alt restores'],
   ['V', 'Select objects'], ['U', 'Shapes'], ['T', 'Text'], ['P', 'Pen'], ['N', 'Pencil'], ['A', 'Edit points of lines'],
   ['Shift / Alt', 'Add to or subtract from a selection'], ['Alt drag', 'Copy objects while moving'], ['Arrows', 'Nudge objects, Shift for 10 px'], ['Space', 'Hold to move with any tool'],
   ['Enter', 'Finish a pen line, apply a crop'], ['Delete', 'Delete the selected object, line or point'],
   ['Alt while dragging', 'Move freely, without snapping'], ['Shift while drawing', 'Straight lines in 15° steps'],
   [MOD + ' K', 'Find any command'], [MOD + ' O', 'Open an image or a project'], [MOD + ' A', 'Select all shapes'], [MOD + ' ;', 'Snapping on or off'], [MOD + " '", 'Show the grid'],
-  [MOD + ' C / V', 'Copy and paste objects'], [MOD + ' D', 'Deselect'], [MOD + ' J', 'Duplicate objects or text layer'], [MOD + ' Z', 'Undo'], ['Shift ' + MOD + ' Z', 'Redo'], [MOD + ' S', 'Save project'], [MOD + ' E', 'Export menu'],
+  [MOD + ' C / V', 'Copy and paste objects'], [MOD + ' D', 'Deselect'], [MOD + ' J', 'Duplicate objects or text layer'], [MOD + ' Z', 'Undo'], ['Shift ' + MOD + ' Z', 'Redo'], [MOD + ' S', 'Save project'], [MOD + ' E', 'Export window'],
   [MOD + ' + / − / 0', 'Zoom in, out, fit'], [MOD + ' 1 / 2', 'Actual size, zoom to selection'], [MOD + ' scroll or pinch', 'Smooth zoom'], ['Shift N', 'New artboard'],
   ['/', 'Compare with a divider'], ['Hold \\', 'Show the original photo'], ['F1', 'Help and tutorial'], ['Esc', 'Cancel, close menus']
 ];
@@ -698,6 +655,6 @@ Promise.resolve(boot).then(() => {
   const faces = ['400 20px Inter', '900 20px Inter', '200 20px Inter', '400 20px "JetBrains Mono"', '700 20px "Playfair Display"', '600 20px Oswald', '700 20px Oswald', '400 20px "Special Elite"'];
   Promise.race([Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null)).concat(['400 20px "Noto Naskh Arabic"', '700 20px "Noto Naskh Arabic"', '400 20px "Noto Nastaliq Urdu"', '700 20px "Noto Nastaliq Urdu"'].map((f) => document.fonts.load(f, 'خودی کو').catch(() => null)))), new Promise((r) => setTimeout(r, 5000))]).then(() => { C.resetCaches(); if (doc.text.applied) scheduleText(0); thumbsSoon(); });
 });
-window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp, runCommand, COMMANDS, snapAt, gridSize, linesChanged,
+window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, useSample, printGeom, MODES, revealing, applyMotion, setSplitAngle, buildSplitBar, toggleSplit, prefs, photoChanged, rebuildBase, rebuildPhotoView, EXPORTS, EXPORTERS, openExport, runExporter, exporterOpts, recipeFromPNG, recipeFromSVG, codeFor, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp, runCommand, COMMANDS, snapAt, gridSize, linesChanged,
   toScreen: (x, y) => { const g = artGeom(), q = img2art(x, y, g), r = canvas.getBoundingClientRect(); return [r.left + q[0] * r.width / canvas.width, r.top + q[1] * r.height / canvas.height]; },
   get snapHint() { return ui.snapHint; }, get pen() { return pen; } };

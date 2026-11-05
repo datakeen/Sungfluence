@@ -15,16 +15,16 @@ const doc = {
   text: Object.assign({}, LAYER_DEFAULTS, { applied: false, locked: false, source: 'photo', layers: [newLayer('rows', { text: 'whiskers sunbeam purr nap tabby paws meow' })], sel: 0 }),
   objects: [],
   order: ['text', 'lines', 'photo'],
-  out: { paper: '#111113', transparent: false, margin: 0, colorModel: 'rgb', width: 1600, print: 'A3', dpi: 300, mock: 'artboard', shirt: '#1b1b1d', mixPhoto: 0.35, gentle: false }
+  out: { paper: '#111113', transparent: false, margin: 0, colorModel: 'rgb', width: 1600, print: 'A3', dpi: 300, orient: 'auto', printRot: 0, pageMargin: null, printW: 300, printH: 400, printUnit: 'mm', mock: 'artboard', shirt: '#1b1b1d', mixPhoto: 0.35, gentle: false }
 };
 const ui = {
   view: 'photo', tab: 'photo', tool: 'hand', zoom: 'fit', quality: 'fast', open: {},
-  wand: { tol: 0.16, contiguous: true, mode: 'new' }, brush: { size: 40, mode: 'add' }, lasso: { mode: 'new' },
+  wand: { tol: 0.16, contiguous: true, mode: 'new' }, brush: { size: 40, mode: 'add' }, liquify: { mode: 'push', size: 120, strength: 0.5 }, liqFast: false, mockZoom: 1, lasso: { mode: 'new' },
   trace: { kind: 'dark', threshold: 0.5, amount: 0.09, skipWide: true },
   selPath: null, selNode: null, selObjs: [], suggestion: null,
   shape: { kind: 'rect', sides: 6, points: 5, inner: 0.45, radius: 0 }, objLayer: 'lines',
   cropDraft: null, cropCustom: [5, 4],
-  compare: { on: false, pos: 0.5, left: 'original', right: 'current' },
+  compare: { on: false, pos: 0.5, angle: 0, left: 'original', right: 'current' },
   rep: { mode: 'line', count: 4, dx: 120, dy: 0, rot: 0, scale: 100, fade: 0, cols: 3, rows: 3, gx: 20, gy: 20, radius: 300, turn: true, path: null }
 };
 
@@ -147,13 +147,18 @@ const warpOn = (P) => Math.abs(P.bulge) > 0.001 || Math.abs(P.twirl) > 0.5;
 function photoSrc(P) {
   P = P || doc.photo;
   const objs = doc.objects.filter((o) => o.layer === 'photo' && !o.hidden);
-  if (!objs.length && !warpOn(P)) return origImg;
-  const key = objVer + '|' + [P.bulge, P.twirl, P.warpX, P.warpY, P.warpR].join(',') + '|' + iw + 'x' + ih + '|' + imgVer;
+  if (!objs.length && !warpOn(P) && !liqOn(P)) return origImg;
+  // while a Liquify stroke is being painted, a smaller copy keeps the brush smooth
+  const cap = ui.liqFast ? 720 : 2400;
+  const key = objVer + '|' + [P.bulge, P.twirl, P.warpX, P.warpY, P.warpR].join(',') + '|' + (liqOn(P) ? liqKey(P.liquify) : '') + '|' + cap + '|' + iw + 'x' + ih + '|' + imgVer;
   if (photoSrcCache && photoSrcCache.key === key) return photoSrcCache.c;
-  const k = Math.min(1, 2400 / Math.max(iw, ih));
+  const k = Math.min(1, cap / Math.max(iw, ih));
   const c = mk(Math.round(iw * k), Math.round(ih * k)), x = c.getContext('2d');
-  if (warpOn(P)) x.drawImage(warpCanvas(origImg, c.width, c.height, P), 0, 0);
-  else x.drawImage(origImg, 0, 0, c.width, c.height);
+  let base = origImg;
+  // the brushed photo is worked out at up to 1600 px, which is what text art reads, so letting go of the brush stays quick
+  if (liqOn(P)) { const q = Math.min(1, 1600 / Math.max(c.width, c.height)); base = liquifyCanvas(origImg, Math.round(c.width * q), Math.round(c.height * q), P); }
+  if (warpOn(P)) x.drawImage(warpCanvas(base, c.width, c.height, P), 0, 0);
+  else x.drawImage(base, 0, 0, c.width, c.height);
   x.setTransform(k, 0, 0, k, 0, 0);
   objs.forEach((o) => drawObject(x, o));
   x.setTransform(1, 0, 0, 1, 0, 0);
@@ -376,6 +381,7 @@ function startText() {
   if (!activeLayers().length) { textCanvas = null; out = null; compose(); return; }
   runJob('text', textGen(), (res) => {
     out = res.out; textCanvas = res.canvas;
+    if (ui.revealNext) { ui.revealNext = false; startReveal(); } else stopReveal();
     compose(); updatePrint(); updatePalette(); statusIdle();
   });
 }
@@ -496,9 +502,13 @@ function compose() {
   if (canvas.width !== TW || canvas.height !== TH) { canvas.width = TW; canvas.height = TH; }
   const mock = doc.out.mock !== 'artboard';
   const x = ctx;
-  const S = { photo: photoKept, removed: hasRemoval ? remVis : null, text: textShown() ? textCanvas : null, vector: vectorCanvas(g), removedInText: doc.removed.inText && hasRemoval ? remVis : null };
+  const S = { photo: photoKept, removed: hasRemoval ? remVis : null, text: textShown() ? (revealing() ? revealFrame() : textCanvas) : null, vector: vectorCanvas(g), removedInText: doc.removed.inText && hasRemoval ? remVis : null };
   if (ui.cropDraft) composeTo(x, g, { photo: photoKept, removed: S.removed }, { only: ['photo'], ground: '#808080', ignoreOpacity: true });
-  else if (mock) composeTo(x, g, { text: S.text, vector: S.vector }, { only: ['text', 'lines'], ground: doc.out.transparent ? (doc.out.mock === 'paper' ? '#ffffff' : null) : 'paper' });
+  else if (mock) {
+    // on paper or a shirt, the sheet or the shirt shows through a transparent background
+    composeTo(x, g, { text: S.text, vector: S.vector }, { only: ['text', 'lines'], ground: doc.out.transparent ? null : 'paper' });
+    if (ui.compare.on) drawSplit(x, g, S);
+  }
   else {
     composeTo(x, g, S, { mixFade: ui.view === 'mix', ground: doc.out.transparent ? 'checker' : 'paper' });
     if (ui.compare.on) drawSplit(x, g, S);

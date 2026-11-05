@@ -13,14 +13,14 @@ Press **Ctrl K** (Cmd K on a Mac), or choose **Help → Find a command**, and ty
 | Part | What it does |
 | --- | --- |
 | **New** | A blank artboard. Pick a size in pixels, inches, millimeters or grid cells, or a preset such as Instagram post or A4. The small **+** next to the samples makes a 2000 × 2000 px square right away. |
-| **Open** | A photo, or a SungFluence project (`.json`). You can also drag a file onto the window, or paste a picture. |
+| **Open** | A photo, or a SungFluence project (`.sungfluence`, or `.json` from older versions). You can also drag a file onto the window, or paste a picture. |
 | Samples | Pictures to try. Click one to load it. |
 | **Photo, Mix, Text** | Views. Photo shows the photo and vector layers, Text shows only the text art, Mix shows the text art over a faded photo. They are quick ways to set the layer eyes. |
 | Undo, Redo | Ctrl Z and Shift Ctrl Z. |
 | **Plugins** | Add, remove or make extra effects. See [Plugins](plugins.md). |
-| Gear | Settings: zoom speed and behavior, theme, and gentle mode for slow computers. |
+| Gear | Settings: zoom speed and behavior, theme, motion (animations, and how text art appears), and gentle mode for slow computers. |
 | **?** | Keyboard shortcuts, Help, and About. |
-| **Compare** | A divider on the picture with a different look on each side. Drag the divider; choose each side's look in the bar that appears. |
+| **Compare** | A divider on the picture with a different look on each side. Drag the divider; choose each side's look in the bar that appears. The divider can run up and down, across, slanted, or at any angle with the slider; Shift and the arrow keys on the divider turn it in 5° steps. |
 | **Original** | Hold to see the photo for a moment. |
 | **Export** | Every way to save your work. See [Output and export](output-and-export.md). |
 
@@ -65,3 +65,9 @@ Below the layers are four panels: [Photo](photo.md), [Vector](vector.md), [Text 
 ## Zoom
 
 Ctrl and the mouse wheel, or a pinch on a trackpad, zoom smoothly around the pointer. Double-click with the Move tool to switch between Fit and 100%. Settings (the gear) change the speed, the glide, the step size and what the wheel does without Ctrl.
+
+## Motion
+
+Buttons, windows, menus and panels move with short, quiet transitions. When text art appears after you choose a style or a recipe, the letters fly in from outside the picture and land in their places. This only changes the screen for about a second; your artwork and exports are never touched.
+
+In Settings, under **Motion**, choose **Full**, **Calm** (fades without movement) or **Off**, and whether text art should fly in, fade in or appear at once. If your computer is set to reduce motion, SungFluence keeps still whatever you choose.

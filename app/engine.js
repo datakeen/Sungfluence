@@ -2005,6 +2005,176 @@ function toANSI(out) {
   }).join('\n');
 }
 
+/* ---------------- text twins ----------------
+   textGrid turns any finished artwork into a grid of characters with a color for each cell.
+   cols: width in characters. opt.aspect: how much taller a cell is than wide in the target font (2 for most terminals).
+   opt.chars: 'ramp' (keyboard characters), 'blocks', 'braille', 'az' (the letters in order), 'digits', 'letters', 'symbols',
+   or any string of your own. opt.blank: white areas stay spaces. opt.invert: swap ink and paper. */
+const CHAR_SETS = {
+  ramp: ' .:-=+*#%@',
+  blocks: ' ░▒▓█',
+  digits: '0123456789',
+  letters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+  symbols: '.,:;-~=+*^!?/\\|()[]{}<>#%&$@'
+};
+const densityCache = new Map();
+/* sorts characters from light to dark by how much ink they put on the page */
+function byDensity(chars) {
+  if (densityCache.has(chars)) return densityCache.get(chars);
+  const list = Array.from(new Set(Array.from(chars)));
+  let sorted = list;
+  try {
+    const S = 24, c = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(S, S * 2) : Object.assign(document.createElement('canvas'), { width: S, height: S * 2 });
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.font = (S * 1.4) + 'px "JetBrains Mono", monospace'; x.textBaseline = 'middle'; x.textAlign = 'center';
+    const ink = (ch) => {
+      x.clearRect(0, 0, S, S * 2); x.fillStyle = '#000'; x.fillText(ch, S / 2, S);
+      const d = x.getImageData(0, 0, S, S * 2).data; let a = 0;
+      for (let i = 3; i < d.length; i += 4) a += d[i];
+      return a;
+    };
+    const m = new Map(list.map((ch) => [ch, ch === ' ' ? -1 : ink(ch)]));
+    sorted = list.slice().sort((a, b) => m.get(a) - m.get(b));
+  } catch (e) { /* no canvas: keep the order given */ }
+  densityCache.set(chars, sorted);
+  return sorted;
+}
+function textGrid(out, cols, opt) {
+  opt = opt || {};
+  cols = Math.max(4, Math.round(cols || 80));
+  const aspect = opt.aspect || 2;
+  const rows = Math.max(1, Math.round(cols * out.H / out.W / aspect));
+  const kind = opt.chars || 'ramp';
+  const paper = parseColor(out.paper);
+  const pl = (0.2126 * paper[0] + 0.7152 * paper[1] + 0.0722 * paper[2]) / 255;
+  const mk = (w, h) => (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const gw = cols * 2, gh = rows * 4;
+  const tmp = mk(out.W, out.H);
+  draw(tmp.getContext('2d'), Object.assign({}, out, { transparent: false }), 1);
+  const c = mk(gw, gh), x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(tmp, 0, 0, gw, gh);
+  const d = x.getImageData(0, 0, gw, gh).data;
+  const ink = new Float32Array(gw * gh);
+  for (let i = 0; i < gw * gh; i++) {
+    const l = (0.2126 * d[i * 4] + 0.7152 * d[i * 4 + 1] + 0.0722 * d[i * 4 + 2]) / 255;
+    const v = clamp(Math.abs(l - pl) / Math.max(0.35, Math.max(pl, 1 - pl)), 0, 1);
+    ink[i] = opt.invert ? 1 - v : v;
+  }
+  // thin strokes get averaged away when shrunk: stretch tones so the darkest 2% read as full ink
+  const srt = Float32Array.from(ink).sort();
+  const p98 = Math.max(0.15, srt[Math.floor(srt.length * 0.98)]);
+  for (let i = 0; i < ink.length; i++) ink[i] = clamp(ink[i] / p98, 0, 1);
+  // Braille: one dot per sub-pixel, with error diffusion so mid tones stay as dot patterns
+  let on = null;
+  if (kind === 'braille') {
+    on = new Uint8Array(gw * gh); const v = Float32Array.from(ink);
+    for (let y = 0; y < gh; y++) for (let X = 0; X < gw; X++) {
+      const i = y * gw + X, o = v[i], q = o >= 0.5 ? 1 : 0;
+      on[i] = q; const e = o - q;
+      if (X + 1 < gw) v[i + 1] += e * 7 / 16;
+      if (y + 1 < gh) { if (X > 0) v[i + gw - 1] += e * 3 / 16; v[i + gw] += e * 5 / 16; if (X + 1 < gw) v[i + gw + 1] += e / 16; }
+    }
+  }
+  let ramp = null, seq = null;
+  if (kind === 'az') seq = Array.from(opt.text || 'ABCDEFGHIJKLMNOPQRSTUVWXYZ').filter((ch) => ch.trim());
+  else if (kind !== 'braille') {
+    ramp = byDensity(CHAR_SETS[kind] || String(kind));
+    if (opt.blank !== false) { if (ramp[0] !== ' ') ramp = [' '].concat(ramp); } else ramp = ramp.filter((ch) => ch !== ' ');
+    if (!ramp.length) ramp = [' ', '#'];
+  }
+  const bits = [[1, 8], [2, 16], [4, 32], [64, 128]];
+  const grid = [];
+  let k = 0;
+  for (let y = 0; y < rows; y++) {
+    const row = [];
+    for (let X = 0; X < cols; X++) {
+      let a = 0, r = 0, g = 0, b = 0, code = 0;
+      for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) {
+        const i = (y * 4 + dy) * gw + X * 2 + dx;
+        a += ink[i]; r += d[i * 4]; g += d[i * 4 + 1]; b += d[i * 4 + 2];
+        if (on && on[i]) code |= bits[dy][dx];
+      }
+      a /= 8;
+      let ch;
+      if (on) ch = code ? String.fromCharCode(0x2800 + code) : (opt.blank === false ? '⠀' : ' ');
+      else if (seq) ch = (a > 0.18 || opt.blank === false) ? seq[k++ % seq.length] : ' ';
+      else ch = ramp[Math.min(ramp.length - 1, Math.floor(a * ramp.length))];
+      row.push({ ch, c: [Math.round(r / 8), Math.round(g / 8), Math.round(b / 8)], ink: a });
+    }
+    grid.push(row);
+  }
+  return { cols, rows, grid, aspect, paper: [paper[0], paper[1], paper[2]] };
+}
+/* plain lines from a grid, without trailing spaces */
+const gridLines = (G) => G.grid.map((row) => row.map((q) => q.ch).join('').replace(/\s+$/, ''));
+/* terminal colors: depth 16, 256 or 'full' (24-bit) */
+function gridANSI(G, depth) {
+  const codes = [30, 31, 32, 33, 34, 35, 36, 37, 90, 91, 92, 93, 94, 95, 96, 97];
+  const code = (p) => {
+    if (depth === 'full') return '38;2;' + p[0] + ';' + p[1] + ';' + p[2];
+    if (+depth === 256) {
+      const spread = Math.max(p[0], p[1], p[2]) - Math.min(p[0], p[1], p[2]);
+      if (spread < 12) { const grey = Math.round((p[0] + p[1] + p[2]) / 3); return '38;5;' + (grey < 8 ? 16 : grey > 248 ? 231 : 232 + Math.round((grey - 8) / 247 * 23)); }
+      const q = (v) => Math.round(v / 255 * 5);
+      return '38;5;' + (16 + 36 * q(p[0]) + 6 * q(p[1]) + q(p[2]));
+    }
+    return String(codes[nearestPal(p, ANSI16_RGB)]);
+  };
+  return G.grid.map((row) => {
+    let s = '', last = '', end = row.length;
+    while (end > 0 && !row[end - 1].ch.trim()) end--;
+    for (let i = 0; i < end; i++) {
+      const q = row[i];
+      if (!q.ch.trim()) { s += q.ch; continue; }
+      const cc = code(q.c);
+      if (cc !== last) { s += '\u001b[' + cc + 'm'; last = cc; }
+      s += q.ch;
+    }
+    return s + (last ? '\u001b[0m' : '');
+  }).join('\n');
+}
+const escXML = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const hexOf = (p) => '#' + p.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+/* colors rounded a little, so runs of one color are longer and the files smaller */
+const runColor = (p) => hexOf(p.map((v) => (v & 0xF0) | 0x08));
+const inkOn = (paper) => ((0.2126 * paper[0] + 0.7152 * paper[1] + 0.0722 * paper[2]) > 128 ? '#111111' : '#eeeeee');
+/* HTML: one <pre>, with a span for every run of one color */
+function gridHTML(G, color, title) {
+  const body = G.grid.map((row) => {
+    let s = '', run = '', col = null;
+    const flush = () => { if (run) s += col ? '<span style="color:' + col + '">' + escXML(run) + '</span>' : escXML(run); run = ''; };
+    for (const q of row) {
+      const c = color && q.ch.trim() ? runColor(q.c) : null;
+      if (c !== col && (c || q.ch.trim())) { flush(); col = c; }
+      run += q.ch;
+    }
+    flush();
+    return s.replace(/\s+$/, '');
+  }).join('\n');
+  return '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>' + escXML(title || 'Text art') + '</title>\n<style>body{margin:0;background:' + hexOf(G.paper) + ';color:' + inkOn(G.paper) + '}pre{margin:0;padding:16px;font:12px/' + (0.6 * G.aspect).toFixed(2) + ' Consolas,Menlo,"DejaVu Sans Mono",monospace}</style>\n</head>\n<body>\n<pre>' + body + '</pre>\n</body>\n</html>\n';
+}
+/* SVG made for README files: monospace text rows, so it shows on GitHub without fonts or scripts */
+function gridSVG(G, color) {
+  const fs = 12, cw = fs * 0.6, lh = cw * (G.aspect || 2);
+  const W = Math.ceil(G.cols * cw + 16), H = Math.ceil(G.rows * lh + 16);
+  const parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">', '<rect width="100%" height="100%" fill="' + hexOf(G.paper) + '"/>',
+    '<g font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="' + fs + '" fill="' + inkOn(G.paper) + '" xml:space="preserve">'];
+  G.grid.forEach((row, y) => {
+    const yy = (8 + (y + 0.8) * lh).toFixed(1);
+    let i = 0;
+    while (i < row.length) {
+      if (!row[i].ch.trim()) { i++; continue; }
+      const col = color ? runColor(row[i].c) : null; let j = i, t = '';
+      while (j < row.length && (color ? row[j].ch.trim() && runColor(row[j].c) === col : (row[j].ch.trim() || (j + 1 < row.length && row.slice(j).some((q) => q.ch.trim()))))) { t += row[j].ch; j++; }
+      parts.push('<text x="' + (8 + i * cw).toFixed(1) + '" y="' + yy + '"' + (col ? ' fill="' + col + '"' : '') + ' textLength="' + (t.length * cw).toFixed(1) + '">' + escXML(t) + '</text>');
+      i = j;
+    }
+  });
+  parts.push('</g>', '</svg>');
+  return parts.join('\n') + '\n';
+}
+
 function resetCaches() { mcache.clear(); covCache.clear(); twCache = null; }
-global.Sungfluence = global.SungFluence = { plugin: registerPlugin, removePlugin, plugins: pluginList, onPlugin, PLUGIN_API, renderGen, drawGen, traceGen, traceLines, borderFlood, wand, toImageData, blur, STAGES, prepare, treat, render, draw, toSVG, toText, toANSI, rgbToCmyk, parseColor, FONTS, measure, fields, resetCaches, focusWeight, focusDist, spiralReach, famFor, ARABIC };
+global.Sungfluence = global.SungFluence = { plugin: registerPlugin, removePlugin, plugins: pluginList, onPlugin, PLUGIN_API, renderGen, drawGen, traceGen, traceLines, borderFlood, wand, toImageData, blur, STAGES, prepare, treat, render, draw, toSVG, toText, toANSI, textGrid, gridLines, gridANSI, gridHTML, gridSVG, CHAR_SETS, rgbToCmyk, parseColor, FONTS, measure, fields, resetCaches, focusWeight, focusDist, spiralReach, famFor, ARABIC };
 })(typeof window !== 'undefined' ? window : globalThis);

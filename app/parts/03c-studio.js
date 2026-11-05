@@ -3,7 +3,7 @@
 /* ---------------- dialogs ---------------- */
 function openDialog(title, build, wide) {
   const sc = $('dlgScrim'), d = $('dlg');
-  d.replaceChildren(); d.classList.toggle('wide', !!wide);
+  d.replaceChildren(); d.className = 'dialog' + (wide ? ' wide' : '');
   const head = el('div', 'sheet-h'); const h2 = el('h2', null, title); h2.id = 'dlgTitle';
   const close = el('button', 'btn btn-quiet', 'Close'); close.type = 'button'; close.onclick = closeDialog;
   head.append(h2, close);
@@ -246,25 +246,57 @@ function compareCanvas(kind, g, S) {
   else composeTo(x, g, Object.assign({}, S, { text: S.text || textCanvas }), { only: kind.split('+'), ground });
   return c;
 }
+/* The compare divider is a line at any angle. angle 0 is up and down (left and right sides), 90 is across (top and bottom).
+   pos 0..1 slides it along its normal over the whole picture. The first side is where (p - c) · n < 0. */
+function splitGeom(W, H) {
+  const a = (ui.compare.angle || 0) * Math.PI / 180, nx = Math.cos(a), ny = Math.sin(a), dx = -ny, dy = nx;
+  const L = Math.abs(W * nx) + Math.abs(H * ny), k = (clamp(ui.compare.pos, 0, 1) - 0.5) * L;
+  const cx = W / 2 + nx * k, cy = H / 2 + ny * k;
+  // where the line enters and leaves the picture
+  let t0 = -1e9, t1 = 1e9;
+  [[dx, cx, W], [dy, cy, H]].forEach(([d, c, M]) => {
+    if (Math.abs(d) < 1e-9) return;
+    const a1 = (0 - c) / d, a2 = (M - c) / d;
+    t0 = Math.max(t0, Math.min(a1, a2)); t1 = Math.min(t1, Math.max(a1, a2));
+  });
+  if (t1 < t0) { t0 = 0; t1 = 0; }
+  return { nx, ny, dx, dy, cx, cy, L, t0, t1 };
+}
+const splitAcross = () => { const a = Math.abs(((ui.compare.angle || 0) % 180 + 180) % 180); return a > 45 && a < 135; };
 function drawSplit(x, g, S) {
-  const pos = clamp(ui.compare.pos, 0, 1) * g.TW;
   if (ui.compare.right !== 'current') { x.globalAlpha = 1; x.drawImage(compareCanvas(ui.compare.right, g, S), 0, 0); }
-  const L = compareCanvas(ui.compare.left, g, S);
-  x.save(); x.beginPath(); x.rect(0, 0, pos, g.TH); x.clip(); x.clearRect(0, 0, pos, g.TH); x.drawImage(L, 0, 0); x.restore();
+  const L = compareCanvas(ui.compare.left, g, S), q = splitGeom(g.TW, g.TH), B = (g.TW + g.TH) * 2;
+  x.save(); x.beginPath();
+  x.moveTo(q.cx + q.dx * B, q.cy + q.dy * B); x.lineTo(q.cx - q.dx * B, q.cy - q.dy * B);
+  x.lineTo(q.cx - q.dx * B - q.nx * B, q.cy - q.dy * B - q.ny * B); x.lineTo(q.cx + q.dx * B - q.nx * B, q.cy + q.dy * B - q.ny * B);
+  x.closePath(); x.clip();
+  x.clearRect(0, 0, g.TW, g.TH); x.drawImage(L, 0, 0); x.restore();
 }
 const kindName = (k) => (COMPARE_KINDS.find((q) => q[0] === k) || [k, k])[1];
 function layoutSplit() {
-  const on = ui.compare.on && doc.out.mock === 'artboard' && !ui.cropDraft && !!origImg;
+  const on = ui.compare.on && !ui.cropDraft && !!origImg;
   $('splitH').hidden = !on; $('splitBar').hidden = !on;
   $('splitBtn').setAttribute('aria-pressed', String(ui.compare.on));
   if (!on) return;
-  $('splitH').style.left = (clamp(ui.compare.pos, 0, 1) * 100) + '%';
+  // the divider sits on the artwork itself, which on paper or a shirt is smaller than the frame
+  const h = $('splitH'), w = canvas.offsetWidth, ht = canvas.offsetHeight;
+  const q = splitGeom(w, ht), len = Math.max(24, q.t1 - q.t0), mid = (q.t0 + q.t1) / 2;
+  const mx = canvas.offsetLeft + q.cx + q.dx * mid, my = canvas.offsetTop + q.cy + q.dy * mid;
+  Object.assign(h.style, { left: mx + 'px', top: (my - len / 2) + 'px', height: len + 'px', bottom: 'auto', transform: 'rotate(' + (ui.compare.angle || 0) + 'deg)' });
+  h.style.cursor = splitAcross() ? 'ns-resize' : 'ew-resize';
+  h.setAttribute('aria-valuenow', String(Math.round(ui.compare.pos * 100)));
+  // labels stay upright
+  ['splitTagL', 'splitTagR'].forEach((id) => { $(id).style.transform = 'rotate(' + (-(ui.compare.angle || 0)) + 'deg)'; });
   $('splitTagL').textContent = kindName(ui.compare.left); $('splitTagR').textContent = kindName(ui.compare.right);
+  const sides = splitAcross() ? ['Top', 'Bottom'] : ['Left', 'Right'];
+  const bl = $('splitBar').querySelectorAll('.split-side');
+  if (bl.length === 2) { bl[0].textContent = sides[0]; bl[1].textContent = sides[1]; }
 }
+const SPLIT_ANGLES = [[0, '│', 'Up and down'], [90, '─', 'Across'], [-45, '╲', 'Slanted down to the right'], [45, '╱', 'Slanted up to the right']];
 function buildSplitBar() {
   const b = $('splitBar'); b.replaceChildren();
   const pick = (side) => {
-    const s = el('select'); s.setAttribute('aria-label', side === 'left' ? 'Left side shows' : 'Right side shows');
+    const s = el('select'); s.setAttribute('aria-label', side === 'left' ? 'First side shows' : 'Second side shows');
     COMPARE_KINDS.forEach(([v, t]) => { const o = el('option', null, t); o.value = v; if (ui.compare[side] === v) o.selected = true; s.appendChild(o); });
     s.onchange = () => { ui.compare[side] = s.value; compose(); };
     return s;
@@ -272,11 +304,24 @@ function buildSplitBar() {
   const swap = el('button', 'icon-btn', '⇄'); swap.type = 'button'; swap.title = 'Swap sides'; swap.setAttribute('aria-label', 'Swap sides');
   swap.onclick = () => { [ui.compare.left, ui.compare.right] = [ui.compare.right, ui.compare.left]; buildSplitBar(); compose(); };
   const x = el('button', 'icon-btn', '×'); x.type = 'button'; x.title = 'Close compare'; x.setAttribute('aria-label', 'Close compare'); x.onclick = () => toggleSplit(false);
-  b.append(el('span', null, 'Left'), pick('left'), swap, pick('right'), el('span', null, 'Right'), x);
+  // the direction of the divider: four quick choices, and any angle with the slider or Shift and the arrow keys
+  const dir = el('div', 'seg split-dir'); dir.setAttribute('role', 'group'); dir.setAttribute('aria-label', 'Divider direction');
+  SPLIT_ANGLES.forEach(([a, sym, name]) => {
+    const bt = el('button', null, sym); bt.type = 'button'; bt.title = name; bt.setAttribute('aria-label', name);
+    bt.setAttribute('aria-pressed', String((ui.compare.angle || 0) === a));
+    bt.onclick = () => { setSplitAngle(a); buildSplitBar(); };
+    dir.appendChild(bt);
+  });
+  const ang = el('input'); ang.type = 'range'; ang.min = -90; ang.max = 90; ang.step = 1; ang.value = ui.compare.angle || 0; ang.className = 'split-angle';
+  ang.setAttribute('aria-label', 'Divider angle'); ang.title = 'Divider angle. Shift and the arrow keys on the divider turn it too.';
+  ang.oninput = () => { setSplitAngle(+ang.value); dir.querySelectorAll('button').forEach((bt, i) => bt.setAttribute('aria-pressed', String(SPLIT_ANGLES[i][0] === +ang.value))); };
+  const sides = splitAcross() ? ['Top', 'Bottom'] : ['Left', 'Right'];
+  b.append(el('span', 'split-side', sides[0]), pick('left'), swap, pick('right'), el('span', 'split-side', sides[1]), dir, ang, x);
 }
+function setSplitAngle(a) { ui.compare.angle = clamp(Math.round(a), -90, 90); compose(); }
 function toggleSplit(force) {
   ui.compare.on = force === undefined ? !ui.compare.on : !!force;
-  if (ui.compare.on) { if (ui.compare.right === 'current' && ui.compare.left === 'original' && !textShown() && doc.lines.paths.length + doc.objects.length === 0) ui.compare.left = 'original'; buildSplitBar(); }
+  if (ui.compare.on) buildSplitBar();
   compose();
 }
 $('splitBtn').onclick = () => toggleSplit();
@@ -284,12 +329,23 @@ $('splitBtn').onclick = () => toggleSplit();
   const h = $('splitH');
   h.addEventListener('pointerdown', (e) => {
     e.preventDefault(); e.stopPropagation(); h.setPointerCapture(e.pointerId);
-    const move = (ev) => { const r = frame.getBoundingClientRect(); ui.compare.pos = clamp((ev.clientX - r.left) / r.width, 0, 1); compose(); };
+    const move = (ev) => {
+      const r = canvas.getBoundingClientRect(), q = splitGeom(r.width, r.height);
+      const px = ev.clientX - r.left - r.width / 2, py = ev.clientY - r.top - r.height / 2;
+      ui.compare.pos = clamp((px * q.nx + py * q.ny) / q.L + 0.5, 0, 1); compose();
+    };
     const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); };
     h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
   });
-  h.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); ui.compare.pos = clamp(ui.compare.pos + (e.key === 'ArrowLeft' ? -0.02 : 0.02), 0, 1); compose(); } });
+  h.addEventListener('keydown', (e) => {
+    const k = e.key, fwd = k === 'ArrowRight' || k === 'ArrowDown', back = k === 'ArrowLeft' || k === 'ArrowUp';
+    if (!fwd && !back) return;
+    e.preventDefault();
+    if (e.shiftKey) { setSplitAngle((ui.compare.angle || 0) + (fwd ? 5 : -5)); buildSplitBar(); return; }
+    ui.compare.pos = clamp(ui.compare.pos + (back ? -0.02 : 0.02), 0, 1); compose();
+  });
 })();
+
 
 /* ---------------- new artboard ---------------- */
 function artboardPx(st) {
@@ -380,6 +436,10 @@ function openSettings() {
     sn.appendChild(el('span', 'note', 'Choose what to snap to under View → Snapping, or with the small arrow next to Snap. Hold Alt to place something freely.'));
     const s2 = sec(body, 'Look');
     s2.appendChild(makeControl(prefs, Object.assign(S('theme', 'Theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]), { idp: 'pf-', rebuild: () => { applyTheme(); openSettings(); } }), () => savePrefs()));
+    const sm = sec(body, 'Motion');
+    sm.appendChild(makeControl(prefs, Object.assign(S('motion', 'Animations', [['full', 'Full'], ['calm', 'Calm'], ['off', 'Off']]), { idp: 'pf-', rebuild: () => { applyMotion(); openSettings(); } }), () => savePrefs()));
+    sm.appendChild(makeControl(prefs, Object.assign(S('reveal', 'When text art appears', [['fly', 'Letters fly in'], ['fade', 'Fade in'], ['none', 'At once']]), { idp: 'pf-', rebuild: () => openSettings() }), () => savePrefs()));
+    sm.appendChild(el('span', 'note', 'If your computer is set to reduce motion, SungFluence keeps still whatever you choose here.'));
     const s3 = sec(body, 'This computer');
     s3.appendChild(makeControl(doc.out, T('gentle', 'Gentle on this computer', { idp: 'pf-' }), () => {}));
     s3.appendChild(el('span', 'note', 'Settings are saved on this computer only.'));

@@ -8,8 +8,11 @@ const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 
 /* ---------------- toast ---------------- */
 let toastTimer = null;
+/* a short slide and fade when the panel shows another tab */
+function panelIn() { const p = $('panel'); p.classList.remove('panel-in'); void p.offsetWidth; p.classList.add('panel-in'); }
 function toast(msg, action) {
   const t = $('toast');
+  t.classList.remove('toast-in'); void t.offsetWidth; t.classList.add('toast-in');
   t.replaceChildren(el('span', null, msg));
   if (action) { const b = el('button', null, action.label); b.type = 'button'; b.onclick = () => { t.hidden = true; action.fn(); }; t.appendChild(b); }
   t.hidden = false;
@@ -35,7 +38,7 @@ document.querySelectorAll('#viewSeg button').forEach((b) => { b.onclick = () => 
 const TABS = [['photo', 'Photo'], ['lines', 'Vector'], ['text', 'Text art'], ['output', 'Output']];
 function buildTabs() {
   const t = $('tabs'); t.replaceChildren();
-  TABS.forEach(([id, name]) => { const b = el('button', null, name); b.type = 'button'; b.setAttribute('aria-pressed', String(ui.tab === id)); b.onclick = () => { ui.tab = id; buildTabs(); buildPanel(); }; t.appendChild(b); });
+  TABS.forEach(([id, name]) => { const b = el('button', null, name); b.type = 'button'; b.setAttribute('aria-pressed', String(ui.tab === id)); b.onclick = () => { if (ui.tab === id) return; ui.tab = id; buildTabs(); buildPanel(); panelIn(); }; t.appendChild(b); });
 }
 const GRIP = SVGI('<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>');
 function toggleLayerVisible(id) {
@@ -119,7 +122,7 @@ function fmt(c, v) {
   if (['hue', 'twirl', 'rot', 'fa', 'a0'].includes(c.key)) return Math.round(v) + '°';
   if (['posterize', 'pixelate'].includes(c.key) && v < (c.key === 'posterize' ? 2 : 1)) return 'Off';
   if (c.key === 'threshold' && c.idp === 'p-' && v <= 0) return 'Off';
-  if (['opacity', 'vertical', 'detail', 'jitter', 'margin', 'mixPhoto', 'tol', 'threshold', 'amount', 'sepia', 'vignette', 'grain', 'bulge', 'warpX', 'warpY', 'warpR', 'shadows', 'highlights', 'fade', 'inner', 'alpha', 'alphaTone', 'colorLift', 'r0', 'r1'].includes(c.key)) return Math.round(v * 100) + '%';
+  if (['opacity', 'vertical', 'detail', 'jitter', 'margin', 'mixPhoto', 'tol', 'threshold', 'amount', 'sepia', 'vignette', 'grain', 'bulge', 'warpX', 'warpY', 'warpR', 'shadows', 'highlights', 'fade', 'inner', 'alpha', 'alphaTone', 'colorLift', 'r0', 'r1', 'scale'].includes(c.key)) return Math.round(v * 100) + '%';
   if (c.step >= 1) return String(Math.round(v));
   return Number(v).toFixed(c.step < 0.05 ? 2 : 1);
 }
@@ -189,7 +192,7 @@ function makeControl(obj, c, after) {
       lb.onclick = () => openLibrary({ obj, key: c.key, kind: c.key === 'words' ? 'list' : (obj.mode === 'halftone' ? 'glyphs' : 'text'), label: MODES[obj.mode] ? MODES[obj.mode].name : 'line' });
       tools.appendChild(lb);
       if (aiReady && obj.mode !== 'halftone') {
-        const sb = el('button', 'mini-btn', 'Suggest'); sb.type = 'button'; sb.title = 'Ask Claude for text that suits this photo';
+        const sb = el('button', 'mini-btn', 'Suggest'); sb.type = 'button'; sb.title = 'Ask the AI helper for text that suits this photo';
         sb.onclick = () => suggestText(obj, c.key, sb);
         tools.appendChild(sb);
       }
@@ -314,6 +317,7 @@ function buildPhotoPanel(p) {
   s.appendChild(disclosure('photoFx', 'Effects', [R('grain', 'Grain', 0, 1, 0.02), R('posterize', 'Posterize', 0, 16, 1), R('threshold', 'Black and white cut', 0, 0.95, 0.01), R('pixelate', 'Pixelate', 0, 40, 1)].map((c) => Object.assign(c, { idp: 'p-' })), ph, pc()));
   const warp = () => { clearTimeout(warpTimer); warpTimer = setTimeout(() => photoChanged('source'), 90); };
   s.appendChild(disclosure('photoWarp', 'Bulge and twirl', [R('bulge', 'Bulge or pinch', -1, 1, 0.02), R('twirl', 'Twirl', -360, 360, 5), R('warpX', 'Center, across', 0, 1, 0.01), R('warpY', 'Center, down', 0, 1, 0.01), R('warpR', 'Size', 0.05, 1, 0.01)].map((c) => Object.assign(c, { idp: 'p-' })), ph, warp));
+  { const lq = el('div', 'row2'); lq.append(optBtn('Liquify by hand (Y)', () => setTool('liquify')), optBtn('Reset liquify', liqReset, false, !liqOn(ph))); s.appendChild(lq); s.appendChild(el('span', 'note', 'Liquify brushes the photo: push it around, bloat, pucker or twirl a spot, and Alt restores it.')); }
   s = sec(p, 'Text and shapes on the photo');
   s.appendChild(el('span', 'note', 'These become part of the photo, so text art draws them too. Use the Vector panel for objects that float above.'));
   const og = el('div', 'grid4');
@@ -663,6 +667,7 @@ function buildTiles() {
 function setLayerStyle(k) {
   const cur = curLayer(), m = MODES[k];
   if (!m || !cur || cur.mode === k) return;
+  revealSoon();
   const keep = {};
   Object.keys(COMMON_DEFAULTS).forEach((c) => { keep[c] = cur[c]; });
   if (cur.text && cur.mode !== 'halftone' && 'text' in m.defaults && k !== 'halftone') keep.text = cur.text;
@@ -710,6 +715,7 @@ function recipeLayers(r) {
   });
 }
 function applyRecipe(r) {
+  revealSoon();
   doc.out.paper = r.paper; doc.out.transparent = !!r.transparent;
   const lineLayers = doc.text.layers.filter((L) => L.mode === 'paths');
   doc.text.layers = recipeLayers(r).concat(doc.text.source === 'both' ? lineLayers : []);
@@ -754,6 +760,7 @@ function updateCTA() {
 }
 function applyTextArt() {
   if (!src) return;
+  if (!doc.text.applied) revealSoon();
   const sg = ui.suggestion || suggestFor(baseSrc);
   if (doc.text.applied) { setView('text'); return; }
   if (sg.kind === 'lines') {
@@ -868,19 +875,24 @@ let varJob = 0;
 function buildOutputPanel(p) {
   const o = doc.out;
   const oc = (rebuildView) => () => { if (rebuildView) { rebuildPhotoView(); } compose(); queueHistory(); scheduleText(0); };
-  let s = sec(p, 'Paper');
-  const sw = el('div', 'swatches'); sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Paper color');
-  PAPERS.forEach(([h, n]) => {
-    const b = el('button', 'sw'); b.type = 'button'; b.style.background = h; b.setAttribute('aria-label', n + ' paper'); b.title = n;
+  // the background: on the T-shirt preview it is the shirt, so the swatches are shirt colors and set both
+  const shirt = o.mock === 'shirt';
+  let s = sec(p, shirt ? 'T-shirt color (background)' : 'Paper color (background)');
+  const sw = el('div', 'swatches'); sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', shirt ? 'T-shirt color' : 'Paper color');
+  (shirt ? SHIRTS : PAPERS).forEach(([h, n]) => {
+    const b = el('button', 'sw'); b.type = 'button'; b.style.background = h; b.setAttribute('aria-label', n + (shirt ? ' shirt' : ' paper')); b.title = n;
     b.setAttribute('aria-pressed', String(o.paper.toLowerCase() === h));
-    b.onclick = () => { o.paper = h; buildPanel(); compose(); queueHistory(); scheduleText(0); };
+    b.onclick = () => { o.paper = h; if (shirt) o.shirt = h; inkForPaper(); buildPanel(); compose(); queueHistory(); scheduleText(0); };
     sw.appendChild(b);
   });
-  const ci = el('input'); ci.type = 'color'; ci.id = 'c-paper'; ci.value = o.paper; ci.setAttribute('aria-label', 'Custom paper color');
-  ci.oninput = () => { o.paper = ci.value; compose(); queueHistory(); scheduleText(); };
+  const ci = el('input'); ci.type = 'color'; ci.id = 'c-paper'; ci.value = o.paper; ci.setAttribute('aria-label', shirt ? 'Custom T-shirt color' : 'Custom paper color');
+  ci.oninput = () => { o.paper = ci.value; if (shirt) o.shirt = ci.value; compose(); queueHistory(); scheduleText(); };
+  ci.onchange = () => { if (inkForPaper()) { buildPanel(); scheduleText(0); } };
   sw.appendChild(ci); s.appendChild(sw);
   s.appendChild(makeControl(o, T('transparent', 'Transparent background', { idp: 'o-' }), oc()));
-  s.appendChild(el('span', 'note', 'For T-shirts, stickers and overlays. Pick the paper color closest to the shirt so the letters are chosen to show on it.'));
+  s.appendChild(el('span', 'note', o.transparent
+    ? 'The background is left out of the file. The letters are still chosen to show on ' + (shirt ? 'this shirt color' : 'this paper color') + ', so keep it close to what you will print on. Formats without transparency, such as JPG, fill it with this color.'
+    : (shirt ? 'The letters are chosen to show on this shirt color. Turn on Transparent background to print only the letters.' : 'The color behind the letters. Turn on Transparent background for T-shirts, stickers and overlays.')));
   s = sec(p, 'Color and size');
   s.appendChild(makeControl(o, Object.assign(S('colorModel', 'Output color', MODELS), { idp: 'o-', rebuild: () => buildPanel() }), oc()));
   s.appendChild(el('span', 'note', MODEL_NOTE[o.colorModel]));
@@ -895,46 +907,113 @@ function buildOutputPanel(p) {
   s.appendChild(cw);
   s.appendChild(el('span', 'note', 'Letter sizes are in artboard pixels. While you work, a smaller preview is drawn; exports always use the full artboard. The height follows the photo or crop.'));
   s = sec(p, 'Preview');
-  s.appendChild(makeControl(o, Object.assign(S('mock', 'Show on', [['artboard', 'Artboard'], ['paper', 'Paper'], ['shirt', 'T-shirt']]), { idp: 'o-', rebuild: () => buildPanel() }), () => compose()));
-  if (o.mock === 'shirt') {
-    const ss = el('div', 'swatches'); ss.setAttribute('role', 'group'); ss.setAttribute('aria-label', 'Shirt color'); ss.appendChild(el('span', 'val', 'Shirt'));
-    SHIRTS.forEach(([h, n]) => { const b = el('button', 'sw'); b.type = 'button'; b.style.background = h; b.title = n; b.setAttribute('aria-label', n + ' shirt'); b.setAttribute('aria-pressed', String(o.shirt === h)); b.onclick = () => { o.shirt = h; buildPanel(); layoutStage(); }; ss.appendChild(b); });
-    s.appendChild(ss);
-  }
+  s.appendChild(makeControl(o, Object.assign(S('mock', 'Show on', [['artboard', 'Artboard'], ['paper', 'Paper'], ['shirt', 'T-shirt']]), { idp: 'o-', rebuild: () => {
+    // the shirt preview starts from the paper color, so what you see is what the letters were chosen for
+    if (o.mock === 'shirt') o.shirt = o.paper;
+    buildPanel(); compose();
+  } }), () => compose()));
+  if (o.mock !== 'artboard') s.appendChild(el('span', 'note', 'Zoom with Ctrl and the wheel or the buttons below. Drag to move around. Drawing tools work on the Artboard view.'));
   s.appendChild(makeControl(o, R('mixPhoto', 'Photo strength in Mix view', 0.05, 1, 0.05, { idp: 'o-' }), () => compose()));
   s = sec(p, 'Print');
+  const pchg = () => { updatePrint(); layoutStage(); queueHistory(); };
   const pr = el('div', 'ctl');
   const lab = el('label', 'lab', 'Print size'); lab.htmlFor = 'c-print';
   const sl = el('select'); sl.id = 'c-print';
-  Object.keys(PRINTS).forEach((k) => { const op = el('option', null, k); op.value = k; if (k === o.print) op.selected = true; sl.appendChild(op); });
-  sl.onchange = () => { o.print = sl.value; updatePrint(); layoutStage(); };
-  const dseg = el('div', 'seg'); dseg.setAttribute('role', 'group'); dseg.setAttribute('aria-label', 'Print resolution');
-  [[150, '150 dpi'], [300, '300 dpi']].forEach(([v, t]) => { const b = el('button', null, t); b.type = 'button'; b.setAttribute('aria-pressed', String(o.dpi === v)); b.onclick = () => { o.dpi = v; buildPanel(); }; dseg.appendChild(b); });
-  pr.append(lab, sl, dseg); s.appendChild(pr);
+  PRINT_GROUPS.forEach(([g, sizes]) => {
+    const og = el('optgroup'); og.label = g;
+    Object.keys(sizes).forEach((k) => { const op = el('option', null, k); op.value = k; if (k === o.print) op.selected = true; og.appendChild(op); });
+    sl.appendChild(og);
+  });
+  const cop = el('option', null, 'Custom size…'); cop.value = CUSTOM_PRINT; if (o.print === CUSTOM_PRINT) cop.selected = true; sl.appendChild(cop);
+  sl.onchange = () => { o.print = sl.value; buildPanel(); pchg(); };
+  pr.append(lab, sl); s.appendChild(pr);
+  if (o.print === CUSTOM_PRINT) {
+    const row = el('div', 'row2');
+    const f = { mm: 1, cm: 10, in: 25.4 }[o.printUnit] || 1;
+    let t = null; const later = (fn) => { clearTimeout(t); t = setTimeout(() => { fn(); pchg(); }, 350); };
+    row.append(numInput('Width', +(o.printW / f).toFixed(2), (v) => later(() => { o.printW = clamp(v * f, 10, 5000); }), { min: 0.5, max: 5000, unit: o.printUnit }),
+      numInput('Height', +(o.printH / f).toFixed(2), (v) => later(() => { o.printH = clamp(v * f, 10, 5000); }), { min: 0.5, max: 5000, unit: o.printUnit }));
+    s.appendChild(row);
+    s.appendChild(makeControl(o, Object.assign(S('printUnit', 'Units', [['mm', 'mm'], ['cm', 'cm'], ['in', 'inches']]), { idp: 'o-', rebuild: () => buildPanel() }), () => {}));
+  }
+  s.appendChild(makeControl(o, Object.assign(S('orient', 'Page', [['auto', 'Fit the art'], ['portrait', 'Portrait'], ['landscape', 'Landscape']]), { idp: 'o-', rebuild: () => buildPanel() }), pchg));
+  s.appendChild(makeControl(o, R('printRot', 'Turn the art on the page', -180, 180, 1, { idp: 'o-' }), () => { o.printRot = Math.round(o.printRot); pchg(); }));
+  const rq = el('div', 'row2 quick');
+  [-90, -45, 0, 45, 90, 180].forEach((a) => { const b = el('button', 'mini-btn', (a > 0 ? '+' : '') + a + '°'); b.type = 'button'; b.setAttribute('aria-pressed', String((o.printRot || 0) === a)); b.onclick = () => { o.printRot = a; buildPanel(); pchg(); }; rq.appendChild(b); });
+  s.appendChild(rq);
+  const mrow = el('div', 'row2');
+  mrow.appendChild(numInput('Page margin', o.pageMargin == null ? '' : o.pageMargin, (v) => { o.pageMargin = clamp(v, 0, 300); pchg(); }, { min: 0, max: 300, step: 1, unit: 'mm' }));
+  const auto = optBtn('Auto', () => { o.pageMargin = null; buildPanel(); pchg(); }); auto.classList.add('btn-quiet'); auto.setAttribute('aria-pressed', String(o.pageMargin == null)); mrow.appendChild(auto);
+  s.appendChild(mrow);
+  // resolution: the common choices as buttons, and any number in the field
+  const dl = el('span', 'lab', 'Resolution (dpi)'); dl.id = 'c-dpi-l';
+  const dseg = el('div', 'seg'); dseg.setAttribute('role', 'group'); dseg.setAttribute('aria-labelledby', 'c-dpi-l');
+  DPI_PRESETS.forEach(([v, t]) => { const b = el('button', null, t); b.type = 'button'; b.setAttribute('aria-pressed', String(o.dpi === v)); b.onclick = () => { o.dpi = v; buildPanel(); pchg(); }; dseg.appendChild(b); });
+  const dctl = el('div', 'ctl'); dctl.append(dl, dseg); s.appendChild(dctl);
+  const drow = el('div', 'row2'); let dT = null;
+  drow.appendChild(numInput('Any dpi', o.dpi, (v) => { clearTimeout(dT); dT = setTimeout(() => { o.dpi = clamp(Math.round(v), 30, 2400); buildPanel(); pchg(); }, 500); }, { min: 30, max: 2400, step: 1, unit: 'dpi' }));
+  s.appendChild(drow);
+  s.appendChild(el('span', 'note', DPI_NOTE(o.dpi)));
+  const hb = el('button', 'mini-btn', 'Which dpi should I use?'); hb.type = 'button'; hb.onclick = () => openHelp('printing'); s.appendChild(hb);
   const po = el('div', 'print'); po.id = 'printOut'; s.appendChild(po);
   updatePrint();
   s = sec(p, 'Performance');
   s.appendChild(makeControl(o, T('gentle', 'Gentle on this computer', { idp: 'o-' }), () => {}));
   s.appendChild(el('span', 'note', 'Works in shorter bursts with longer rests, so other apps stay fast. Results take a little longer.'));
 }
+/* When the new paper hides a layer's ink (navy letters on black paper, say), switch that ink to one that shows, and say so. */
+function luminanceOf(hex) { const c = C.parseColor(hex); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); }
+function contrastOf(a, b) { const x = luminanceOf(a), y = luminanceOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function inkForPaper() {
+  const paper = doc.out.paper, dark = isDarkHex(paper), fixed = [];
+  doc.text.layers.forEach((L) => {
+    if (!['ink', 'duotone'].includes(L.color) || !L.inkColor) return;
+    if (contrastOf(L.inkColor, paper) >= 2.2) return;
+    fixed.push(MODES[L.mode] ? MODES[L.mode].name : L.mode);
+    L.inkColor = dark ? '#f2efe6' : '#14213d';
+  });
+  if (fixed.length) toast('Changed the ink of ' + fixed.join(', ') + ' to ' + (dark ? 'light' : 'dark') + ', so it shows on this paper', { label: 'Undo', fn: undo });
+  return fixed.length > 0;
+}
+/* a one-line hint for the chosen resolution; the Printing help page has the details and sources */
+function DPI_NOTE(d) {
+  if (d < 100) return d + ' dpi: only for screens. A screen ignores dpi and shows pixels, so this does not make anything sharper or softer there.';
+  if (d < 200) return d + ' dpi: posters and banners seen from a few steps away, and the usual minimum for T-shirt printing.';
+  if (d < 400) return d + ' dpi: the common choice for prints seen up close, such as photos, books, flyers and cards.';
+  return d + ' dpi: fine line art and small text on some printers. Ask your printer first: most photo prints gain nothing above 300.';
+}
+const MAX_PRINT_PX = 9000;
+function printPaper() {
+  const o = doc.out;
+  if (o.print === CUSTOM_PRINT) return [Math.min(o.printW, o.printH), Math.max(o.printW, o.printH), undefined, o.printW > o.printH];
+  return PRINTS[o.print] || PRINTS.A3;
+}
 function printGeom() {
-  const [a, b] = PRINTS[doc.out.print];
+  const o = doc.out, P = printPaper();
+  const [a, b] = P;
   const g = artGeom(1);
   const ar = g.TW / g.TH;
-  const land = ar >= 1;
+  const rot = ((o.printRot || 0) % 360) * Math.PI / 180, c = Math.abs(Math.cos(rot)), sn = Math.abs(Math.sin(rot));
+  // how wide and tall the turned artwork is, per unit of its own width
+  const bw = c + sn / ar, bh = sn + c / ar;
+  const land = o.orient === 'landscape' ? true : o.orient === 'portrait' ? false : bw >= bh;
   const pw = land ? Math.max(a, b) : Math.min(a, b), ph = land ? Math.min(a, b) : Math.max(a, b);
-  const m = doc.out.print.startsWith('T-shirt') ? 0 : 0.06 * Math.min(pw, ph);
-  const aw = Math.min(pw - 2 * m, (ph - 2 * m) * ar), ah = aw / ar;
-  const needPx = Math.round(aw / 25.4 * doc.out.dpi);
-  return { pw, ph, aw, ah, x: (pw - aw) / 2, y: (ph - ah) / 2, land, needPx, needH: Math.round(needPx / ar), TW: g.TW, TH: g.TH };
+  const m = o.pageMargin != null ? Math.min(o.pageMargin, Math.min(pw, ph) * 0.45) : P[2] === 0 ? 0 : 0.06 * Math.min(pw, ph);
+  const aw = Math.max(1, Math.min((pw - 2 * m) / bw, (ph - 2 * m) / bh)), ah = aw / ar;
+  const want = Math.round(aw / 25.4 * o.dpi);
+  const needPx = Math.min(want, Math.round(MAX_PRINT_PX * Math.min(1, ar)));
+  return { pw, ph, aw, ah, x: (pw - aw) / 2, y: (ph - ah) / 2, m, land, rot: o.printRot || 0, needPx, needH: Math.round(needPx / ar), capped: needPx < want,
+    realDpi: Math.round(needPx / (aw / 25.4)), TW: g.TW, TH: g.TH, name: o.print === CUSTOM_PRINT ? Math.round(a) + ' × ' + Math.round(b) + ' mm' : o.print };
 }
 function updatePrint() {
   const box = document.getElementById('printOut');
   if (!box || !origImg) return;
   const g = printGeom();
   const sub = el('div', 'print-sub');
-  sub.appendChild(el('div', null, doc.out.print + ' ' + (g.land ? 'landscape' : 'portrait') + (g.x > 0.5 ? ', ' + Math.round(g.x) + ' mm margins.' : '.')));
-  sub.appendChild(el('div', null, 'Needs ' + g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px at ' + doc.out.dpi + ' dpi. Print exports use exactly that size.'));
+  sub.appendChild(el('div', null, g.name + ', ' + (g.land ? 'landscape' : 'portrait') + (g.m > 0.5 ? ', ' + Math.round(g.m) + ' mm margins' : ', no margin') + (g.rot ? ', art turned ' + g.rot + '°' : '') + '.'));
+  sub.appendChild(el('div', null, 'Needs ' + g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px at ' + g.realDpi + ' dpi. Print exports use exactly that size.'));
+  if (g.capped) sub.appendChild(el('div', 'warn', 'That is more than ' + MAX_PRINT_PX.toLocaleString() + ' px, the largest SungFluence draws, so print exports use ' + g.realDpi + ' dpi at this size.'));
+  if (g.rot) sub.appendChild(el('div', null, 'The turned art shows on the Paper preview and in the PDF for print. PNG files and the CMYK PDF keep the art straight.'));
   if (out) {
     const k = 1 / (out.W / g.TW);
     out.layers.forEach((L) => {
@@ -943,7 +1022,7 @@ function updatePrint() {
       sub.appendChild(el('div', pt < 4 ? 'warn' : null, MODES[L.mode].name + ': ' + L.grid.cols + ' × ' + L.grid.rows + ' characters at ' + pt.toFixed(1) + ' pt' + (pt < 4 ? ', which reads as texture rather than letters.' : '.')));
     });
   }
-  if (doc.out.transparent) sub.appendChild(el('div', 'ok', 'Transparent background: PNG, SVG and PDF keep it clear.'));
+  if (doc.out.transparent) sub.appendChild(el('div', 'ok', 'Transparent background: kept clear in PNG, SVG, PDF and the text outputs. JPG cannot be transparent, so a JPG gets the ' + (doc.out.mock === 'shirt' ? 'T-shirt' : 'paper') + ' color (' + doc.out.paper + ') behind the letters. Change that color above to choose it.'));
   box.replaceChildren(el('div', 'print-big', Math.round(g.aw) + ' × ' + Math.round(g.ah) + ' mm'), sub);
 }
 function updatePalette() {

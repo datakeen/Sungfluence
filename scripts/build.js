@@ -33,7 +33,7 @@ const running = plugins.filter((f) => !/template/.test(f));
 //     styles.md and shortcuts.md are written from the code first, so they always match the app.
 require('./docs.js').writeDocs();
 const { md } = require('./md.js');
-const HELP_ORDER = ['index', 'getting-started', 'workspace', 'photo', 'vector', 'text-art', 'styles', 'output-and-export', 'urdu-and-arabic', 'plugins', 'shortcuts', 'troubleshooting'];
+const HELP_ORDER = ['index', 'getting-started', 'workspace', 'photo', 'vector', 'text-art', 'styles', 'output-and-export', 'printing', 'urdu-and-arabic', 'plugins', 'shortcuts', 'troubleshooting'];
 const helpDir = path.join(root, 'docs', 'help');
 const helpIds = HELP_ORDER.concat(fs.readdirSync(helpDir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)).filter((id) => !HELP_ORDER.includes(id)));
 const help = { order: [], pages: {} };

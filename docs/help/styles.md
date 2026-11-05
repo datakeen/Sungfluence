@@ -57,6 +57,7 @@ Text that follows the edges and forms of the photo, like an engraving.
 | Setting | Choices | Starts at |
 | --- | --- | --- |
 | Text | Text, several lines | every picture is a story told in lett... |
+| Letter size | Slider, 0.4 to 2.4 | 0.95 |
 | Line spacing | Slider, 6 to 30 | 12 |
 | Leave light areas empty | Slider, 0 to 0.7 | 0.15 |
 | Color | Ink, Photo, Tone, Duotone | Ink |
@@ -103,7 +104,7 @@ Classic ASCII art. Each cell gets the character whose ink best matches the tone 
 
 | Setting | Choices | Starts at |
 | --- | --- | --- |
-| Columns | Slider, 30 to 260 | 120 |
+| Columns (fewer means bigger letters) | Slider, 30 to 260 | 120 |
 | Character set | Classic, Letters, Detailed, Blocks, Minimal, Custom | Classic |
 | Color | Ink, Photo, Cell fill, Tone | Ink |
 
@@ -121,7 +122,7 @@ Braille dots or half blocks: fine detail that still copies as plain text.
 | Setting | Choices | Starts at |
 | --- | --- | --- |
 | Characters | Braille dots, Half blocks | Braille dots |
-| Columns | Slider, 40 to 320 | 150 |
+| Columns (fewer means bigger dots) | Slider, 40 to 320 | 150 |
 | Threshold | Slider, 0.1 to 0.9 | 0.5 |
 | Color | Ink, Photo | Ink |
 
@@ -132,7 +133,8 @@ A halftone screen where every dot is a letter. The tone sets its size, its weigh
 | Setting | Choices | Starts at |
 | --- | --- | --- |
 | Glyphs | One line of text | O |
-| Columns | Slider, 16 to 200 | 80 |
+| Columns (fewer means bigger glyphs) | Slider, 16 to 200 | 80 |
+| Letter size | Slider, 0.5 to 2.5 | 1.35 |
 | Tone changes | Size, Weight, Both | Size |
 | Grid | Square, Offset | Offset |
 | Rotation | Upright, Follow edges, Scattered | Upright |
@@ -143,7 +145,6 @@ A halftone screen where every dot is a letter. The tone sets its size, its weigh
 
 | Setting | Choices | Starts at |
 | --- | --- | --- |
-| Glyph scale | Slider, 0.5 to 2.5 | 1.35 |
 | Tone curve | Slider, 0.3 to 1.5 | 0.75 |
 
 **Letters:** Weight, from thin to bold; Italic.
@@ -180,6 +181,7 @@ One sentence on a spiral or on rings. Letters thicken where the photo is dark.
 | --- | --- | --- |
 | Text | Text, several lines | every picture is a story told in lett... |
 | Path | Spiral, Rings | Spiral |
+| Letter size | Slider, 0.4 to 2.4 | 1.15 |
 | Ring spacing | Slider, 5 to 30 | 11 |
 | Text starts | At the center, Outside | At the center |
 | Direction | Auto, Clockwise, Anticlockwise | Auto |
@@ -207,6 +209,7 @@ Rows of text lifted by the tones, like a terrain map. Rows behind can be hidden.
 | Setting | Choices | Starts at |
 | --- | --- | --- |
 | Text | Text, several lines | every picture is a story told in lett... |
+| Letter size | Slider, 0.4 to 2.4 | 0.9 |
 | Row spacing | Slider, 6 to 30 | 13 |
 | Lift | Slider, 0 to 5 | 2.2 |
 | Hide lines behind | On or off | On |
@@ -229,7 +232,7 @@ Typed and overstruck characters with ribbon ink and a little wobble, like 1960s 
 
 | Setting | Choices | Starts at |
 | --- | --- | --- |
-| Columns | Slider, 30 to 200 | 96 |
+| Columns (fewer means bigger letters) | Slider, 30 to 200 | 96 |
 | Lightness | Slider, 0.6 to 3 | 1.6 |
 | Wobble and ribbon | Slider, 0 to 2 | 1 |
 | Edge strokes | Slider, 0 to 1 | 0.4 |

@@ -38,7 +38,18 @@ const COLOR_LABEL = { ink: 'Ink', image: 'Photo', fill: 'Cell fill', tone: 'Tone
 const INKS = ['#111111', '#ffffff', '#f2efe6', '#14213d', '#c8553d', '#e8a33d'];
 const PAPERS = [['#ffffff', 'White'], ['#f3efe6', 'Cream'], ['#e9e4d8', 'Stone'], ['#111113', 'Black'], ['#0b1626', 'Navy'], ['#07110b', 'Terminal']];
 const SHIRTS = [['#f6f6f4', 'White'], ['#1b1b1d', 'Black'], ['#8f9096', 'Heather gray'], ['#1f2a44', 'Navy'], ['#5a1f2b', 'Maroon'], ['#d8c7a6', 'Sand']];
-const PRINTS = { 'A4': [210, 297], 'A3': [297, 420], 'A2': [420, 594], 'A1': [594, 841], 'Letter': [215.9, 279.4], '16 × 20 in': [406.4, 508], '24 × 36 in': [609.6, 914.4], 'T-shirt chest 30 cm': [300, 400] };
+/* Print sizes in millimetres, short side first. A third value of 0 means no page margin (prints that fill the area). */
+const PRINT_GROUPS = [
+  ['ISO A paper', { 'A0': [841, 1189], 'A1': [594, 841], 'A2': [420, 594], 'A3': [297, 420], 'A4': [210, 297], 'A5': [148, 210], 'A6': [105, 148] }],
+  ['ISO B paper', { 'B3': [353, 500], 'B4': [250, 353], 'B5': [176, 250] }],
+  ['US paper', { 'Letter': [215.9, 279.4], 'Legal': [215.9, 355.6], 'Tabloid 11 × 17 in': [279.4, 431.8], 'Super B 13 × 19 in': [330.2, 482.6] }],
+  ['Photo prints', { '4 × 6 in': [101.6, 152.4], '5 × 7 in': [127, 177.8], '8 × 10 in': [203.2, 254], '11 × 14 in': [279.4, 355.6], '12 × 12 in': [304.8, 304.8] }],
+  ['Posters', { '12 × 18 in': [304.8, 457.2], '16 × 20 in': [406.4, 508], '18 × 24 in': [457.2, 609.6], '24 × 36 in': [609.6, 914.4], '50 × 70 cm': [500, 700], '70 × 100 cm': [700, 1000] }],
+  ['Clothes and small things', { 'T-shirt chest 30 cm': [300, 400, 0], 'T-shirt full front 12 × 16 in': [304.8, 406.4, 0], 'Left chest 4 × 4 in': [101.6, 101.6, 0], 'Sticker 3 × 3 in': [76.2, 76.2, 0], 'Business card 85 × 55 mm': [55, 85, 0] }]
+];
+const PRINTS = Object.assign({}, ...PRINT_GROUPS.map((g) => g[1]));
+const CUSTOM_PRINT = 'Custom size';
+const DPI_PRESETS = [[72, '72'], [150, '150'], [300, '300'], [600, '600']];
 const FRAMES = [['original', 'Original'], ['1:1', '1:1'], ['4:5', '4:5'], ['3:2', '3:2'], ['16:9', '16:9'], ['9:16', '9:16']];
 const MODELS = [['rgb', 'RGB'], ['cmyk', 'CMYK'], ['ansi', '16 colors'], ['gray', 'Gray'], ['bw', 'B/W']];
 const MODEL_NOTE = {
@@ -80,8 +91,8 @@ const MODES = {
   },
   flow: {
     name: 'Flow lines', about: 'Text that follows the edges and forms of the photo, like an engraving.', glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M1 4c5-4 9 4 14 0s7-1 8 0M1 9c5-4 9 4 14 0s7-1 8 0M1 14c5-4 9 4 14 0s7-1 8 0" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
-    defaults: { text: PASSAGE, spacing: 12, minInk: 0.15, font: 'sans', weight: 600, color: 'ink', smooth: 5, weightMod: true, sizeMod: true, tracking: 0.05 },
-    controls: [TA('text', 'Text'), R('spacing', 'Line spacing', 6, 30, 0.5), R('minInk', 'Leave light areas empty', 0, 0.7, 0.01), COL(['ink', 'image', 'tone', 'duotone']), FONT],
+    defaults: { text: PASSAGE, spacing: 12, scale: 0.95, minInk: 0.15, font: 'sans', weight: 600, color: 'ink', smooth: 5, weightMod: true, sizeMod: true, tracking: 0.05 },
+    controls: [TA('text', 'Text'), R('scale', 'Letter size', 0.4, 2.4, 0.05), R('spacing', 'Line spacing', 6, 30, 0.5), R('minInk', 'Leave light areas empty', 0, 0.7, 0.01), COL(['ink', 'image', 'tone', 'duotone']), FONT],
     more: [R('smooth', 'Smoothness', 1, 14, 1), T('weightMod', 'Weight follows tone'), T('sizeMod', 'Size follows tone')]
   },
   mosaic: {
@@ -93,20 +104,20 @@ const MODES = {
   grid: {
     name: 'ASCII', about: 'Classic ASCII art. Each cell gets the character whose ink best matches the tone there.', glyph: '<span style="font-family:var(--mono);font-weight:700">#%@</span>',
     defaults: { cols: 120, rampName: 'Classic', ramp: RAMPS.Classic, color: 'ink', edges: 0, dither: false },
-    controls: [R('cols', 'Columns', 30, 260, 1), { key: 'rampName', label: 'Character set', type: 'ramp' }, COL(['ink', 'image', 'fill', 'tone'])],
+    controls: [R('cols', 'Columns (fewer means bigger letters)', 30, 260, 1), { key: 'rampName', label: 'Character set', type: 'ramp' }, COL(['ink', 'image', 'fill', 'tone'])],
     more: [R('edges', 'Edge strokes', 0, 1, 0.05), T('dither', 'Dither')]
   },
   unicode: {
     name: 'Braille', about: 'Braille dots or half blocks: fine detail that still copies as plain text.', glyph: '<span style="font-family:var(--mono)">⣿⣶⡆</span>',
     defaults: { style: 'braille', cols: 150, threshold: 0.5, color: 'ink' },
-    controls: [S('style', 'Characters', [['braille', 'Braille dots'], ['half', 'Half blocks']]), R('cols', 'Columns', 40, 320, 1), R('threshold', 'Threshold', 0.1, 0.9, 0.01, { show: (L) => L.style === 'braille' }), COL(['ink', 'image'])],
+    controls: [S('style', 'Characters', [['braille', 'Braille dots'], ['half', 'Half blocks']]), R('cols', 'Columns (fewer means bigger dots)', 40, 320, 1), R('threshold', 'Threshold', 0.1, 0.9, 0.01, { show: (L) => L.style === 'braille' }), COL(['ink', 'image'])],
     more: []
   },
   halftone: {
     name: 'Halftone', about: 'A halftone screen where every dot is a letter. The tone sets its size, its weight, or both.', glyph: '<b style="font-size:18px">O</b><b style="font-size:12px">o</b><b style="font-size:8px">o</b>',
     defaults: { text: 'O', cols: 80, modulate: 'size', grid: 'hex', rotate: 'none', font: 'sans', weight: 900, color: 'ink', scale: 1.35, power: 0.75 },
-    controls: [TX('text', 'Glyphs'), R('cols', 'Columns', 16, 200, 1), S('modulate', 'Tone changes', [['size', 'Size'], ['weight', 'Weight'], ['both', 'Both']]), S('grid', 'Grid', [['square', 'Square'], ['hex', 'Offset']]), SEL('rotate', 'Rotation', [['none', 'Upright'], ['flow', 'Follow edges'], ['random', 'Scattered']]), COL(['ink', 'image', 'tone', 'duotone']), FONT],
-    more: [R('scale', 'Glyph scale', 0.5, 2.5, 0.05), R('power', 'Tone curve', 0.3, 1.5, 0.05)]
+    controls: [TX('text', 'Glyphs'), R('cols', 'Columns (fewer means bigger glyphs)', 16, 200, 1), R('scale', 'Letter size', 0.5, 2.5, 0.05), S('modulate', 'Tone changes', [['size', 'Size'], ['weight', 'Weight'], ['both', 'Both']]), S('grid', 'Grid', [['square', 'Square'], ['hex', 'Offset']]), SEL('rotate', 'Rotation', [['none', 'Upright'], ['flow', 'Follow edges'], ['random', 'Scattered']]), COL(['ink', 'image', 'tone', 'duotone']), FONT],
+    more: [R('power', 'Tone curve', 0.3, 1.5, 0.05)]
   },
   calligram: {
     name: 'Calligram', about: 'Text poured into a shape: one or more words, a heart, a circle, a star, the dark parts of the photo, or your cutout.', glyph: '<svg width="22" height="20" viewBox="0 0 24 22" aria-hidden="true"><path d="M12 21C5 15 2 11.5 2 7.5A5 5 0 0 1 12 5a5 5 0 0 1 10 2.5c0 4-3 7.5-10 13.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 1.6"/></svg>',
@@ -117,8 +128,8 @@ const MODES = {
   },
   spiral: {
     name: 'Spiral', about: 'One sentence on a spiral or on rings. Letters thicken where the photo is dark.', glyph: '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c0-1 1-1.6 2-1 1.6.9 1 3.6-1 4-2.8.6-4.6-2.4-3.6-4.8 1.3-3.2 6-3.8 8.2-1C20 12.6 18.6 18 14 19c-5 1.2-9.6-2.6-9.4-7.6C4.8 5.6 11 2.4 16 4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-    defaults: { text: PASSAGE, path: 'spiral', spacing: 11, cx: 0.5, cy: 0.5, font: 'sans', weight: 700, color: 'ink', minScale: 0.12, weightMod: true, start: 'inside', turn: 'auto', a0: -90, r0: 0, r1: 1, tracking: 0.04 },
-    controls: [TA('text', 'Text'), S('path', 'Path', [['spiral', 'Spiral'], ['rings', 'Rings']]), R('spacing', 'Ring spacing', 5, 30, 0.5),
+    defaults: { text: PASSAGE, path: 'spiral', spacing: 11, cx: 0.5, cy: 0.5, scale: 1.15, font: 'sans', weight: 700, color: 'ink', minScale: 0.12, weightMod: true, start: 'inside', turn: 'auto', a0: -90, r0: 0, r1: 1, tracking: 0.04 },
+    controls: [TA('text', 'Text'), S('path', 'Path', [['spiral', 'Spiral'], ['rings', 'Rings']]), R('scale', 'Letter size', 0.4, 2.4, 0.05), R('spacing', 'Ring spacing', 5, 30, 0.5),
       S('start', 'Text starts', [['inside', 'At the center'], ['outside', 'Outside']]), S('turn', 'Direction', [['auto', 'Auto'], ['cw', 'Clockwise'], ['ccw', 'Anticlockwise']]),
       { type: 'note', text: 'Drag the handles on the picture: the center, where the text starts and where it ends.' },
       COL(['ink', 'image', 'tone', 'duotone']), FONT],
@@ -127,14 +138,14 @@ const MODES = {
   },
   relief: {
     name: 'Relief', about: 'Rows of text lifted by the tones, like a terrain map. Rows behind can be hidden.', glyph: '<svg width="24" height="18" viewBox="0 0 24 18" aria-hidden="true"><path d="M1 7h6l2-5 2 5h12M1 12h4l3-4 3 6 2-2h10M1 17h22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
-    defaults: { text: PASSAGE, spacing: 13, amp: 2.2, occlude: true, font: 'sans', weight: 600, color: 'ink', weightMod: true, sizeMod: true, tracking: 0.05 },
-    controls: [TA('text', 'Text'), R('spacing', 'Row spacing', 6, 30, 0.5), R('amp', 'Lift', 0, 5, 0.1), T('occlude', 'Hide lines behind'), COL(['ink', 'image', 'tone', 'duotone']), FONT],
+    defaults: { text: PASSAGE, spacing: 13, scale: 0.9, amp: 2.2, occlude: true, font: 'sans', weight: 600, color: 'ink', weightMod: true, sizeMod: true, tracking: 0.05 },
+    controls: [TA('text', 'Text'), R('scale', 'Letter size', 0.4, 2.4, 0.05), R('spacing', 'Row spacing', 6, 30, 0.5), R('amp', 'Lift', 0, 5, 0.1), T('occlude', 'Hide lines behind'), COL(['ink', 'image', 'tone', 'duotone']), FONT],
     more: [T('weightMod', 'Weight follows tone'), T('sizeMod', 'Size follows tone'), R('minInk', 'Skip flat parts', 0, 0.5, 0.01)]
   },
   typewriter: {
     name: 'Typewriter', about: 'Typed and overstruck characters with ribbon ink and a little wobble, like 1960s typewriter art.', glyph: '<span style="font-family:\'Special Elite\',\'Courier New\',monospace;font-size:15px">X<span style="margin-left:-.55em;opacity:.8">O</span></span>',
     defaults: { cols: 96, color: 'ink', inkColor: '#1f1d1a', wobble: 1, edges: 0.4, dither: true, leading: 1.1, curve: 1.6 },
-    controls: [R('cols', 'Columns', 30, 200, 1), R('curve', 'Lightness', 0.6, 3, 0.05), R('wobble', 'Wobble and ribbon', 0, 2, 0.05), R('edges', 'Edge strokes', 0, 1, 0.05), COL(['ink', 'image', 'tone', 'duotone'])],
+    controls: [R('cols', 'Columns (fewer means bigger letters)', 30, 200, 1), R('curve', 'Lightness', 0.6, 3, 0.05), R('wobble', 'Wobble and ribbon', 0, 2, 0.05), R('edges', 'Edge strokes', 0, 1, 0.05), COL(['ink', 'image', 'tone', 'duotone'])],
     more: [T('dither', 'Dither'), R('leading', 'Line feed', 0.9, 1.6, 0.05)]
   }
 };
@@ -215,11 +226,15 @@ const UNITS = [['px', 'Pixels'], ['in', 'Inches'], ['mm', 'mm'], ['cm', 'cm'], [
 
 /* preferences belong to this computer, not to a project */
 const PREF_KEY = 'sungfluence-prefs-v1';
-const PREF_DEFAULTS = { zoomSpeed: 1, zoomSmooth: true, zoomDuration: 160, wheel: 'scroll', zoomAnchor: 'cursor', zoomStep: 1.25, zoomMax: 16, zoomInvert: false, dblClick: 'toggle', pixelated: true, zoomHud: true, theme: 'system' };
+const PREF_DEFAULTS = { zoomSpeed: 1, zoomSmooth: true, zoomDuration: 160, wheel: 'scroll', zoomAnchor: 'cursor', zoomStep: 1.25, zoomMax: 16, zoomInvert: false, dblClick: 'toggle', pixelated: true, zoomHud: true, theme: 'system', motion: 'full', reveal: 'fly' };
 const prefs = (() => { try { return Object.assign({}, PREF_DEFAULTS, JSON.parse(localStorage.getItem(PREF_KEY) || '{}')); } catch (e) { return Object.assign({}, PREF_DEFAULTS); } })();
 function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* storage blocked */ } }
 function applyTheme() { if (prefs.theme === 'system') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', prefs.theme); }
 applyTheme();
+/* motion: smooth transitions in the interface, off when the person asked their computer for less motion */
+const reduceMotion = () => prefs.motion === 'off' || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+function applyMotion() { const de = document.documentElement; if (!de || !de.classList) return; de.classList.toggle('motion-off', reduceMotion()); de.classList.toggle('motion-calm', prefs.motion === 'calm'); }
+applyMotion();
 
 /* recipes for photos; line recipes live with the Lines source */
 const RECIPES = [
@@ -333,16 +348,16 @@ const doc = {
   text: Object.assign({}, LAYER_DEFAULTS, { applied: false, locked: false, source: 'photo', layers: [newLayer('rows', { text: 'whiskers sunbeam purr nap tabby paws meow' })], sel: 0 }),
   objects: [],
   order: ['text', 'lines', 'photo'],
-  out: { paper: '#111113', transparent: false, margin: 0, colorModel: 'rgb', width: 1600, print: 'A3', dpi: 300, mock: 'artboard', shirt: '#1b1b1d', mixPhoto: 0.35, gentle: false }
+  out: { paper: '#111113', transparent: false, margin: 0, colorModel: 'rgb', width: 1600, print: 'A3', dpi: 300, orient: 'auto', printRot: 0, pageMargin: null, printW: 300, printH: 400, printUnit: 'mm', mock: 'artboard', shirt: '#1b1b1d', mixPhoto: 0.35, gentle: false }
 };
 const ui = {
   view: 'photo', tab: 'photo', tool: 'hand', zoom: 'fit', quality: 'fast', open: {},
-  wand: { tol: 0.16, contiguous: true, mode: 'new' }, brush: { size: 40, mode: 'add' }, lasso: { mode: 'new' },
+  wand: { tol: 0.16, contiguous: true, mode: 'new' }, brush: { size: 40, mode: 'add' }, liquify: { mode: 'push', size: 120, strength: 0.5 }, liqFast: false, mockZoom: 1, lasso: { mode: 'new' },
   trace: { kind: 'dark', threshold: 0.5, amount: 0.09, skipWide: true },
   selPath: null, selNode: null, selObjs: [], suggestion: null,
   shape: { kind: 'rect', sides: 6, points: 5, inner: 0.45, radius: 0 }, objLayer: 'lines',
   cropDraft: null, cropCustom: [5, 4],
-  compare: { on: false, pos: 0.5, left: 'original', right: 'current' },
+  compare: { on: false, pos: 0.5, angle: 0, left: 'original', right: 'current' },
   rep: { mode: 'line', count: 4, dx: 120, dy: 0, rot: 0, scale: 100, fade: 0, cols: 3, rows: 3, gx: 20, gy: 20, radius: 300, turn: true, path: null }
 };
 
@@ -465,13 +480,18 @@ const warpOn = (P) => Math.abs(P.bulge) > 0.001 || Math.abs(P.twirl) > 0.5;
 function photoSrc(P) {
   P = P || doc.photo;
   const objs = doc.objects.filter((o) => o.layer === 'photo' && !o.hidden);
-  if (!objs.length && !warpOn(P)) return origImg;
-  const key = objVer + '|' + [P.bulge, P.twirl, P.warpX, P.warpY, P.warpR].join(',') + '|' + iw + 'x' + ih + '|' + imgVer;
+  if (!objs.length && !warpOn(P) && !liqOn(P)) return origImg;
+  // while a Liquify stroke is being painted, a smaller copy keeps the brush smooth
+  const cap = ui.liqFast ? 720 : 2400;
+  const key = objVer + '|' + [P.bulge, P.twirl, P.warpX, P.warpY, P.warpR].join(',') + '|' + (liqOn(P) ? liqKey(P.liquify) : '') + '|' + cap + '|' + iw + 'x' + ih + '|' + imgVer;
   if (photoSrcCache && photoSrcCache.key === key) return photoSrcCache.c;
-  const k = Math.min(1, 2400 / Math.max(iw, ih));
+  const k = Math.min(1, cap / Math.max(iw, ih));
   const c = mk(Math.round(iw * k), Math.round(ih * k)), x = c.getContext('2d');
-  if (warpOn(P)) x.drawImage(warpCanvas(origImg, c.width, c.height, P), 0, 0);
-  else x.drawImage(origImg, 0, 0, c.width, c.height);
+  let base = origImg;
+  // the brushed photo is worked out at up to 1600 px, which is what text art reads, so letting go of the brush stays quick
+  if (liqOn(P)) { const q = Math.min(1, 1600 / Math.max(c.width, c.height)); base = liquifyCanvas(origImg, Math.round(c.width * q), Math.round(c.height * q), P); }
+  if (warpOn(P)) x.drawImage(warpCanvas(base, c.width, c.height, P), 0, 0);
+  else x.drawImage(base, 0, 0, c.width, c.height);
   x.setTransform(k, 0, 0, k, 0, 0);
   objs.forEach((o) => drawObject(x, o));
   x.setTransform(1, 0, 0, 1, 0, 0);
@@ -694,6 +714,7 @@ function startText() {
   if (!activeLayers().length) { textCanvas = null; out = null; compose(); return; }
   runJob('text', textGen(), (res) => {
     out = res.out; textCanvas = res.canvas;
+    if (ui.revealNext) { ui.revealNext = false; startReveal(); } else stopReveal();
     compose(); updatePrint(); updatePalette(); statusIdle();
   });
 }
@@ -814,9 +835,13 @@ function compose() {
   if (canvas.width !== TW || canvas.height !== TH) { canvas.width = TW; canvas.height = TH; }
   const mock = doc.out.mock !== 'artboard';
   const x = ctx;
-  const S = { photo: photoKept, removed: hasRemoval ? remVis : null, text: textShown() ? textCanvas : null, vector: vectorCanvas(g), removedInText: doc.removed.inText && hasRemoval ? remVis : null };
+  const S = { photo: photoKept, removed: hasRemoval ? remVis : null, text: textShown() ? (revealing() ? revealFrame() : textCanvas) : null, vector: vectorCanvas(g), removedInText: doc.removed.inText && hasRemoval ? remVis : null };
   if (ui.cropDraft) composeTo(x, g, { photo: photoKept, removed: S.removed }, { only: ['photo'], ground: '#808080', ignoreOpacity: true });
-  else if (mock) composeTo(x, g, { text: S.text, vector: S.vector }, { only: ['text', 'lines'], ground: doc.out.transparent ? (doc.out.mock === 'paper' ? '#ffffff' : null) : 'paper' });
+  else if (mock) {
+    // on paper or a shirt, the sheet or the shirt shows through a transparent background
+    composeTo(x, g, { text: S.text, vector: S.vector }, { only: ['text', 'lines'], ground: doc.out.transparent ? null : 'paper' });
+    if (ui.compare.on) drawSplit(x, g, S);
+  }
   else {
     composeTo(x, g, S, { mixFade: ui.view === 'mix', ground: doc.out.transparent ? 'checker' : 'paper' });
     if (ui.compare.on) drawSplit(x, g, S);
@@ -834,6 +859,74 @@ function compose() {
   syncViewSeg();
 }
 
+/* ===== 02b-reveal.js ===== */
+/* ===================== Part 2b: the reveal, letters flying in when text art appears ===================== */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// When new text art is applied (a style, a recipe, the first Apply), the finished letters arrive in small tiles:
+// each tile starts outside the picture, turns and grows on the way, and lands exactly where the style placed it.
+// It only changes what the screen shows for about a second; the artwork and exports are never touched.
+// Settings → Motion chooses "Letters fly in", "Fade in" or "At once"; reduce-motion on the computer keeps it still.
+
+let reveal = null;
+const REVEAL_MS = { fly: 1150, fade: 650 };
+function revealSoon() { if (!reduceMotion() && prefs.reveal !== 'none') ui.revealNext = true; }
+const revealing = () => !!reveal;
+function stopReveal() { if (reveal) { cancelAnimationFrame(reveal.raf); reveal = null; } }
+function startReveal() {
+  stopReveal();
+  const c = textCanvas;
+  if (!c || reduceMotion() || prefs.reveal === 'none') return;
+  const W = c.width, H = c.height, T = Math.max(12, Math.round(Math.max(W, H) / 52));
+  const cols = Math.ceil(W / T), rows = Math.ceil(H / T);
+  // which tiles hold any letters: read a tiny copy, one pixel per tile
+  const probe = mk(cols, rows), px = probe.getContext('2d', { willReadFrequently: true });
+  px.drawImage(c, 0, 0, cols, rows);
+  const a = px.getImageData(0, 0, cols, rows).data;
+  let seed = 9173;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const mode = prefs.motion === 'calm' ? 'fade' : prefs.reveal;
+  const diag = Math.hypot(W, H), tiles = [];
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    if (a[(y * cols + x) * 4 + 3] < 3) continue;
+    const cx = x * T + T / 2, cy = y * T + T / 2;
+    const r = Math.hypot(cx - W / 2, cy - H / 2) / (diag / 2);
+    const ang = Math.atan2(cy - H / 2, cx - W / 2) + (rnd() - 0.5) * 0.9;
+    const dist = diag * (0.45 + rnd() * 0.4);
+    tiles.push({ sx: x * T, sy: y * T, cx, cy, fx: cx + Math.cos(ang) * dist, fy: cy + Math.sin(ang) * dist,
+      rot: (rnd() - 0.5) * 2.2, delay: mode === 'fade' ? rnd() * 0.55 : 0.08 + rnd() * 0.3 + r * 0.17 });
+  }
+  if (!tiles.length) return;
+  reveal = { t0: performance.now(), dur: REVEAL_MS[mode] || 1000, mode, tiles, T, src: c, out: mk(W, H), raf: 0 };
+  const tick = () => {
+    if (!reveal) return;
+    compose();
+    if (performance.now() - reveal.t0 >= reveal.dur) { reveal = null; compose(); return; }
+    reveal.raf = requestAnimationFrame(tick);
+  };
+  reveal.raf = requestAnimationFrame(tick);
+}
+const easeOut = (u) => 1 - Math.pow(1 - u, 3);
+const easeBack = (u) => { const s = 1.4; u -= 1; return u * u * ((s + 1) * u + s) + 1; };
+function revealFrame() {
+  const R = reveal, t = (performance.now() - R.t0) / R.dur, x = R.out.getContext('2d'), T = R.T;
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, R.out.width, R.out.height);
+  const span = R.mode === 'fade' ? 0.45 : 0.55;
+  for (const q of R.tiles) {
+    const u = clamp((t - q.delay) / span, 0, 1);
+    if (u <= 0) continue;
+    if (u >= 1) { x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.drawImage(R.src, q.sx, q.sy, T, T, q.sx, q.sy, T, T); continue; }
+    if (R.mode === 'fade') { x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = easeOut(u); x.drawImage(R.src, q.sx, q.sy, T, T, q.sx, q.sy, T, T); continue; }
+    const e = easeOut(u), s = 0.35 + 0.65 * easeBack(u), r = q.rot * (1 - e);
+    const cx = q.fx + (q.cx - q.fx) * e, cy = q.fy + (q.cy - q.fy) * e, cs = Math.cos(r) * s, sn = Math.sin(r) * s;
+    x.globalAlpha = Math.min(1, u * 2.5);
+    x.setTransform(cs, sn, -sn, cs, cx, cy);
+    x.drawImage(R.src, q.sx, q.sy, T, T, -T / 2, -T / 2, T, T);
+  }
+  x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1;
+  return R.out;
+}
+
 /* ===== 03-tools.js ===== */
 /* ===================== Part 3: stage, zoom, tools, overlay ===================== */
 const viewport = $('viewport'), wrap = $('canvasWrap'), frame = $('frame'), overlay = $('overlay');
@@ -845,15 +938,18 @@ function fitScale() {
   return Math.max(0.02, Math.min(k, 1.6)) * canvas.width / designW();
 }
 let shirtSVG = null;
-function displayZoom() { return ui.zoom === 'fit' ? fitScale() : ui.zoom; }
-function clampZoom(z) { return clamp(z, ZOOM_MIN, prefs.zoomMax || 16); }
+/* the Paper and T-shirt previews zoom too: there 1 means "fit", and the page or shirt is scaled around that */
+const isMock = () => doc.out.mock !== 'artboard';
+function displayZoom() { if (isMock()) return ui.mockZoom || 1; return ui.zoom === 'fit' ? fitScale() : ui.zoom; }
+function clampZoom(z) { return isMock() ? clamp(z, 0.25, 8) : clamp(z, ZOOM_MIN, prefs.zoomMax || 16); }
 const canPan = () => wrap.scrollWidth > wrap.clientWidth + 1 || wrap.scrollHeight > wrap.clientHeight + 1;
 function wrapClass() { wrap.className = 'canvas-wrap tool-' + ui.tool + (spaceDown ? ' tool-hand' : '') + (canPan() ? ' can-pan' : '') + (drag && drag.kind === 'pan' ? ' panning' : ''); }
 function layoutStage() {
   const mock = doc.out.mock !== 'artboard';
-  ['zoomIn', 'zoomOut', 'zoomFit', 'zoomPct'].forEach((id) => { $(id).disabled = mock; });
-  $('zoomPct').textContent = mock ? 'Fit' : Math.round(displayZoom() * 100) + '%';
-  $('zoomFit').setAttribute('aria-pressed', String(!mock && ui.zoom === 'fit'));
+  const mz = ui.mockZoom || 1;
+  ['zoomIn', 'zoomOut', 'zoomFit', 'zoomPct'].forEach((id) => { $(id).disabled = false; });
+  $('zoomPct').textContent = mock ? (mz === 1 ? 'Fit' : Math.round(mz * 100) + '% of fit') : Math.round(displayZoom() * 100) + '%';
+  $('zoomFit').setAttribute('aria-pressed', String(mock ? mz === 1 : ui.zoom === 'fit'));
   frame.className = 'frame';
   frame.removeAttribute('style');
   canvas.removeAttribute('style');
@@ -873,13 +969,14 @@ function layoutStage() {
   const availW = wrap.clientWidth - 56, availH = wrap.clientHeight - 56;
   if (doc.out.mock === 'paper') {
     const g = printGeom();
-    const k = Math.min(availW / g.pw, availH / g.ph);
+    const k = Math.min(availW / g.pw, availH / g.ph) * mz;
     frame.classList.add('sheet');
     frame.style.width = Math.round(g.pw * k) + 'px'; frame.style.height = Math.round(g.ph * k) + 'px';
-    frame.style.setProperty('--sheet', doc.out.transparent ? '#ffffff' : doc.out.paper);
+    frame.style.setProperty('--sheet', doc.out.paper);
     canvas.style.width = Math.round(g.aw * k) + 'px'; canvas.style.height = Math.round(g.ah * k) + 'px';
+    if (g.rot) canvas.style.transform = 'rotate(' + g.rot + 'deg)';
   } else {
-    const k = Math.min(availW / 400, availH / 440);
+    const k = Math.min(availW / 400, availH / 440) * mz;
     frame.classList.add('shirt');
     frame.style.width = Math.round(400 * k) + 'px'; frame.style.height = Math.round(440 * k) + 'px';
     if (!shirtSVG) {
@@ -893,6 +990,7 @@ function layoutStage() {
     canvas.style.width = Math.round(w) + 'px'; canvas.style.height = Math.round(h) + 'px';
     canvas.style.left = Math.round(200 * k - w / 2) + 'px'; canvas.style.top = Math.round(96 * k) + 'px';
   }
+  layoutSplit();
   wrapClass();
 }
 
@@ -900,14 +998,14 @@ function layoutStage() {
    Zoom keeps the point under the cursor still. Wheel and pinch zoom are proportional to how far you scroll,
    and glide to the new size. Speed, glide, steps and limits are in Settings. */
 function setZoom(z, anchor, quick) {
-  if (doc.out.mock !== 'artboard') return;
   const before = displayZoom();
-  ui.zoom = z === 'fit' ? 'fit' : clampZoom(z);
+  if (isMock()) ui.mockZoom = z === 'fit' ? 1 : clampZoom(z);
+  else ui.zoom = z === 'fit' ? 'fit' : clampZoom(z);
   const after = displayZoom();
   const ax = anchor ? anchor.x : wrap.clientWidth / 2, ay = anchor ? anchor.y : wrap.clientHeight / 2;
   const fx = (wrap.scrollLeft + ax - frame.offsetLeft) / before, fy = (wrap.scrollTop + ay - frame.offsetTop) / before;
   layoutStage();
-  if (ui.zoom !== 'fit') { wrap.scrollLeft = fx * after + frame.offsetLeft - ax; wrap.scrollTop = fy * after + frame.offsetTop - ay; }
+  if (isMock() ? ui.mockZoom !== 1 : ui.zoom !== 'fit') { wrap.scrollLeft = fx * after + frame.offsetLeft - ax; wrap.scrollTop = fy * after + frame.offsetTop - ay; }
   else { wrap.scrollLeft = 0; wrap.scrollTop = 0; }
   wrapClass();
   if (!quick) drawOverlay();
@@ -971,7 +1069,7 @@ function toggleZoomMenu(force) {
 }
 wrap.addEventListener('wheel', (e) => {
   const zoomGesture = e.ctrlKey || e.metaKey || (prefs.wheel === 'zoom' && !e.shiftKey);
-  if (!zoomGesture || doc.out.mock !== 'artboard') return;
+  if (!zoomGesture) return;
   e.preventDefault();
   let dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
   if (prefs.zoomInvert) dy = -dy;
@@ -1002,6 +1100,7 @@ const ICON = {
   shape: '<rect x="3" y="3" width="10" height="10" rx="1.5"/><circle cx="15.5" cy="15.5" r="5.5"/>',
   text: '<path d="M5 6.5V4h14v2.5M12 4v16M9 20h6"/>',
   pen: '<path d="M12 3l6 9-6 9-6-9z"/><circle cx="12" cy="12" r="1.6"/><path d="M12 13.6V21"/>',
+  liquify: '<path d="M4 16c3-6 6 2 9-4s5-5 7-3"/><path d="M4 20c3-4 6 1 9-3s5-3 7-2"/><circle cx="9" cy="7" r="3"/>',
   pencil: '<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>',
   direct: '<path d="M6 3l12 9-5.5 1.2L15 20l-2.6 1.1-2.6-6.6L6 18z"/>'
 };
@@ -1013,6 +1112,7 @@ const TOOLS = [
   { id: 'wand', name: 'Magic wand: select areas of similar color', key: 'W', group: 'photo' },
   { id: 'lasso', name: 'Lasso: draw around an area', key: 'L', group: 'photo' },
   { id: 'brush', name: 'Selection brush. Alt paints away', key: 'B', group: 'photo' },
+  { id: 'liquify', name: 'Liquify: push, bloat, pucker or twirl the photo with a brush. Alt restores', key: 'Y', group: 'photo' },
   { sep: true, label: 'Vector' },
   { id: 'select', name: 'Select: move, scale and rotate shapes, text and images', key: 'V', group: 'lines' },
   { id: 'shape', name: 'Shapes: rectangle, ellipse, polygon, star, line', key: 'U', group: 'lines' },
@@ -1045,7 +1145,7 @@ function setTool(id) {
   if (t && t.group === 'lines' && !doc.lines.visible) { doc.lines.visible = true; buildStack(); }
   if (t && t.group === 'photo' && !doc.photo.visible) setView('photo');
   if (id === 'crop') cropStart();
-  $('brushRing').hidden = id !== 'brush';
+  $('brushRing').hidden = id !== 'brush' && id !== 'liquify';
   wrapClass();
   buildRail(); buildOptbar(); drawOverlay(); layoutStage(); updateCTA();
 }
@@ -1130,8 +1230,13 @@ function toImg(p) { return art2img(p.ax, p.ay, artGeom()); }
 function toMaster(ix, iy) { return [ix * master.w / iw, iy * master.h / ih]; }
 let drag = null, spaceDown = false, pen = null, hover = null;
 wrap.addEventListener('pointerdown', (e) => {
-  if (!origImg || doc.out.mock !== 'artboard') return;
+  if (!origImg) return;
   if (e.target.closest('.hud, .cta, .split-h, .text-edit')) return;
+  // Paper and T-shirt previews: no drawing tools, but you can still drag to move around
+  if (isMock()) {
+    if ((e.button === 0 || e.button === 1) && canPan()) { e.preventDefault(); drag = { kind: 'pan', x: e.clientX, y: e.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop }; wrap.setPointerCapture(e.pointerId); wrapClass(); }
+    return;
+  }
   if (e.pointerType === 'touch') {
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.size === 2) { drag = null; const s = pinchState(); pinch = { d: s.d, z: displayZoom(), x: s.x, y: s.y, sl: wrap.scrollLeft, st: wrap.scrollTop }; return; }
@@ -1160,6 +1265,8 @@ wrap.addEventListener('pointerdown', (e) => {
     combineSelection(C.wand(master.data.data, master.w, master.h, mx, my, ui.wand.tol, ui.wand.contiguous), selMode(e, ui.wand.mode));
   } else if (ui.tool === 'lasso') {
     drag = { kind: 'lasso', pts: [[ix, iy]], mode: selMode(e, ui.lasso.mode) };
+  } else if (ui.tool === 'liquify') {
+    liqDown(p, e);
   } else if (ui.tool === 'brush') {
     drag = { kind: 'brush', sub: e.altKey || ui.brush.mode === 'sub', last: null };
     brushAt(p);
@@ -1183,7 +1290,7 @@ wrap.addEventListener('pointermove', (e) => {
     }
   }
   const p = evPos(e);
-  if (ui.tool === 'brush') { const ring = $('brushRing'); const vr = viewport.getBoundingClientRect(); ring.style.left = (e.clientX - vr.left) + 'px'; ring.style.top = (e.clientY - vr.top) + 'px'; ring.style.width = ring.style.height = ui.brush.size + 'px'; }
+  if (ui.tool === 'brush' || ui.tool === 'liquify') { const ring = $('brushRing'); const vr = viewport.getBoundingClientRect(); ring.style.left = (e.clientX - vr.left) + 'px'; ring.style.top = (e.clientY - vr.top) + 'px'; ring.style.width = ring.style.height = (ui.tool === 'liquify' ? ui.liquify.size : ui.brush.size) + 'px'; }
   if (!drag && ['pen', 'shape', 'text'].includes(ui.tool)) {
     const before = JSON.stringify(ui.snapHint);
     const s = snapAt(...toImg(p), ui.tool === 'pen' ? penSnap(e, p) : { e, p });
@@ -1196,6 +1303,7 @@ wrap.addEventListener('pointermove', (e) => {
   if (drag.kind === 'zoomRect') { drag.b = [p.ax, p.ay]; drawOverlay(); }
   else if (drag.kind === 'lasso') { drag.pts.push([ix, iy]); drawOverlay(); }
   else if (drag.kind === 'brush') brushAt(p);
+  else if (drag.kind === 'liquify') liqMove(p);
   else if (drag.kind === 'pencil') { if (Math.hypot(p.cx - drag.last[0], p.cy - drag.last[1]) >= 2) { drag.pts.push([ix, iy]); drag.last = [p.cx, p.cy]; drawOverlay(); } }
   else if (drag.kind === 'penHandle') { const n = pen.nodes[pen.nodes.length - 1]; const s = snapAt(ix, iy, { e, p, anchor: [n.x, n.y] }); n.ox = s[0] - n.x; n.oy = s[1] - n.y; n.ix = -n.ox; n.iy = -n.oy; drawOverlay(); }
   else if (drag.kind === 'node' || drag.kind === 'handle' || drag.kind === 'path') directMove(ix, iy, e, p);
@@ -1219,6 +1327,8 @@ const endDrag = (e) => {
     d.pts.forEach(([ix, iy], i) => { const [mx, my] = toMaster(ix, iy); i ? x.lineTo(mx, my) : x.moveTo(mx, my); });
     x.closePath(); x.fill();
     combineSelection(alphaOf(c).map((v) => v > 127 ? 1 : 0), d.mode);
+  } else if (d.kind === 'liquify') {
+    liqUp();
   } else if (d.kind === 'brush') {
     hasSelection = anyAlpha(selCanvas); refreshSelTint(); compose(); buildOptbar();
   } else if (d.kind === 'pencil' && d.pts.length > 2) {
@@ -1234,16 +1344,17 @@ const endDrag = (e) => {
 wrap.addEventListener('pointerup', endDrag);
 wrap.addEventListener('pointercancel', endDrag);
 wrap.addEventListener('dblclick', (e) => {
+  if (isMock()) { const r = wrap.getBoundingClientRect(); zoomTo((ui.mockZoom || 1) === 1 ? 2 : 'fit', { x: e.clientX - r.left, y: e.clientY - r.top }); return; }
   if (ui.tool === 'pen') { finishPen(); return; }
   if (ui.tool === 'crop') { cropApply(); return; }
   if (ui.tool === 'select') { const [ix, iy] = toImg(evPos(e)); const o = hitObject(ix, iy); if (o && o.type === 'text') editText(o); return; }
-  if (ui.tool === 'hand' && prefs.dblClick === 'toggle' && doc.out.mock === 'artboard') {
+  if (ui.tool === 'hand' && prefs.dblClick === 'toggle') {
     const r = wrap.getBoundingClientRect();
     zoomTo(ui.zoom === 'fit' ? 1 : 'fit', { x: e.clientX - r.left, y: e.clientY - r.top });
   }
 });
-wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush') $('brushRing').hidden = true; if (ui.snapHint && !drag) { ui.snapHint = null; drawOverlay(); } });
-wrap.addEventListener('pointerenter', () => { if (ui.tool === 'brush') $('brushRing').hidden = false; });
+wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush' || ui.tool === 'liquify') $('brushRing').hidden = true; if (ui.snapHint && !drag) { ui.snapHint = null; drawOverlay(); } });
+wrap.addEventListener('pointerenter', () => { if (ui.tool === 'brush' || ui.tool === 'liquify') $('brushRing').hidden = false; });
 
 function brushAt(p) {
   const g = artGeom();
@@ -1482,6 +1593,12 @@ function buildOptbar() {
     bar.appendChild(optSeg([['new', 'New'], ['add', 'Add'], ['sub', 'Subtract']], ui.lasso.mode, (v) => { ui.lasso.mode = v; buildOptbar(); }, 'Selection mode'));
     bar.appendChild(el('span', 'hint', 'Draw around an area. Shift adds, Alt subtracts.'));
     selActions(bar);
+  } else if (t === 'liquify') {
+    bar.append(optSeg(LIQ_MODES, ui.liquify.mode, (v) => { ui.liquify.mode = v; buildOptbar(); }, 'Liquify mode'),
+      optRange('Size', 10, 500, 1, ui.liquify.size, (v) => Math.round(v) + ' px', (v) => { ui.liquify.size = v; }),
+      optRange('Strength', 0.05, 1, 0.01, ui.liquify.strength, (v) => Math.round(v * 100) + '%', (v) => { ui.liquify.strength = v; }));
+    bar.appendChild(el('span', 'hint', 'Brush on the photo. Hold still to keep going. Alt restores.'));
+    bar.appendChild(optBtn('Reset liquify', liqReset, false, !liqOn(doc.photo)));
   } else if (t === 'brush') {
     bar.append(optSeg([['add', 'Paint in'], ['sub', 'Paint away']], ui.brush.mode, (v) => { ui.brush.mode = v; buildOptbar(); }, 'Brush mode'),
       optRange('Size', 4, 200, 1, ui.brush.size, (v) => Math.round(v) + ' px', (v) => { ui.brush.size = v; }));
@@ -2057,7 +2174,7 @@ function objectsSVGGroup(g, layer) {
 /* ---------------- dialogs ---------------- */
 function openDialog(title, build, wide) {
   const sc = $('dlgScrim'), d = $('dlg');
-  d.replaceChildren(); d.classList.toggle('wide', !!wide);
+  d.replaceChildren(); d.className = 'dialog' + (wide ? ' wide' : '');
   const head = el('div', 'sheet-h'); const h2 = el('h2', null, title); h2.id = 'dlgTitle';
   const close = el('button', 'btn btn-quiet', 'Close'); close.type = 'button'; close.onclick = closeDialog;
   head.append(h2, close);
@@ -2300,25 +2417,57 @@ function compareCanvas(kind, g, S) {
   else composeTo(x, g, Object.assign({}, S, { text: S.text || textCanvas }), { only: kind.split('+'), ground });
   return c;
 }
+/* The compare divider is a line at any angle. angle 0 is up and down (left and right sides), 90 is across (top and bottom).
+   pos 0..1 slides it along its normal over the whole picture. The first side is where (p - c) · n < 0. */
+function splitGeom(W, H) {
+  const a = (ui.compare.angle || 0) * Math.PI / 180, nx = Math.cos(a), ny = Math.sin(a), dx = -ny, dy = nx;
+  const L = Math.abs(W * nx) + Math.abs(H * ny), k = (clamp(ui.compare.pos, 0, 1) - 0.5) * L;
+  const cx = W / 2 + nx * k, cy = H / 2 + ny * k;
+  // where the line enters and leaves the picture
+  let t0 = -1e9, t1 = 1e9;
+  [[dx, cx, W], [dy, cy, H]].forEach(([d, c, M]) => {
+    if (Math.abs(d) < 1e-9) return;
+    const a1 = (0 - c) / d, a2 = (M - c) / d;
+    t0 = Math.max(t0, Math.min(a1, a2)); t1 = Math.min(t1, Math.max(a1, a2));
+  });
+  if (t1 < t0) { t0 = 0; t1 = 0; }
+  return { nx, ny, dx, dy, cx, cy, L, t0, t1 };
+}
+const splitAcross = () => { const a = Math.abs(((ui.compare.angle || 0) % 180 + 180) % 180); return a > 45 && a < 135; };
 function drawSplit(x, g, S) {
-  const pos = clamp(ui.compare.pos, 0, 1) * g.TW;
   if (ui.compare.right !== 'current') { x.globalAlpha = 1; x.drawImage(compareCanvas(ui.compare.right, g, S), 0, 0); }
-  const L = compareCanvas(ui.compare.left, g, S);
-  x.save(); x.beginPath(); x.rect(0, 0, pos, g.TH); x.clip(); x.clearRect(0, 0, pos, g.TH); x.drawImage(L, 0, 0); x.restore();
+  const L = compareCanvas(ui.compare.left, g, S), q = splitGeom(g.TW, g.TH), B = (g.TW + g.TH) * 2;
+  x.save(); x.beginPath();
+  x.moveTo(q.cx + q.dx * B, q.cy + q.dy * B); x.lineTo(q.cx - q.dx * B, q.cy - q.dy * B);
+  x.lineTo(q.cx - q.dx * B - q.nx * B, q.cy - q.dy * B - q.ny * B); x.lineTo(q.cx + q.dx * B - q.nx * B, q.cy + q.dy * B - q.ny * B);
+  x.closePath(); x.clip();
+  x.clearRect(0, 0, g.TW, g.TH); x.drawImage(L, 0, 0); x.restore();
 }
 const kindName = (k) => (COMPARE_KINDS.find((q) => q[0] === k) || [k, k])[1];
 function layoutSplit() {
-  const on = ui.compare.on && doc.out.mock === 'artboard' && !ui.cropDraft && !!origImg;
+  const on = ui.compare.on && !ui.cropDraft && !!origImg;
   $('splitH').hidden = !on; $('splitBar').hidden = !on;
   $('splitBtn').setAttribute('aria-pressed', String(ui.compare.on));
   if (!on) return;
-  $('splitH').style.left = (clamp(ui.compare.pos, 0, 1) * 100) + '%';
+  // the divider sits on the artwork itself, which on paper or a shirt is smaller than the frame
+  const h = $('splitH'), w = canvas.offsetWidth, ht = canvas.offsetHeight;
+  const q = splitGeom(w, ht), len = Math.max(24, q.t1 - q.t0), mid = (q.t0 + q.t1) / 2;
+  const mx = canvas.offsetLeft + q.cx + q.dx * mid, my = canvas.offsetTop + q.cy + q.dy * mid;
+  Object.assign(h.style, { left: mx + 'px', top: (my - len / 2) + 'px', height: len + 'px', bottom: 'auto', transform: 'rotate(' + (ui.compare.angle || 0) + 'deg)' });
+  h.style.cursor = splitAcross() ? 'ns-resize' : 'ew-resize';
+  h.setAttribute('aria-valuenow', String(Math.round(ui.compare.pos * 100)));
+  // labels stay upright
+  ['splitTagL', 'splitTagR'].forEach((id) => { $(id).style.transform = 'rotate(' + (-(ui.compare.angle || 0)) + 'deg)'; });
   $('splitTagL').textContent = kindName(ui.compare.left); $('splitTagR').textContent = kindName(ui.compare.right);
+  const sides = splitAcross() ? ['Top', 'Bottom'] : ['Left', 'Right'];
+  const bl = $('splitBar').querySelectorAll('.split-side');
+  if (bl.length === 2) { bl[0].textContent = sides[0]; bl[1].textContent = sides[1]; }
 }
+const SPLIT_ANGLES = [[0, '│', 'Up and down'], [90, '─', 'Across'], [-45, '╲', 'Slanted down to the right'], [45, '╱', 'Slanted up to the right']];
 function buildSplitBar() {
   const b = $('splitBar'); b.replaceChildren();
   const pick = (side) => {
-    const s = el('select'); s.setAttribute('aria-label', side === 'left' ? 'Left side shows' : 'Right side shows');
+    const s = el('select'); s.setAttribute('aria-label', side === 'left' ? 'First side shows' : 'Second side shows');
     COMPARE_KINDS.forEach(([v, t]) => { const o = el('option', null, t); o.value = v; if (ui.compare[side] === v) o.selected = true; s.appendChild(o); });
     s.onchange = () => { ui.compare[side] = s.value; compose(); };
     return s;
@@ -2326,11 +2475,24 @@ function buildSplitBar() {
   const swap = el('button', 'icon-btn', '⇄'); swap.type = 'button'; swap.title = 'Swap sides'; swap.setAttribute('aria-label', 'Swap sides');
   swap.onclick = () => { [ui.compare.left, ui.compare.right] = [ui.compare.right, ui.compare.left]; buildSplitBar(); compose(); };
   const x = el('button', 'icon-btn', '×'); x.type = 'button'; x.title = 'Close compare'; x.setAttribute('aria-label', 'Close compare'); x.onclick = () => toggleSplit(false);
-  b.append(el('span', null, 'Left'), pick('left'), swap, pick('right'), el('span', null, 'Right'), x);
+  // the direction of the divider: four quick choices, and any angle with the slider or Shift and the arrow keys
+  const dir = el('div', 'seg split-dir'); dir.setAttribute('role', 'group'); dir.setAttribute('aria-label', 'Divider direction');
+  SPLIT_ANGLES.forEach(([a, sym, name]) => {
+    const bt = el('button', null, sym); bt.type = 'button'; bt.title = name; bt.setAttribute('aria-label', name);
+    bt.setAttribute('aria-pressed', String((ui.compare.angle || 0) === a));
+    bt.onclick = () => { setSplitAngle(a); buildSplitBar(); };
+    dir.appendChild(bt);
+  });
+  const ang = el('input'); ang.type = 'range'; ang.min = -90; ang.max = 90; ang.step = 1; ang.value = ui.compare.angle || 0; ang.className = 'split-angle';
+  ang.setAttribute('aria-label', 'Divider angle'); ang.title = 'Divider angle. Shift and the arrow keys on the divider turn it too.';
+  ang.oninput = () => { setSplitAngle(+ang.value); dir.querySelectorAll('button').forEach((bt, i) => bt.setAttribute('aria-pressed', String(SPLIT_ANGLES[i][0] === +ang.value))); };
+  const sides = splitAcross() ? ['Top', 'Bottom'] : ['Left', 'Right'];
+  b.append(el('span', 'split-side', sides[0]), pick('left'), swap, pick('right'), el('span', 'split-side', sides[1]), dir, ang, x);
 }
+function setSplitAngle(a) { ui.compare.angle = clamp(Math.round(a), -90, 90); compose(); }
 function toggleSplit(force) {
   ui.compare.on = force === undefined ? !ui.compare.on : !!force;
-  if (ui.compare.on) { if (ui.compare.right === 'current' && ui.compare.left === 'original' && !textShown() && doc.lines.paths.length + doc.objects.length === 0) ui.compare.left = 'original'; buildSplitBar(); }
+  if (ui.compare.on) buildSplitBar();
   compose();
 }
 $('splitBtn').onclick = () => toggleSplit();
@@ -2338,12 +2500,23 @@ $('splitBtn').onclick = () => toggleSplit();
   const h = $('splitH');
   h.addEventListener('pointerdown', (e) => {
     e.preventDefault(); e.stopPropagation(); h.setPointerCapture(e.pointerId);
-    const move = (ev) => { const r = frame.getBoundingClientRect(); ui.compare.pos = clamp((ev.clientX - r.left) / r.width, 0, 1); compose(); };
+    const move = (ev) => {
+      const r = canvas.getBoundingClientRect(), q = splitGeom(r.width, r.height);
+      const px = ev.clientX - r.left - r.width / 2, py = ev.clientY - r.top - r.height / 2;
+      ui.compare.pos = clamp((px * q.nx + py * q.ny) / q.L + 0.5, 0, 1); compose();
+    };
     const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); };
     h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
   });
-  h.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); ui.compare.pos = clamp(ui.compare.pos + (e.key === 'ArrowLeft' ? -0.02 : 0.02), 0, 1); compose(); } });
+  h.addEventListener('keydown', (e) => {
+    const k = e.key, fwd = k === 'ArrowRight' || k === 'ArrowDown', back = k === 'ArrowLeft' || k === 'ArrowUp';
+    if (!fwd && !back) return;
+    e.preventDefault();
+    if (e.shiftKey) { setSplitAngle((ui.compare.angle || 0) + (fwd ? 5 : -5)); buildSplitBar(); return; }
+    ui.compare.pos = clamp(ui.compare.pos + (back ? -0.02 : 0.02), 0, 1); compose();
+  });
 })();
+
 
 /* ---------------- new artboard ---------------- */
 function artboardPx(st) {
@@ -2434,6 +2607,10 @@ function openSettings() {
     sn.appendChild(el('span', 'note', 'Choose what to snap to under View → Snapping, or with the small arrow next to Snap. Hold Alt to place something freely.'));
     const s2 = sec(body, 'Look');
     s2.appendChild(makeControl(prefs, Object.assign(S('theme', 'Theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]), { idp: 'pf-', rebuild: () => { applyTheme(); openSettings(); } }), () => savePrefs()));
+    const sm = sec(body, 'Motion');
+    sm.appendChild(makeControl(prefs, Object.assign(S('motion', 'Animations', [['full', 'Full'], ['calm', 'Calm'], ['off', 'Off']]), { idp: 'pf-', rebuild: () => { applyMotion(); openSettings(); } }), () => savePrefs()));
+    sm.appendChild(makeControl(prefs, Object.assign(S('reveal', 'When text art appears', [['fly', 'Letters fly in'], ['fade', 'Fade in'], ['none', 'At once']]), { idp: 'pf-', rebuild: () => openSettings() }), () => savePrefs()));
+    sm.appendChild(el('span', 'note', 'If your computer is set to reduce motion, SungFluence keeps still whatever you choose here.'));
     const s3 = sec(body, 'This computer');
     s3.appendChild(makeControl(doc.out, T('gentle', 'Gentle on this computer', { idp: 'pf-' }), () => {}));
     s3.appendChild(el('span', 'note', 'Settings are saved on this computer only.'));
@@ -2915,6 +3092,141 @@ function snapOverlay(g, k) {
   return parts.join('');
 }
 
+/* ===== 03e-liquify.js ===== */
+/* ===================== Part 3e: Liquify, brushing the photo into new shapes ===================== */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Strokes live in doc.photo.liquify, so undo, autosave and project files keep them:
+//   { m: mode, r: radius as a share of the photo's long side, s: strength 0..1, pts: [[x, y], ...] in 0..1 photo units }
+// A displacement field on a coarse grid (LIQ_GRID cells along the long side) is built from the strokes.
+// For every pixel it says where to read the photo from, so it is an inverse mapping, like the bulge and twirl.
+// Each brush dab composes with what is already there: new(p) = d + old(p + d).
+
+const LIQ_GRID = 256;
+const LIQ_MODES = [['push', 'Push'], ['bloat', 'Bloat'], ['pucker', 'Pucker'], ['twirlR', 'Twirl right'], ['twirlL', 'Twirl left'], ['restore', 'Restore']];
+let liqField = null; // { key, gw, gh, dx, dy } in grid cells
+const liqOn = (P) => Array.isArray(P.liquify) && P.liquify.length > 0;
+const liqKey = (L) => L.length + ':' + L.reduce((n, s) => n + s.pts.length, 0) + ':' + (L.length ? L[L.length - 1].pts.slice(-1).join(',') : '');
+function liqNewField() {
+  const big = Math.max(iw, ih);
+  const gw = Math.max(2, Math.round(LIQ_GRID * iw / big)), gh = Math.max(2, Math.round(LIQ_GRID * ih / big));
+  return { key: '', gw, gh, dx: new Float32Array(gw * gh), dy: new Float32Array(gw * gh) };
+}
+function liqSample(F, a, x, y) {
+  const fx = clamp(x, 0, F.gw - 1.001), fy = clamp(y, 0, F.gh - 1.001), x0 = fx | 0, y0 = fy | 0, ax = fx - x0, ay = fy - y0, i = y0 * F.gw + x0;
+  return (a[i] * (1 - ax) + a[i + 1] * ax) * (1 - ay) + (a[i + F.gw] * (1 - ax) + a[i + F.gw + 1] * ax) * ay;
+}
+/* one dab of the brush at (cx, cy) in 0..1 units; v is the drag direction for Push */
+function liqDab(F, mode, cx, cy, r, s, v) {
+  const big = Math.max(F.gw, F.gh), R = Math.max(1.5, r * big), X = cx * (F.gw - 1), Y = cy * (F.gh - 1);
+  const x0 = Math.max(0, Math.floor(X - R)), x1 = Math.min(F.gw - 1, Math.ceil(X + R)), y0 = Math.max(0, Math.floor(Y - R)), y1 = Math.min(F.gh - 1, Math.ceil(Y + R));
+  const ndx = new Float32Array((x1 - x0 + 1) * (y1 - y0 + 1)), ndy = new Float32Array(ndx.length);
+  const vx = v ? v[0] * (F.gw - 1) : 0, vy = v ? v[1] * (F.gh - 1) : 0;
+  let k = 0;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++, k++) {
+    const i = y * F.gw + x, ox = x - X, oy = y - Y, q = (ox * ox + oy * oy) / (R * R);
+    if (q >= 1) { ndx[k] = F.dx[i]; ndy[k] = F.dy[i]; continue; }
+    const f = (1 - q) * (1 - q);
+    if (mode === 'restore') { const keep = 1 - f * s * 0.35; ndx[k] = F.dx[i] * keep; ndy[k] = F.dy[i] * keep; continue; }
+    let dx = 0, dy = 0;
+    if (mode === 'push') { dx = -vx * f * s; dy = -vy * f * s; }
+    else if (mode === 'bloat' || mode === 'pucker') { const g = (mode === 'bloat' ? -1 : 1) * f * s * 0.12; dx = ox * g; dy = oy * g; }
+    else { const a = (mode === 'twirlR' ? -1 : 1) * f * s * 0.18, ca = Math.cos(a), sa = Math.sin(a); dx = ox * ca - oy * sa - ox; dy = ox * sa + oy * ca - oy; }
+    ndx[k] = dx + liqSample(F, F.dx, x + dx, y + dy); ndy[k] = dy + liqSample(F, F.dy, x + dx, y + dy);
+  }
+  k = 0;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++, k++) { const i = y * F.gw + x; F.dx[i] = ndx[k]; F.dy[i] = ndy[k]; }
+}
+/* every dab of one stroke, spaced along the path; Bloat, Pucker and Twirl also repeat where the brush rested */
+function liqStroke(F, st, from) {
+  const step = Math.max(0.004, st.r * 0.25);
+  for (let j = Math.max(0, from || 0); j < st.pts.length; j++) {
+    const p = st.pts[j], prev = j ? st.pts[j - 1] : p;
+    const d = Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+    if (st.m === 'push') {
+      if (!j) continue;
+      const n = Math.max(1, Math.ceil(d / step));
+      for (let t = 1; t <= n; t++) liqDab(F, 'push', prev[0] + (p[0] - prev[0]) * t / n, prev[1] + (p[1] - prev[1]) * t / n, st.r, st.s, [(p[0] - prev[0]) / n, (p[1] - prev[1]) / n]);
+    } else {
+      const n = j ? Math.max(1, Math.ceil(d / step)) : 1;
+      for (let t = 1; t <= n; t++) liqDab(F, st.m, prev[0] + (p[0] - prev[0]) * t / n, prev[1] + (p[1] - prev[1]) * t / n, st.r, st.s);
+    }
+  }
+}
+function liqFieldFor(P) {
+  const key = liqKey(P.liquify) + '|' + iw + 'x' + ih;
+  if (liqField && liqField.key === key) return liqField;
+  const F = liqNewField();
+  P.liquify.forEach((st) => liqStroke(F, st));
+  F.key = key; liqField = F;
+  return F;
+}
+/* the photo pushed through the field, at w × h */
+function liquifyCanvas(img, w, h, P) {
+  const F = liqFieldFor(P);
+  const s = mk(w, h), sx = s.getContext('2d', { willReadFrequently: true });
+  sx.drawImage(img, 0, 0, w, h);
+  const d = sx.getImageData(0, 0, w, h).data, o = new ImageData(w, h), od = o.data;
+  const gx = (F.gw - 1) / Math.max(1, w - 1), gy = (F.gh - 1) / Math.max(1, h - 1);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, cx = x * gx, cy = y * gy;
+    const fx = clamp(x + liqSample(F, F.dx, cx, cy) / gx, 0, w - 1.001), fy = clamp(y + liqSample(F, F.dy, cx, cy) / gy, 0, h - 1.001);
+    const x0 = fx | 0, y0 = fy | 0, ax = fx - x0, ay = fy - y0;
+    const p00 = (y0 * w + x0) * 4, p10 = p00 + 4, p01 = p00 + w * 4, p11 = p01 + 4;
+    for (let c = 0; c < 4; c++) od[i + c] = (d[p00 + c] * (1 - ax) + d[p10 + c] * ax) * (1 - ay) + (d[p01 + c] * (1 - ax) + d[p11 + c] * ax) * ay;
+  }
+  const outC = mk(w, h); outC.getContext('2d').putImageData(o, 0, 0);
+  return outC;
+}
+
+/* ---------------- the tool ---------------- */
+let liqTimer = null, liqHold = null, liqRedraw = 0;
+function liqBrushR(p) { return ui.liquify.size / 2 / p.k / imgScale(artGeom()) / Math.max(iw, ih); }
+function liqPoint(p) { const [ix, iy] = toImg(p); return [clamp(ix / iw, 0, 1), clamp(iy / ih, 0, 1)]; }
+function liqDown(p, e) {
+  if (!doc.photo.visible) setView('photo');
+  commitHistory();
+  if (!Array.isArray(doc.photo.liquify)) doc.photo.liquify = [];
+  const mode = e.altKey ? 'restore' : ui.liquify.mode;
+  const st = { m: mode, r: +liqBrushR(p).toFixed(5), s: ui.liquify.strength, pts: [liqPoint(p).map((v) => +v.toFixed(5))] };
+  doc.photo.liquify.push(st);
+  drag = { kind: 'liquify', st, last: [p.cx, p.cy] };
+  liqApplyLive(st, 0);
+  // holding still keeps bloating, puckering or twirling, as in other editors
+  clearInterval(liqHold);
+  if (mode !== 'push') liqHold = setInterval(() => { if (!drag || drag.st !== st) { clearInterval(liqHold); return; } st.pts.push(st.pts[st.pts.length - 1].slice()); liqApplyLive(st, st.pts.length - 1); }, 70);
+}
+function liqMove(p) {
+  const st = drag.st, q = liqPoint(p).map((v) => +v.toFixed(5)), last = st.pts[st.pts.length - 1];
+  if (Math.hypot(q[0] - last[0], q[1] - last[1]) < st.r * 0.08) return;
+  st.pts.push(q);
+  liqApplyLive(st, st.pts.length - 1);
+}
+/* adds the dabs from point 'from' on to the field, then redraws a small preview of the photo, at most every 80 ms */
+function liqApplyLive(st, from) {
+  const L = doc.photo.liquify;
+  // the field must hold every earlier stroke; replay them once when it does not (after undo, say)
+  if (from === 0) liqFieldFor({ liquify: L.slice(0, -1) });
+  liqStroke(liqField, st, from);
+  liqField.key = liqKey(L) + '|' + iw + 'x' + ih;
+  ui.liqFast = true;
+  const now = performance.now();
+  if (now - liqRedraw > 80) { liqRedraw = now; photoSrcCache = null; rebuildPhotoView(); compose(); } // text art catches up when the stroke ends
+}
+function liqUp() {
+  clearInterval(liqHold); liqHold = null;
+  ui.liqFast = false; photoSrcCache = null;
+  photoChanged('source');
+  if (ui.tab === 'photo') buildPanel();
+}
+function liqReset() {
+  if (!liqOn(doc.photo)) return;
+  commitHistory();
+  doc.photo.liquify = []; liqField = null; photoSrcCache = null;
+  photoChanged('source'); buildOptbar();
+  toast('Liquify removed', { label: 'Undo', fn: undo });
+}
+
 /* ===== 04-ui.js ===== */
 /* ===================== Part 4: inspector, panels, controls, library ===================== */
 const SVGI = (p) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
@@ -2926,8 +3238,11 @@ const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 
 /* ---------------- toast ---------------- */
 let toastTimer = null;
+/* a short slide and fade when the panel shows another tab */
+function panelIn() { const p = $('panel'); p.classList.remove('panel-in'); void p.offsetWidth; p.classList.add('panel-in'); }
 function toast(msg, action) {
   const t = $('toast');
+  t.classList.remove('toast-in'); void t.offsetWidth; t.classList.add('toast-in');
   t.replaceChildren(el('span', null, msg));
   if (action) { const b = el('button', null, action.label); b.type = 'button'; b.onclick = () => { t.hidden = true; action.fn(); }; t.appendChild(b); }
   t.hidden = false;
@@ -2953,7 +3268,7 @@ document.querySelectorAll('#viewSeg button').forEach((b) => { b.onclick = () => 
 const TABS = [['photo', 'Photo'], ['lines', 'Vector'], ['text', 'Text art'], ['output', 'Output']];
 function buildTabs() {
   const t = $('tabs'); t.replaceChildren();
-  TABS.forEach(([id, name]) => { const b = el('button', null, name); b.type = 'button'; b.setAttribute('aria-pressed', String(ui.tab === id)); b.onclick = () => { ui.tab = id; buildTabs(); buildPanel(); }; t.appendChild(b); });
+  TABS.forEach(([id, name]) => { const b = el('button', null, name); b.type = 'button'; b.setAttribute('aria-pressed', String(ui.tab === id)); b.onclick = () => { if (ui.tab === id) return; ui.tab = id; buildTabs(); buildPanel(); panelIn(); }; t.appendChild(b); });
 }
 const GRIP = SVGI('<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="3"/>');
 function toggleLayerVisible(id) {
@@ -3037,7 +3352,7 @@ function fmt(c, v) {
   if (['hue', 'twirl', 'rot', 'fa', 'a0'].includes(c.key)) return Math.round(v) + '°';
   if (['posterize', 'pixelate'].includes(c.key) && v < (c.key === 'posterize' ? 2 : 1)) return 'Off';
   if (c.key === 'threshold' && c.idp === 'p-' && v <= 0) return 'Off';
-  if (['opacity', 'vertical', 'detail', 'jitter', 'margin', 'mixPhoto', 'tol', 'threshold', 'amount', 'sepia', 'vignette', 'grain', 'bulge', 'warpX', 'warpY', 'warpR', 'shadows', 'highlights', 'fade', 'inner', 'alpha', 'alphaTone', 'colorLift', 'r0', 'r1'].includes(c.key)) return Math.round(v * 100) + '%';
+  if (['opacity', 'vertical', 'detail', 'jitter', 'margin', 'mixPhoto', 'tol', 'threshold', 'amount', 'sepia', 'vignette', 'grain', 'bulge', 'warpX', 'warpY', 'warpR', 'shadows', 'highlights', 'fade', 'inner', 'alpha', 'alphaTone', 'colorLift', 'r0', 'r1', 'scale'].includes(c.key)) return Math.round(v * 100) + '%';
   if (c.step >= 1) return String(Math.round(v));
   return Number(v).toFixed(c.step < 0.05 ? 2 : 1);
 }
@@ -3107,7 +3422,7 @@ function makeControl(obj, c, after) {
       lb.onclick = () => openLibrary({ obj, key: c.key, kind: c.key === 'words' ? 'list' : (obj.mode === 'halftone' ? 'glyphs' : 'text'), label: MODES[obj.mode] ? MODES[obj.mode].name : 'line' });
       tools.appendChild(lb);
       if (aiReady && obj.mode !== 'halftone') {
-        const sb = el('button', 'mini-btn', 'Suggest'); sb.type = 'button'; sb.title = 'Ask Claude for text that suits this photo';
+        const sb = el('button', 'mini-btn', 'Suggest'); sb.type = 'button'; sb.title = 'Ask the AI helper for text that suits this photo';
         sb.onclick = () => suggestText(obj, c.key, sb);
         tools.appendChild(sb);
       }
@@ -3232,6 +3547,7 @@ function buildPhotoPanel(p) {
   s.appendChild(disclosure('photoFx', 'Effects', [R('grain', 'Grain', 0, 1, 0.02), R('posterize', 'Posterize', 0, 16, 1), R('threshold', 'Black and white cut', 0, 0.95, 0.01), R('pixelate', 'Pixelate', 0, 40, 1)].map((c) => Object.assign(c, { idp: 'p-' })), ph, pc()));
   const warp = () => { clearTimeout(warpTimer); warpTimer = setTimeout(() => photoChanged('source'), 90); };
   s.appendChild(disclosure('photoWarp', 'Bulge and twirl', [R('bulge', 'Bulge or pinch', -1, 1, 0.02), R('twirl', 'Twirl', -360, 360, 5), R('warpX', 'Center, across', 0, 1, 0.01), R('warpY', 'Center, down', 0, 1, 0.01), R('warpR', 'Size', 0.05, 1, 0.01)].map((c) => Object.assign(c, { idp: 'p-' })), ph, warp));
+  { const lq = el('div', 'row2'); lq.append(optBtn('Liquify by hand (Y)', () => setTool('liquify')), optBtn('Reset liquify', liqReset, false, !liqOn(ph))); s.appendChild(lq); s.appendChild(el('span', 'note', 'Liquify brushes the photo: push it around, bloat, pucker or twirl a spot, and Alt restores it.')); }
   s = sec(p, 'Text and shapes on the photo');
   s.appendChild(el('span', 'note', 'These become part of the photo, so text art draws them too. Use the Vector panel for objects that float above.'));
   const og = el('div', 'grid4');
@@ -3581,6 +3897,7 @@ function buildTiles() {
 function setLayerStyle(k) {
   const cur = curLayer(), m = MODES[k];
   if (!m || !cur || cur.mode === k) return;
+  revealSoon();
   const keep = {};
   Object.keys(COMMON_DEFAULTS).forEach((c) => { keep[c] = cur[c]; });
   if (cur.text && cur.mode !== 'halftone' && 'text' in m.defaults && k !== 'halftone') keep.text = cur.text;
@@ -3628,6 +3945,7 @@ function recipeLayers(r) {
   });
 }
 function applyRecipe(r) {
+  revealSoon();
   doc.out.paper = r.paper; doc.out.transparent = !!r.transparent;
   const lineLayers = doc.text.layers.filter((L) => L.mode === 'paths');
   doc.text.layers = recipeLayers(r).concat(doc.text.source === 'both' ? lineLayers : []);
@@ -3672,6 +3990,7 @@ function updateCTA() {
 }
 function applyTextArt() {
   if (!src) return;
+  if (!doc.text.applied) revealSoon();
   const sg = ui.suggestion || suggestFor(baseSrc);
   if (doc.text.applied) { setView('text'); return; }
   if (sg.kind === 'lines') {
@@ -3786,19 +4105,24 @@ let varJob = 0;
 function buildOutputPanel(p) {
   const o = doc.out;
   const oc = (rebuildView) => () => { if (rebuildView) { rebuildPhotoView(); } compose(); queueHistory(); scheduleText(0); };
-  let s = sec(p, 'Paper');
-  const sw = el('div', 'swatches'); sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', 'Paper color');
-  PAPERS.forEach(([h, n]) => {
-    const b = el('button', 'sw'); b.type = 'button'; b.style.background = h; b.setAttribute('aria-label', n + ' paper'); b.title = n;
+  // the background: on the T-shirt preview it is the shirt, so the swatches are shirt colors and set both
+  const shirt = o.mock === 'shirt';
+  let s = sec(p, shirt ? 'T-shirt color (background)' : 'Paper color (background)');
+  const sw = el('div', 'swatches'); sw.setAttribute('role', 'group'); sw.setAttribute('aria-label', shirt ? 'T-shirt color' : 'Paper color');
+  (shirt ? SHIRTS : PAPERS).forEach(([h, n]) => {
+    const b = el('button', 'sw'); b.type = 'button'; b.style.background = h; b.setAttribute('aria-label', n + (shirt ? ' shirt' : ' paper')); b.title = n;
     b.setAttribute('aria-pressed', String(o.paper.toLowerCase() === h));
-    b.onclick = () => { o.paper = h; buildPanel(); compose(); queueHistory(); scheduleText(0); };
+    b.onclick = () => { o.paper = h; if (shirt) o.shirt = h; inkForPaper(); buildPanel(); compose(); queueHistory(); scheduleText(0); };
     sw.appendChild(b);
   });
-  const ci = el('input'); ci.type = 'color'; ci.id = 'c-paper'; ci.value = o.paper; ci.setAttribute('aria-label', 'Custom paper color');
-  ci.oninput = () => { o.paper = ci.value; compose(); queueHistory(); scheduleText(); };
+  const ci = el('input'); ci.type = 'color'; ci.id = 'c-paper'; ci.value = o.paper; ci.setAttribute('aria-label', shirt ? 'Custom T-shirt color' : 'Custom paper color');
+  ci.oninput = () => { o.paper = ci.value; if (shirt) o.shirt = ci.value; compose(); queueHistory(); scheduleText(); };
+  ci.onchange = () => { if (inkForPaper()) { buildPanel(); scheduleText(0); } };
   sw.appendChild(ci); s.appendChild(sw);
   s.appendChild(makeControl(o, T('transparent', 'Transparent background', { idp: 'o-' }), oc()));
-  s.appendChild(el('span', 'note', 'For T-shirts, stickers and overlays. Pick the paper color closest to the shirt so the letters are chosen to show on it.'));
+  s.appendChild(el('span', 'note', o.transparent
+    ? 'The background is left out of the file. The letters are still chosen to show on ' + (shirt ? 'this shirt color' : 'this paper color') + ', so keep it close to what you will print on. Formats without transparency, such as JPG, fill it with this color.'
+    : (shirt ? 'The letters are chosen to show on this shirt color. Turn on Transparent background to print only the letters.' : 'The color behind the letters. Turn on Transparent background for T-shirts, stickers and overlays.')));
   s = sec(p, 'Color and size');
   s.appendChild(makeControl(o, Object.assign(S('colorModel', 'Output color', MODELS), { idp: 'o-', rebuild: () => buildPanel() }), oc()));
   s.appendChild(el('span', 'note', MODEL_NOTE[o.colorModel]));
@@ -3813,46 +4137,113 @@ function buildOutputPanel(p) {
   s.appendChild(cw);
   s.appendChild(el('span', 'note', 'Letter sizes are in artboard pixels. While you work, a smaller preview is drawn; exports always use the full artboard. The height follows the photo or crop.'));
   s = sec(p, 'Preview');
-  s.appendChild(makeControl(o, Object.assign(S('mock', 'Show on', [['artboard', 'Artboard'], ['paper', 'Paper'], ['shirt', 'T-shirt']]), { idp: 'o-', rebuild: () => buildPanel() }), () => compose()));
-  if (o.mock === 'shirt') {
-    const ss = el('div', 'swatches'); ss.setAttribute('role', 'group'); ss.setAttribute('aria-label', 'Shirt color'); ss.appendChild(el('span', 'val', 'Shirt'));
-    SHIRTS.forEach(([h, n]) => { const b = el('button', 'sw'); b.type = 'button'; b.style.background = h; b.title = n; b.setAttribute('aria-label', n + ' shirt'); b.setAttribute('aria-pressed', String(o.shirt === h)); b.onclick = () => { o.shirt = h; buildPanel(); layoutStage(); }; ss.appendChild(b); });
-    s.appendChild(ss);
-  }
+  s.appendChild(makeControl(o, Object.assign(S('mock', 'Show on', [['artboard', 'Artboard'], ['paper', 'Paper'], ['shirt', 'T-shirt']]), { idp: 'o-', rebuild: () => {
+    // the shirt preview starts from the paper color, so what you see is what the letters were chosen for
+    if (o.mock === 'shirt') o.shirt = o.paper;
+    buildPanel(); compose();
+  } }), () => compose()));
+  if (o.mock !== 'artboard') s.appendChild(el('span', 'note', 'Zoom with Ctrl and the wheel or the buttons below. Drag to move around. Drawing tools work on the Artboard view.'));
   s.appendChild(makeControl(o, R('mixPhoto', 'Photo strength in Mix view', 0.05, 1, 0.05, { idp: 'o-' }), () => compose()));
   s = sec(p, 'Print');
+  const pchg = () => { updatePrint(); layoutStage(); queueHistory(); };
   const pr = el('div', 'ctl');
   const lab = el('label', 'lab', 'Print size'); lab.htmlFor = 'c-print';
   const sl = el('select'); sl.id = 'c-print';
-  Object.keys(PRINTS).forEach((k) => { const op = el('option', null, k); op.value = k; if (k === o.print) op.selected = true; sl.appendChild(op); });
-  sl.onchange = () => { o.print = sl.value; updatePrint(); layoutStage(); };
-  const dseg = el('div', 'seg'); dseg.setAttribute('role', 'group'); dseg.setAttribute('aria-label', 'Print resolution');
-  [[150, '150 dpi'], [300, '300 dpi']].forEach(([v, t]) => { const b = el('button', null, t); b.type = 'button'; b.setAttribute('aria-pressed', String(o.dpi === v)); b.onclick = () => { o.dpi = v; buildPanel(); }; dseg.appendChild(b); });
-  pr.append(lab, sl, dseg); s.appendChild(pr);
+  PRINT_GROUPS.forEach(([g, sizes]) => {
+    const og = el('optgroup'); og.label = g;
+    Object.keys(sizes).forEach((k) => { const op = el('option', null, k); op.value = k; if (k === o.print) op.selected = true; og.appendChild(op); });
+    sl.appendChild(og);
+  });
+  const cop = el('option', null, 'Custom size…'); cop.value = CUSTOM_PRINT; if (o.print === CUSTOM_PRINT) cop.selected = true; sl.appendChild(cop);
+  sl.onchange = () => { o.print = sl.value; buildPanel(); pchg(); };
+  pr.append(lab, sl); s.appendChild(pr);
+  if (o.print === CUSTOM_PRINT) {
+    const row = el('div', 'row2');
+    const f = { mm: 1, cm: 10, in: 25.4 }[o.printUnit] || 1;
+    let t = null; const later = (fn) => { clearTimeout(t); t = setTimeout(() => { fn(); pchg(); }, 350); };
+    row.append(numInput('Width', +(o.printW / f).toFixed(2), (v) => later(() => { o.printW = clamp(v * f, 10, 5000); }), { min: 0.5, max: 5000, unit: o.printUnit }),
+      numInput('Height', +(o.printH / f).toFixed(2), (v) => later(() => { o.printH = clamp(v * f, 10, 5000); }), { min: 0.5, max: 5000, unit: o.printUnit }));
+    s.appendChild(row);
+    s.appendChild(makeControl(o, Object.assign(S('printUnit', 'Units', [['mm', 'mm'], ['cm', 'cm'], ['in', 'inches']]), { idp: 'o-', rebuild: () => buildPanel() }), () => {}));
+  }
+  s.appendChild(makeControl(o, Object.assign(S('orient', 'Page', [['auto', 'Fit the art'], ['portrait', 'Portrait'], ['landscape', 'Landscape']]), { idp: 'o-', rebuild: () => buildPanel() }), pchg));
+  s.appendChild(makeControl(o, R('printRot', 'Turn the art on the page', -180, 180, 1, { idp: 'o-' }), () => { o.printRot = Math.round(o.printRot); pchg(); }));
+  const rq = el('div', 'row2 quick');
+  [-90, -45, 0, 45, 90, 180].forEach((a) => { const b = el('button', 'mini-btn', (a > 0 ? '+' : '') + a + '°'); b.type = 'button'; b.setAttribute('aria-pressed', String((o.printRot || 0) === a)); b.onclick = () => { o.printRot = a; buildPanel(); pchg(); }; rq.appendChild(b); });
+  s.appendChild(rq);
+  const mrow = el('div', 'row2');
+  mrow.appendChild(numInput('Page margin', o.pageMargin == null ? '' : o.pageMargin, (v) => { o.pageMargin = clamp(v, 0, 300); pchg(); }, { min: 0, max: 300, step: 1, unit: 'mm' }));
+  const auto = optBtn('Auto', () => { o.pageMargin = null; buildPanel(); pchg(); }); auto.classList.add('btn-quiet'); auto.setAttribute('aria-pressed', String(o.pageMargin == null)); mrow.appendChild(auto);
+  s.appendChild(mrow);
+  // resolution: the common choices as buttons, and any number in the field
+  const dl = el('span', 'lab', 'Resolution (dpi)'); dl.id = 'c-dpi-l';
+  const dseg = el('div', 'seg'); dseg.setAttribute('role', 'group'); dseg.setAttribute('aria-labelledby', 'c-dpi-l');
+  DPI_PRESETS.forEach(([v, t]) => { const b = el('button', null, t); b.type = 'button'; b.setAttribute('aria-pressed', String(o.dpi === v)); b.onclick = () => { o.dpi = v; buildPanel(); pchg(); }; dseg.appendChild(b); });
+  const dctl = el('div', 'ctl'); dctl.append(dl, dseg); s.appendChild(dctl);
+  const drow = el('div', 'row2'); let dT = null;
+  drow.appendChild(numInput('Any dpi', o.dpi, (v) => { clearTimeout(dT); dT = setTimeout(() => { o.dpi = clamp(Math.round(v), 30, 2400); buildPanel(); pchg(); }, 500); }, { min: 30, max: 2400, step: 1, unit: 'dpi' }));
+  s.appendChild(drow);
+  s.appendChild(el('span', 'note', DPI_NOTE(o.dpi)));
+  const hb = el('button', 'mini-btn', 'Which dpi should I use?'); hb.type = 'button'; hb.onclick = () => openHelp('printing'); s.appendChild(hb);
   const po = el('div', 'print'); po.id = 'printOut'; s.appendChild(po);
   updatePrint();
   s = sec(p, 'Performance');
   s.appendChild(makeControl(o, T('gentle', 'Gentle on this computer', { idp: 'o-' }), () => {}));
   s.appendChild(el('span', 'note', 'Works in shorter bursts with longer rests, so other apps stay fast. Results take a little longer.'));
 }
+/* When the new paper hides a layer's ink (navy letters on black paper, say), switch that ink to one that shows, and say so. */
+function luminanceOf(hex) { const c = C.parseColor(hex); const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); }
+function contrastOf(a, b) { const x = luminanceOf(a), y = luminanceOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function inkForPaper() {
+  const paper = doc.out.paper, dark = isDarkHex(paper), fixed = [];
+  doc.text.layers.forEach((L) => {
+    if (!['ink', 'duotone'].includes(L.color) || !L.inkColor) return;
+    if (contrastOf(L.inkColor, paper) >= 2.2) return;
+    fixed.push(MODES[L.mode] ? MODES[L.mode].name : L.mode);
+    L.inkColor = dark ? '#f2efe6' : '#14213d';
+  });
+  if (fixed.length) toast('Changed the ink of ' + fixed.join(', ') + ' to ' + (dark ? 'light' : 'dark') + ', so it shows on this paper', { label: 'Undo', fn: undo });
+  return fixed.length > 0;
+}
+/* a one-line hint for the chosen resolution; the Printing help page has the details and sources */
+function DPI_NOTE(d) {
+  if (d < 100) return d + ' dpi: only for screens. A screen ignores dpi and shows pixels, so this does not make anything sharper or softer there.';
+  if (d < 200) return d + ' dpi: posters and banners seen from a few steps away, and the usual minimum for T-shirt printing.';
+  if (d < 400) return d + ' dpi: the common choice for prints seen up close, such as photos, books, flyers and cards.';
+  return d + ' dpi: fine line art and small text on some printers. Ask your printer first: most photo prints gain nothing above 300.';
+}
+const MAX_PRINT_PX = 9000;
+function printPaper() {
+  const o = doc.out;
+  if (o.print === CUSTOM_PRINT) return [Math.min(o.printW, o.printH), Math.max(o.printW, o.printH), undefined, o.printW > o.printH];
+  return PRINTS[o.print] || PRINTS.A3;
+}
 function printGeom() {
-  const [a, b] = PRINTS[doc.out.print];
+  const o = doc.out, P = printPaper();
+  const [a, b] = P;
   const g = artGeom(1);
   const ar = g.TW / g.TH;
-  const land = ar >= 1;
+  const rot = ((o.printRot || 0) % 360) * Math.PI / 180, c = Math.abs(Math.cos(rot)), sn = Math.abs(Math.sin(rot));
+  // how wide and tall the turned artwork is, per unit of its own width
+  const bw = c + sn / ar, bh = sn + c / ar;
+  const land = o.orient === 'landscape' ? true : o.orient === 'portrait' ? false : bw >= bh;
   const pw = land ? Math.max(a, b) : Math.min(a, b), ph = land ? Math.min(a, b) : Math.max(a, b);
-  const m = doc.out.print.startsWith('T-shirt') ? 0 : 0.06 * Math.min(pw, ph);
-  const aw = Math.min(pw - 2 * m, (ph - 2 * m) * ar), ah = aw / ar;
-  const needPx = Math.round(aw / 25.4 * doc.out.dpi);
-  return { pw, ph, aw, ah, x: (pw - aw) / 2, y: (ph - ah) / 2, land, needPx, needH: Math.round(needPx / ar), TW: g.TW, TH: g.TH };
+  const m = o.pageMargin != null ? Math.min(o.pageMargin, Math.min(pw, ph) * 0.45) : P[2] === 0 ? 0 : 0.06 * Math.min(pw, ph);
+  const aw = Math.max(1, Math.min((pw - 2 * m) / bw, (ph - 2 * m) / bh)), ah = aw / ar;
+  const want = Math.round(aw / 25.4 * o.dpi);
+  const needPx = Math.min(want, Math.round(MAX_PRINT_PX * Math.min(1, ar)));
+  return { pw, ph, aw, ah, x: (pw - aw) / 2, y: (ph - ah) / 2, m, land, rot: o.printRot || 0, needPx, needH: Math.round(needPx / ar), capped: needPx < want,
+    realDpi: Math.round(needPx / (aw / 25.4)), TW: g.TW, TH: g.TH, name: o.print === CUSTOM_PRINT ? Math.round(a) + ' × ' + Math.round(b) + ' mm' : o.print };
 }
 function updatePrint() {
   const box = document.getElementById('printOut');
   if (!box || !origImg) return;
   const g = printGeom();
   const sub = el('div', 'print-sub');
-  sub.appendChild(el('div', null, doc.out.print + ' ' + (g.land ? 'landscape' : 'portrait') + (g.x > 0.5 ? ', ' + Math.round(g.x) + ' mm margins.' : '.')));
-  sub.appendChild(el('div', null, 'Needs ' + g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px at ' + doc.out.dpi + ' dpi. Print exports use exactly that size.'));
+  sub.appendChild(el('div', null, g.name + ', ' + (g.land ? 'landscape' : 'portrait') + (g.m > 0.5 ? ', ' + Math.round(g.m) + ' mm margins' : ', no margin') + (g.rot ? ', art turned ' + g.rot + '°' : '') + '.'));
+  sub.appendChild(el('div', null, 'Needs ' + g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px at ' + g.realDpi + ' dpi. Print exports use exactly that size.'));
+  if (g.capped) sub.appendChild(el('div', 'warn', 'That is more than ' + MAX_PRINT_PX.toLocaleString() + ' px, the largest SungFluence draws, so print exports use ' + g.realDpi + ' dpi at this size.'));
+  if (g.rot) sub.appendChild(el('div', null, 'The turned art shows on the Paper preview and in the PDF for print. PNG files and the CMYK PDF keep the art straight.'));
   if (out) {
     const k = 1 / (out.W / g.TW);
     out.layers.forEach((L) => {
@@ -3861,7 +4252,7 @@ function updatePrint() {
       sub.appendChild(el('div', pt < 4 ? 'warn' : null, MODES[L.mode].name + ': ' + L.grid.cols + ' × ' + L.grid.rows + ' characters at ' + pt.toFixed(1) + ' pt' + (pt < 4 ? ', which reads as texture rather than letters.' : '.')));
     });
   }
-  if (doc.out.transparent) sub.appendChild(el('div', 'ok', 'Transparent background: PNG, SVG and PDF keep it clear.'));
+  if (doc.out.transparent) sub.appendChild(el('div', 'ok', 'Transparent background: kept clear in PNG, SVG, PDF and the text outputs. JPG cannot be transparent, so a JPG gets the ' + (doc.out.mock === 'shirt' ? 'T-shirt' : 'paper') + ' color (' + doc.out.paper + ') behind the letters. Change that color above to choose it.'));
   box.replaceChildren(el('div', 'print-big', Math.round(g.aw) + ' × ' + Math.round(g.ah) + ' mm'), sub);
 }
 function updatePalette() {
@@ -4113,6 +4504,7 @@ function removeUserPlugin(id) {
 }
 function usePluginStyle(key) {
   if (!MODES[key]) return;
+  revealSoon();
   if (!doc.text.applied) {
     doc.text.layers = [newLayer(key)]; doc.text.sel = 0; doc.text.source = 'photo'; doc.text.applied = true;
     ui.tab = 'text'; buildTabs(); buildPanel(); setView('text'); scheduleText(0); queueHistory();
@@ -4250,7 +4642,7 @@ command('file.new', 'New artboard…', () => openNewArtboard(), { keys: ['shift+
 command('file.square', 'New square artboard', () => newSquare());
 command('file.open', 'Open image or project…', () => $('fileInput').click(), { keys: ['mod+o'], typing: true });
 command('file.save', 'Save project', () => saveProject(), { keys: ['mod+s'], typing: true, enabled: hasImg });
-command('file.export', 'Export…', () => openMenu(), { keys: ['mod+e'], typing: true, enabled: hasImg });
+command('file.export', 'Export…', () => openExport(), { keys: ['mod+e'], typing: true, enabled: hasImg });
 command('file.settings', 'Settings…', () => openSettings());
 // Edit
 command('edit.undo', 'Undo', () => undo(), { keys: ['mod+z'], enabled: () => hist.length > 0 });
@@ -4305,7 +4697,7 @@ command('snap.on', 'Snapping', () => setSnap('on'), { keys: ['mod+;'], checked: 
 SNAP_KINDS.forEach(([k, t]) => command('snap.' + k, t, () => setSnap(k), { checked: () => !!prefs.snap[k], enabled: () => !!prefs.snap.on }));
 command('snap.gridSize', 'Grid size…', () => openSettings());
 // Tools (palette and keys; the rail on the left shows them too)
-[['hand', 'h'], ['zoom', 'z'], ['crop', 'c'], ['wand', 'w'], ['lasso', 'l'], ['brush', 'b'], ['select', 'v'], ['shape', 'u'], ['text', 't'], ['pen', 'p'], ['pencil', 'n'], ['direct', 'a']]
+[['hand', 'h'], ['zoom', 'z'], ['crop', 'c'], ['wand', 'w'], ['lasso', 'l'], ['brush', 'b'], ['liquify', 'y'], ['select', 'v'], ['shape', 'u'], ['text', 't'], ['pen', 'p'], ['pencil', 'n'], ['direct', 'a']]
   .forEach(([id, k]) => { const t = TOOLS.find((x) => x.id === id); command('tool.' + id, 'Tool: ' + (t ? t.name.split(/[:.]/)[0] : id), () => setTool(id), { keys: [k], checked: () => ui.tool === id }); });
 // Plugins
 command('plugins.manage', 'Plugins…', () => openPlugins());
@@ -4327,7 +4719,7 @@ function dynamicCommands() {
   Object.entries(MODES).forEach(([k, m]) => command('style.' + k, (m.plugin ? 'Extra effect: ' : 'Style: ') + m.name, () => usePluginStyle(k), { checked: () => doc.text.applied && curLayer().mode === k, enabled: hasImg }));
   RECIPES.forEach((r, i) => command('recipe.' + i, 'Recipe: ' + r.name, () => applyRecipe(r), { enabled: hasImg }));
   Object.keys(SAMPLES).forEach((k) => command('sample.' + k, 'Sample: ' + k, () => useSample(k)));
-  EXPORTS.forEach((x, i) => { if (x.title) command('export.' + i, 'Export: ' + x.title, () => { if (origImg) x.run(); }, { enabled: () => hasImg() && (x.always || doc.text.applied) && (!x.when || x.when()) }); });
+  EXPORTS.forEach((x) => { if (x.title) command('export.' + x.id, 'Export: ' + x.title, () => { if (!origImg) return; if (x.noWindow) x.run(); else openExport(x.id); }, { enabled: () => exporterReady(x) }); });
 }
 
 /* ---------- menus ---------- */
@@ -4341,7 +4733,7 @@ function menuSpec() {
   EXPORTS.forEach((x, i) => {
     if (x.head) { if (exportsList.length) exportsList.push(SEP); exportsList.push({ head: x.head }); }
     else if (x.sep) exportsList.push(SEP);
-    else exportsList.push(Object.assign(item('export.' + i), { label: x.title }));
+    else exportsList.push(Object.assign(item('export.' + x.id), { label: x.title }));
   });
   return [
     { label: 'File', items: [item('file.new'), item('file.square'), item('file.open'),
@@ -4541,8 +4933,435 @@ function openPalette() {
   render(); inp.focus();
 }
 
+/* ===== 06-export.js ===== */
+/* ===================== Part 6a: export formats, the Export window, project files ===================== */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Every output format is one entry in EXPORTERS: an id, a group, a title, the options it offers and a run(options) function.
+// The Export window, the Export menu and the command palette are all made from this one list.
+// registerExporter() adds a format; later, plugins will be able to add their own the same way.
+//
+// Nothing here runs at load time except plain definitions, because this part loads before 06-io.js.
+
+/* ---------------- small helpers ---------------- */
+const b64ToBytes = (b64) => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+const dataURLParts = (u) => { const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(u || ''); return m ? { type: m[1], b64: m[2] ? m[3] : btoa(unescape(m[3])) } : null; };
+const extOf = (type) => ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/gif': 'gif' })[type] || 'bin';
+function aboutBytes(n) { return n > 1e6 ? 'about ' + (n / 1e6).toFixed(n > 1e7 ? 0 : 1) + ' MB' : 'about ' + Math.max(1, Math.round(n / 1e3)) + ' KB'; }
+
+/* ---------------- the recipe that travels with a file (O5) ----------------
+   The look only: styles, text, colors, paper and photo adjustments. Never the photo, never a crop. */
+function recipeData() {
+  const o = doc.out, ph = Object.assign({}, doc.photo); delete ph.crop; delete ph.ratio; delete ph.liquify;
+  return { app: 'sungfluence', kind: 'recipe', v: 1,
+    text: { source: doc.text.source, sel: doc.text.sel, layers: doc.text.layers.map((L) => { const c = Object.assign({}, L); delete c.id; return c; }) },
+    out: { paper: o.paper, transparent: o.transparent, margin: o.margin, colorModel: o.colorModel }, photo: ph };
+}
+function applySavedRecipe(r, fileName, file) {
+  if (!r || r.kind !== 'recipe' || !r.text || !Array.isArray(r.text.layers)) return false;
+  const layers = r.text.layers.filter((L) => MODES[L.mode]).map((L) => newLayer(L.mode, Object.assign({}, L, { id: undefined })));
+  if (!layers.length) return false;
+  commitHistory(); revealSoon();
+  doc.text.layers = layers.concat(doc.text.layers.filter((L) => L.mode === 'paths' && doc.text.source === 'both'));
+  doc.text.sel = clamp(r.text.sel || 0, 0, layers.length - 1);
+  if (r.text.source && r.text.source !== 'lines') doc.text.source = r.text.source === 'both' && !doc.lines.paths.length ? 'photo' : r.text.source;
+  Object.assign(doc.out, r.out || {});
+  if (r.photo) { const crop = doc.photo.crop, ratio = doc.photo.ratio, liquify = doc.photo.liquify; doc.photo = migratePhoto(Object.assign({}, PHOTO_DEFAULTS, r.photo, { crop, ratio, liquify })); rebuildBase(); rebuildPhotoView(); }
+  doc.text.applied = true;
+  buildAll(); if (ui.view === 'photo') setView('text'); else compose();
+  scheduleText(0); queueHistory();
+  toast('Applied the look saved in ' + (fileName || 'that file'), file ? { label: 'Open as a picture', fn: () => { undo(); loadFile(file, true); } } : { label: 'Undo', fn: undo });
+  return true;
+}
+
+/* PNG: the recipe sits in an iTXt chunk named "sungfluence", just before the end of the file */
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(bytes) { let c = 0xFFFFFFFF; for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+async function pngWithRecipe(blob, rec) {
+  const src = new Uint8Array(await blob.arrayBuffer());
+  const text = new TextEncoder().encode(JSON.stringify(rec));
+  const key = new TextEncoder().encode('sungfluence');
+  const data = new Uint8Array(key.length + 5 + text.length);
+  data.set(key, 0); // keyword, then: null, compression flag, method, empty language, empty translated keyword
+  data.set(text, key.length + 5);
+  const type = new TextEncoder().encode('iTXt');
+  const chunk = new Uint8Array(12 + data.length), dv = new DataView(chunk.buffer);
+  dv.setUint32(0, data.length); chunk.set(type, 4); chunk.set(data, 8);
+  const crcIn = new Uint8Array(4 + data.length); crcIn.set(type, 0); crcIn.set(data, 4);
+  dv.setUint32(8 + data.length, crc32(crcIn));
+  // find IEND and put the chunk in front of it
+  let p = 8;
+  while (p < src.length) {
+    const len = new DataView(src.buffer, src.byteOffset + p).getUint32(0);
+    const t = String.fromCharCode(src[p + 4], src[p + 5], src[p + 6], src[p + 7]);
+    if (t === 'IEND') break;
+    p += 12 + len;
+  }
+  const outB = new Uint8Array(src.length + chunk.length);
+  outB.set(src.subarray(0, p), 0); outB.set(chunk, p); outB.set(src.subarray(p), p + chunk.length);
+  return new Blob([outB], { type: 'image/png' });
+}
+function recipeFromPNG(buf) {
+  const u = new Uint8Array(buf);
+  if (u.length < 8 || u[0] !== 0x89 || u[1] !== 0x50) return null;
+  let p = 8;
+  while (p + 8 <= u.length) {
+    const len = new DataView(u.buffer, u.byteOffset + p).getUint32(0);
+    const t = String.fromCharCode(u[p + 4], u[p + 5], u[p + 6], u[p + 7]);
+    if (t === 'iTXt' || t === 'tEXt') {
+      const d = u.subarray(p + 8, p + 8 + len);
+      const z = d.indexOf(0);
+      if (new TextDecoder().decode(d.subarray(0, z)) === 'sungfluence') {
+        let q = z + 1;
+        if (t === 'iTXt') { q += 2; q = d.indexOf(0, q) + 1; q = d.indexOf(0, q) + 1; }
+        try { return JSON.parse(new TextDecoder().decode(d.subarray(q))); } catch (e) { return null; }
+      }
+    }
+    if (t === 'IEND') break;
+    p += 12 + len;
+  }
+  return null;
+}
+/* SVG: the recipe sits in <metadata>, as JSON */
+function svgWithRecipe(svg, rec) {
+  const m = '<metadata id="sungfluence-recipe"><![CDATA[' + JSON.stringify(rec).replace(/]]>/g, ']]]]><![CDATA[>') + ']]></metadata>';
+  return svg.replace(/(<svg\b[^>]*>)/, (s) => s + '\n' + m);
+}
+function recipeFromSVG(text) {
+  const m = /<metadata id="sungfluence-recipe"><!\[CDATA\[([\s\S]*?)\]\]><\/metadata>/.exec(text);
+  if (!m) return null;
+  try { return JSON.parse(m[1].replace(/]]]]><!\[CDATA\[>/g, ']]>')); } catch (e) { return null; }
+}
+/* looks inside a dropped PNG or SVG for a saved look */
+async function recipeInFile(file) {
+  try {
+    if (/svg/.test(file.type) || /\.svg$/i.test(file.name)) return recipeFromSVG(await file.text());
+    if (/png/.test(file.type) || /\.png$/i.test(file.name)) return recipeFromPNG(await file.arrayBuffer());
+  } catch (e) { /* not readable: open it as a picture */ }
+  return null;
+}
+
+/* ---------------- project file, version 5: one .sungfluence zip ----------------
+   project.json holds the settings; the photo, image objects and a preview are separate files inside.
+   layers: which of photo, lines (vector) and text to keep. */
+const PROJECT_EXT = '.sungfluence';
+async function projectZip(layers) {
+  layers = Object.assign({ photo: true, lines: true, text: true }, layers || {});
+  const JSZip = await zipReady();
+  const z = new JSZip();
+  const p = JSON.parse(JSON.stringify(projectData()));
+  p.v = 5; p.layers = layers;
+  if (!layers.photo) {
+    const c = mk(iw, ih), x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, iw, ih);
+    p.image = c.toDataURL('image/png'); p.photo = Object.assign({}, PHOTO_DEFAULTS, { crop: doc.photo.crop, ratio: doc.photo.ratio }); p.mask = null; p.blank = p.blank || { bg: '#ffffff' };
+    p.objects = p.objects.filter((q) => q.layer !== 'photo');
+  }
+  if (!layers.lines) { p.lines.paths = []; p.objects = p.objects.filter((q) => q.layer === 'photo'); }
+  if (!layers.text) { p.text.layers = [newLayer('rows')]; p.text.applied = false; }
+  const im = dataURLParts(p.image);
+  if (im) { const name = 'image.' + extOf(im.type); z.file(name, im.b64, { base64: true }); p.image = name; }
+  const used = {};
+  Object.entries(p.assets || {}).forEach(([id, url]) => {
+    if (!p.objects.some((q) => q.asset === id)) return;
+    const a = dataURLParts(url);
+    if (a) { const name = 'assets/' + id + '.' + extOf(a.type); z.file(name, a.b64, { base64: true }); used[id] = name; } else used[id] = url;
+  });
+  p.assets = used;
+  z.file('project.json', JSON.stringify(p, null, 1));
+  try { const t = mk(320, Math.max(1, Math.round(320 * canvas.height / canvas.width))); t.getContext('2d').drawImage(canvas, 0, 0, t.width, t.height); z.file('preview.png', (await toBlob(t, 'image/png')) || '', {}); } catch (e) { /* no preview */ }
+  z.file('README.txt', 'A SungFluence project. Open it in SungFluence with File, Open.\nproject.json holds the settings; the pictures are stored next to it.\n');
+  return z.generateAsync({ type: 'blob', compression: 'DEFLATE', mimeType: 'application/zip' });
+}
+async function saveProjectFile(layers) {
+  if (!origImg) return;
+  try { await saveFile(baseName() + PROJECT_EXT, await projectZip(layers)); }
+  catch (e) { toast('The project could not be saved. ' + (e && e.message ? e.message : '')); }
+}
+async function openProjectZip(file) {
+  try {
+    const JSZip = await zipReady();
+    const z = await JSZip.loadAsync(file);
+    const pj = z.file('project.json');
+    if (!pj) throw new Error('no project.json');
+    const p = JSON.parse(await pj.async('string'));
+    const asData = async (name) => {
+      const f = z.file(name); if (!f) return null;
+      const ext = name.split('.').pop().toLowerCase();
+      return 'data:' + ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', svg: 'image/svg+xml', gif: 'image/gif' }[ext] || 'application/octet-stream') + ';base64,' + await f.async('base64');
+    };
+    if (p.image && !/^data:/.test(p.image)) p.image = await asData(p.image);
+    for (const [id, v] of Object.entries(p.assets || {})) if (v && !/^data:/.test(v)) p.assets[id] = await asData(v);
+    return openProject(p);
+  } catch (e) { toast('That project file could not be opened.'); return false; }
+}
+
+/* ---------------- text twins and code outputs ---------------- */
+const TEXT_DEF = { cols: 80, chars: 'ramp', own: '', aspect: 2, blank: true, invert: false, color: true, depth: 256, lang: 'js', form: 'string', name: 'art', prog: 'mytool' };
+const CHAR_CHOICES = [['ramp', 'Keyboard characters, light to dark'], ['blocks', 'Shade blocks ░▒▓█'], ['braille', 'Braille dots (fine detail)'], ['az', 'The letters A to Z, in order'],
+  ['digits', 'Digits 0 to 9'], ['letters', 'ASCII letters only'], ['symbols', 'ASCII symbols only'], ['own', 'Your own characters']];
+const TEXT_OPTS = [
+  SEL('cols', 'Width in characters', [[40, '40'], [60, '60'], [80, '80 (classic terminal)'], [100, '100'], [120, '120'], [160, '160']]),
+  SEL('chars', 'Characters', CHAR_CHOICES),
+  { key: 'own', label: 'Your characters (any order, or the text to repeat for A to Z)', type: 'text', show: (o) => o.chars === 'own' || o.chars === 'az' },
+  SEL('aspect', 'Cell shape of the font it will be read in', [[2, 'Terminals and code editors (2 : 1)'], [1.8, 'Notepad and most text boxes (1.8 : 1)'], [1.6, 'Wide fonts (1.6 : 1)'], [1, 'Square cells (1 : 1)']]),
+  T('blank', 'Spaces for white areas'),
+  T('invert', 'Swap ink and paper')
+];
+function textOpt(o) {
+  const chars = o.chars === 'own' ? (o.own || ' .#') : o.chars;
+  return { chars, aspect: +o.aspect || 2, blank: o.blank !== false, invert: !!o.invert, text: o.chars === 'az' && o.own ? o.own : undefined };
+}
+const twinGrid = (r, o) => C.textGrid(r.out, +o.cols || 80, textOpt(o));
+const twinLines = (r, o) => C.gridLines(twinGrid(r, o));
+const rowsFor = (o) => { const g = artGeom(1); return Math.max(1, Math.round((+o.cols || 80) * g.H / g.W / (+o.aspect || 2))); };
+/* code: the art as a string or a comment block in a programming language */
+const LANGS = [['js', 'JavaScript'], ['ts', 'TypeScript'], ['py', 'Python'], ['c', 'C'], ['cpp', 'C++'], ['cs', 'C#'], ['java', 'Java'], ['go', 'Go'], ['rs', 'Rust'], ['sh', 'Shell (bash)'], ['ps1', 'PowerShell'], ['rb', 'Ruby'], ['php', 'PHP'], ['lua', 'Lua'], ['sql', 'SQL'], ['html', 'HTML comment']];
+const LANG_EXT = { js: 'js', ts: 'ts', py: 'py', c: 'c', cpp: 'cpp', cs: 'cs', java: 'java', go: 'go', rs: 'rs', sh: 'sh', ps1: 'ps1', rb: 'rb', php: 'php', lua: 'lua', sql: 'sql', html: 'html' };
+const qstr = (s) => JSON.stringify(s); // a double-quoted string with escapes that these languages all read
+function codeFor(lines, lang, form, name) {
+  name = (name || 'art').replace(/[^A-Za-z0-9_]/g, '_').replace(/^(\d)/, '_$1') || 'art';
+  const N = lines.length;
+  if (form === 'comment') {
+    const hash = ['py', 'sh', 'rb', 'ps1'].includes(lang);
+    if (lang === 'sql' || lang === 'lua') return lines.map((l) => '-- ' + l).join('\n') + '\n';
+    if (lang === 'html') return '<!--\n' + lines.map((l) => l.replace(/--/g, '- -')).join('\n') + '\n-->\n';
+    if (hash) return lines.map((l) => ('# ' + l).replace(/\s+$/, '')).join('\n') + '\n';
+    return '/*\n' + lines.map((l) => (' * ' + l.replace(/\*\//g, '* /')).replace(/\s+$/, '')).join('\n') + '\n */\n';
+  }
+  const arr = lines.map(qstr);
+  switch (lang) {
+    case 'js': return 'const ' + name + ' = [\n  ' + arr.join(',\n  ') + '\n].join("\\n");\n\nconsole.log(' + name + ');\n';
+    case 'ts': return 'export const ' + name + ': string = [\n  ' + arr.join(',\n  ') + '\n].join("\\n");\n';
+    case 'py': return name + ' = "\\n".join([\n    ' + arr.join(',\n    ') + ',\n])\n\nif __name__ == "__main__":\n    print(' + name + ')\n';
+    case 'c': return '#include <stdio.h>\n\nstatic const char *' + name + '[] = {\n  ' + arr.join(',\n  ') + '\n};\n\nint main(void) {\n  for (int i = 0; i < ' + N + '; i++) puts(' + name + '[i]);\n  return 0;\n}\n';
+    case 'cpp': return '#include <iostream>\n\nstatic const char *' + name + '[] = {\n  ' + arr.join(',\n  ') + '\n};\n\nint main() {\n  for (auto line : ' + name + ') std::cout << line << "\\n";\n}\n';
+    case 'cs': return 'static class Art\n{\n    public static readonly string[] Lines =\n    {\n        ' + arr.join(',\n        ') + '\n    };\n\n    static void Main() { foreach (var l in Lines) System.Console.WriteLine(l); }\n}\n';
+    case 'java': return 'public class Art {\n    static final String[] LINES = {\n        ' + arr.join(',\n        ') + '\n    };\n\n    public static void main(String[] args) {\n        for (String l : LINES) System.out.println(l);\n    }\n}\n';
+    case 'go': return 'package main\n\nimport (\n\t"fmt"\n\t"strings"\n)\n\nvar ' + name + ' = strings.Join([]string{\n\t' + arr.join(',\n\t') + ',\n}, "\\n")\n\nfunc main() { fmt.Println(' + name + ') }\n';
+    case 'rs': return 'const ' + name.toUpperCase() + ': &[&str] = &[\n    ' + arr.join(',\n    ') + ',\n];\n\nfn main() {\n    for l in ' + name.toUpperCase() + ' { println!("{}", l); }\n}\n';
+    case 'sh': return "#!/usr/bin/env bash\ncat <<'SUNGFLUENCE_ART'\n" + lines.join('\n') + '\nSUNGFLUENCE_ART\n';
+    case 'ps1': return "$" + name + " = @'\n" + lines.join('\n') + "\n'@\nWrite-Output $" + name + '\n';
+    case 'rb': return name.toUpperCase() + " = <<~'ART'\n" + lines.map((l) => '  ' + l).join('\n') + '\nART\n\nputs ' + name.toUpperCase() + '\n';
+    case 'php': return "<?php\n$" + name + " = <<<'ART'\n" + lines.join('\n') + "\nART;\necho $" + name + ', PHP_EOL;\n';
+    case 'lua': return 'local ' + name + ' = table.concat({\n  ' + arr.join(',\n  ') + '\n}, "\\n")\nprint(' + name + ')\n';
+    case 'sql': return "SELECT '" + lines.map((l) => l.replace(/'/g, "''")).join("' || CHAR(10) || '") + "' AS " + name + ';\n';
+    case 'html': return '<pre aria-label="Text art">' + lines.map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join('\n') + '</pre>\n';
+  }
+  return lines.join('\n') + '\n';
+}
+/* a shell script whose --help starts with the art */
+function helpHeader(lines, prog) {
+  prog = (prog || 'mytool').replace(/[^A-Za-z0-9._-]/g, '') || 'mytool';
+  return "#!/usr/bin/env bash\n# " + prog + ": replace this with what your tool does.\n\nusage() {\n  cat <<'SUNGFLUENCE_ART'\n" + lines.join('\n') +
+    '\nSUNGFLUENCE_ART\n  cat <<EOF\n\nUsage: ' + prog + ' [options] <file>\n\nOptions:\n  -h, --help     Show this help and exit\n  -v, --version  Show the version and exit\nEOF\n}\n\ncase "${1:-}" in\n  -h|--help) usage; exit 0 ;;\n  -v|--version) echo "' + prog + ' 1.0"; exit 0 ;;\nesac\n\nusage\n';
+}
+
+/* ---------------- the list of formats ----------------
+   group: where it sits in the window and menu. needs: 'text' when text art must be applied first.
+   layers: true when the user picks which layers go in. opts: controls (R, T, S, SEL from 01-data.js).
+   info(o): the size line in the window. run(o): makes and saves the file. */
+const RECIPE_OPT = T('recipe', 'Keep the style settings inside the file (never the photo)');
+const LAYER_IDS = [['photo', 'Photo'], ['lines', 'Vector'], ['text', 'Text art']];
+const layerList = (o) => LAYER_IDS.map(([id]) => id).filter((id) => o['layer_' + id]);
+const pngSize = (w, h) => aboutBytes(w * h * 1.6);
+const EXPORTERS = [];
+function registerExporter(x) {
+  const i = EXPORTERS.findIndex((e) => e.id === x.id);
+  if (i >= 0) EXPORTERS[i] = x; else EXPORTERS.push(x);
+  return x;
+}
+const GROUPS = ['Picture', 'Text art', 'Text twins', 'Code', 'Project'];
+[
+  { id: 'png-view', group: 'Picture', title: 'PNG of the visible layers', always: true, layers: true, opts: [RECIPE_OPT],
+    sub: () => { const g = artGeom(1); return 'Every shown layer in its order, ' + g.TW + ' × ' + g.TH + ' px'; },
+    info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + pngSize(g.TW, g.TH); },
+    run: (o) => flatPNG(o && o.layers ? o.layers : null, '-view', { recipe: o && o.recipe }) },
+  { id: 'jpg-view', group: 'Picture', title: 'JPG of the visible layers', always: true, layers: true, opts: [SEL('quality', 'Quality', [[0.92, 'High'], [0.85, 'Good, smaller file'], [0.75, 'Small file']])],
+    sub: () => 'A smaller file for sharing. JPG has no transparency: the background gets the ' + (doc.out.mock === 'shirt' ? 'T-shirt' : 'paper') + ' color',
+    info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + aboutBytes(g.TW * g.TH * 0.35) + ', background ' + doc.out.paper; },
+    run: (o) => flatPNG(o && o.layers ? o.layers : null, '-view', { jpg: (o && +o.quality) || 0.92, ground: 'paper' }) },
+  { id: 'svg-view', group: 'Picture', title: 'SVG of the visible layers', always: true, layers: true, opts: [RECIPE_OPT],
+    sub: () => 'Photo as a picture, vector shapes and live text art letters',
+    info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, letters stay editable'; },
+    run: (o) => fullSVG(o && o.layers, o && o.recipe) },
+  { id: 'png-photo-vector', group: 'Picture', title: 'Photo and vector, PNG', always: true, sub: () => 'The photo layer with shapes and lines, no text art',
+    info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px'; }, run: () => flatPNG(['photo', 'lines'], '-photo-vector') },
+  { id: 'svg-vector', group: 'Picture', title: 'Vector layer, SVG', always: true, sub: () => 'Lines drawn as strokes, shapes, text and images',
+    info: () => (doc.lines.paths.length + doc.objects.length) + ' lines and objects', run: () => saveFile(baseName() + '-vector.svg', vectorSVG()) },
+  { id: 'png-vector', group: 'Picture', title: 'Vector layer, PNG', always: true, sub: () => 'Transparent background',
+    info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, transparent'; }, run: () => flatPNG(['lines'], '-vector', { ground: null, ignoreOpacity: true }) },
+  { id: 'png-photo', group: 'Picture', title: 'Photo layer, edited', always: true, sub: () => 'Adjustments, effects, crop and photo objects, transparent where removed',
+    info: () => { const cr = cropRect(); return Math.round(cr.w * iw) + ' × ' + Math.round(cr.h * ih) + ' px'; }, run: () => photoCutout() },
+
+  { id: 'png-print', group: 'Text art', title: 'PNG for print', opts: [RECIPE_OPT],
+    sub: () => { const g = printGeom(); return g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px, ' + g.name + ' at ' + g.realDpi + ' dpi' + (doc.out.transparent ? ', transparent' : ''); },
+    info: () => { const g = printGeom(); return g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px, ' + g.name + ' at ' + g.realDpi + ' dpi, ' + pngSize(g.needPx, g.needH); },
+    run: (o) => runExport(printScaleFor, async (r) => saveFile(baseName() + '-' + printTag() + '.png', await withRecipePNG(await toBlob(r.canvas, 'image/png'), o))) },
+  { id: 'png-art', group: 'Text art', title: 'PNG at artboard size', opts: [RECIPE_OPT],
+    sub: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px'; }, info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + pngSize(g.TW, g.TH); },
+    run: (o) => runExport(() => 1, async (r) => saveFile(baseName() + '.png', await withRecipePNG(await toBlob(r.canvas, 'image/png'), o))) },
+  { id: 'svg-art', group: 'Text art', title: 'SVG with live text', opts: [RECIPE_OPT], sub: () => 'Editable letters for Illustrator, Inkscape or Figma',
+    info: () => (out ? out.layers.reduce((n, L) => n + L.items.length, 0).toLocaleString() + ' letters and shapes' : 'Editable letters'),
+    run: (o) => runExport(null, async (r) => { const s = C.toSVG(r.out, FONT_IMPORT); return saveFile(baseName() + '.svg', o && o.recipe ? svgWithRecipe(s, recipeData()) : s); }) },
+  { id: 'pdf-print', group: 'Text art', title: 'PDF for print', sub: () => printGeom().name + ' page, artwork at ' + printGeom().realDpi + ' dpi', info: () => { const g = printGeom(); return g.name + ' ' + (g.land ? 'landscape' : 'portrait') + ', ' + g.realDpi + ' dpi' + (g.rot ? ', art turned ' + g.rot + '°' : ''); },
+    run: () => runExport(printScaleFor, async (r) => {
+      const jsPDF = await jsPDFReady(); const g = printGeom();
+      const pdf = new jsPDF({ orientation: g.land ? 'landscape' : 'portrait', unit: 'mm', format: [g.pw, g.ph].sort((a, b) => a - b), compress: true });
+      if (g.rot) {
+        // turned art: draw the whole page as one picture, at the chosen dpi or as close as fits
+        const ppm = Math.min(doc.out.dpi / 25.4, 12000 / Math.max(g.pw, g.ph));
+        const pc = mk(Math.round(g.pw * ppm), Math.round(g.ph * ppm)), x = pc.getContext('2d');
+        if (!doc.out.transparent) { x.fillStyle = r.out.paper; x.fillRect(0, 0, pc.width, pc.height); }
+        x.translate(pc.width / 2, pc.height / 2); x.rotate(g.rot * Math.PI / 180);
+        x.imageSmoothingQuality = 'high';
+        x.drawImage(r.canvas, -g.aw * ppm / 2, -g.ah * ppm / 2, g.aw * ppm, g.ah * ppm);
+        pdf.addImage(doc.out.transparent ? pc.toDataURL('image/png') : pc.toDataURL('image/jpeg', 0.93), doc.out.transparent ? 'PNG' : 'JPEG', 0, 0, g.pw, g.ph);
+      } else if (!doc.out.transparent) { pdf.setFillColor(r.out.paper); pdf.rect(0, 0, g.pw, g.ph, 'F'); pdf.addImage(r.canvas.toDataURL('image/jpeg', 0.93), 'JPEG', g.x, g.y, g.aw, g.ah); }
+      else pdf.addImage(r.canvas.toDataURL('image/png'), 'PNG', g.x, g.y, g.aw, g.ah);
+      await saveFile(baseName() + '-' + printTag() + '.pdf', pdf.output('blob'));
+    }) },
+  { id: 'pdf-cmyk', group: 'Text art', title: 'CMYK PDF, vector', sub: () => 'Live letters with CMYK ink values, ' + printGeom().name, info: () => printGeom().name + ' page, live letters' + (printGeom().rot ? ', art kept straight' : ''), run: () => runExport(null, (r) => cmykPDF(r.out)) },
+  { id: 'cmyk-plates', group: 'Text art', title: 'CMYK plates', sub: () => 'Four PNG separations in one .zip, for screen print', info: () => 'Four PNG files in a .zip',
+    run: () => runExport((o) => Math.min(printScaleFor(o), 4000 / Math.max(o.W, o.H)), (r) => separations(r.canvas)) },
+
+  { id: 'txt-plain', group: 'Text twins', title: 'Plain text', sub: () => 'Any style as characters you can paste anywhere', opts: TEXT_OPTS,
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters',
+    run: (o) => runExport(null, (r) => saveFile(baseName() + '-' + (o.chars === 'braille' ? 'braille' : 'text') + '.txt', twinLines(r, o).join('\n') + '\n')) },
+  { id: 'txt-md', group: 'Text twins', title: 'Markdown', sub: () => 'Text art inside a code block, for README files and chats', opts: TEXT_OPTS,
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters in a code block',
+    run: (o) => runExport(null, (r) => saveFile(baseName() + '.md', '```text\n' + twinLines(r, o).join('\n').replace(/```/g, '`\u200b``') + '\n```\n')) },
+  { id: 'txt-html', group: 'Text twins', title: 'HTML page', sub: () => 'Colored characters in a web page', opts: TEXT_OPTS.concat([T('color', 'Keep the colors')]),
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters' + (o.color ? ', in color' : ''),
+    run: (o) => runExport(null, (r) => saveFile(baseName() + '.html', C.gridHTML(twinGrid(r, o), o.color, doc.fileName))) },
+  { id: 'txt-ansi', group: 'Text twins', title: 'Terminal colors', sub: () => 'Any style as colored text for a terminal (cat the file)', opts: TEXT_OPTS.concat([S('depth', 'Colors', [[16, '16'], [256, '256'], ['full', 'Full color']])]),
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters, ' + (o.depth === 'full' ? 'full color' : o.depth + ' colors'),
+    run: (o) => runExport(null, (r) => saveFile(baseName() + '-ansi' + (o.depth === 'full' ? '-full' : o.depth) + '.txt', C.gridANSI(twinGrid(r, o), o.depth) + '\n')) },
+  { id: 'txt-svg', group: 'Text twins', title: 'SVG for README files', sub: () => 'Text rows in a small SVG that GitHub and GitLab show as a picture', opts: TEXT_OPTS.concat([T('color', 'Keep the colors')]),
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters, no fonts or scripts',
+    run: (o) => runExport(null, (r) => saveFile(baseName() + '-readme.svg', C.gridSVG(twinGrid(r, o), o.color))) },
+  { id: 'txt-grid', group: 'Text twins', title: 'Grid text, exact', sub: () => 'The exact characters of an ASCII or Braille layer', when: () => activeLayers().some((L) => L.mode === 'grid' || L.mode === 'unicode'),
+    info: () => 'The characters exactly as placed',
+    run: () => runExport(null, (r) => saveFile(baseName() + '-grid.txt', r.out.layers.filter((L) => L.text).map((L) => L.text).join('\n\n'))) },
+  { id: 'txt-ansi-grid', group: 'Text twins', title: 'Color terminal text, exact', sub: () => 'ASCII layer with 16-color codes, letter for letter', when: () => activeLayers().some((L) => L.mode === 'grid'),
+    info: () => '16 colors, letter for letter', run: () => runExport(null, (r) => { const t = C.toANSI(r.out); if (t) return saveFile(baseName() + '-ansi.txt', t); }) },
+
+  { id: 'code', group: 'Code', title: 'Code', sub: () => 'The art as a string or a comment block in a programming language',
+    opts: [SEL('lang', 'Language', LANGS), S('form', 'As', [['string', 'A string'], ['comment', 'A comment block']]), { key: 'name', label: 'Name of the string', type: 'text', show: (o) => o.form === 'string' }].concat(TEXT_OPTS),
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters, ' + (LANGS.find((l) => l[0] === o.lang) || ['', ''])[1],
+    run: (o) => runExport(null, (r) => saveFile(baseName() + (o.form === 'comment' ? '-comment' : '') + '.' + LANG_EXT[o.lang], codeFor(twinLines(r, o), o.lang, o.form, o.name))) },
+  { id: 'help-header', group: 'Code', title: '--help header', sub: () => 'A shell script whose --help starts with the art', opts: [{ key: 'prog', label: 'Name of the tool', type: 'text' }].concat(TEXT_OPTS),
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters, then the usage text',
+    run: (o) => runExport(null, (r) => saveFile((o.prog || 'mytool').replace(/[^A-Za-z0-9._-]/g, '') + '-help.sh', helpHeader(twinLines(r, o), o.prog))) },
+  { id: 'motd', group: 'Code', title: 'Login message', sub: () => 'A motd file that a server shows when someone signs in', opts: TEXT_OPTS.concat([S('depth', 'Colors', [['none', 'None'], [16, '16'], [256, '256']])]),
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters. On Linux it goes in /etc/motd',
+    run: (o) => runExport(null, (r) => saveFile('motd', (o.depth === 'none' || !o.depth ? twinLines(r, o).join('\n') : C.gridANSI(twinGrid(r, o), o.depth)) + '\n')) },
+
+  { id: 'project', group: 'Project', title: 'Save project', always: true, layers: true, sub: () => 'One ' + PROJECT_EXT + ' file with the photo, removed areas, lines, objects, layers and settings (' + MOD + ' S)',
+    info: (o) => { const L = layerList(o); return L.length ? 'Keeps ' + L.map((id) => LAYER_IDS.find((x) => x[0] === id)[1].toLowerCase()).join(', ') : 'Choose at least one layer'; },
+    run: (o) => saveProjectFile(o && o.layers ? { photo: o.layers.includes('photo'), lines: o.layers.includes('lines'), text: o.layers.includes('text') } : null) },
+  { id: 'open', group: 'Project', title: 'Open project', always: true, noWindow: true, sub: () => 'Pick a ' + PROJECT_EXT + ' or .json file saved from SungFluence', run: () => $('fileInput').click() }
+].forEach(registerExporter);
+
+async function withRecipePNG(blob, o) { return o && o.recipe ? pngWithRecipe(blob, recipeData()) : blob; }
+
+/* The Export menu and the command palette still read EXPORTS: headings, then formats. */
+const EXPORTS = [];
+function refreshExportsList() {
+  EXPORTS.length = 0;
+  GROUPS.forEach((g) => {
+    const list = EXPORTERS.filter((x) => x.group === g);
+    if (!list.length) return;
+    EXPORTS.push({ head: g });
+    list.forEach((x) => EXPORTS.push(x));
+  });
+  EXPORTERS.filter((x) => !GROUPS.includes(x.group)).forEach((x) => EXPORTS.push(x));
+}
+refreshExportsList();
+
+/* ---------------- the Export window ---------------- */
+const EXPORT_KEY = 'sungfluence-export';
+let expState = null;
+function exportState() {
+  if (expState) return expState;
+  expState = { id: 'png-view', opts: {} };
+  try { const s = JSON.parse(localStorage.getItem(EXPORT_KEY) || 'null'); if (s && s.id) expState = Object.assign(expState, s); } catch (e) { /* storage blocked */ }
+  return expState;
+}
+function saveExportState() { try { localStorage.setItem(EXPORT_KEY, JSON.stringify(expState)); } catch (e) { /* storage blocked */ } }
+function exporterOpts(x) {
+  const st = exportState();
+  const o = st.opts[x.id] || (st.opts[x.id] = {});
+  (x.opts || []).forEach((c) => { if (o[c.key] === undefined) o[c.key] = c.key in TEXT_DEF ? TEXT_DEF[c.key] : (c.key === 'recipe' ? false : c.type === 'toggle' ? false : c.options ? c.options[0][0] : ''); });
+  if (x.layers) LAYER_IDS.forEach(([id]) => { if (o['layer_' + id] === undefined || !o.layersTouched) o['layer_' + id] = x.id === 'project' ? true : layerOf(id).visible; });
+  return o;
+}
+const exporterReady = (x) => !!origImg && (x.always || doc.text.applied) && (!x.when || x.when());
+function runExporter(x, o) {
+  if (!origImg) return;
+  if (!x.always && !doc.text.applied) { toast('Apply text art first, or export the photo itself.'); return; }
+  const opts = Object.assign({}, o || {});
+  if (x.layers && o) { opts.layers = layerList(o); if (!opts.layers.length) { toast('Choose at least one layer.'); return; } }
+  x.run(opts);
+}
+function openExport(id) {
+  if (!origImg) return;
+  closeMenu();
+  const st = exportState();
+  if (id) st.id = id;
+  if (!EXPORTERS.some((x) => x.id === st.id && !x.noWindow)) st.id = 'png-view';
+  openDialog('Export', (body, d) => {
+    d.classList.add('export-dlg');
+    const wrapEl = el('div', 'exp'), list = el('div', 'exp-list'), pane = el('div', 'exp-pane');
+    list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', 'Formats');
+    wrapEl.append(list, pane); body.appendChild(wrapEl);
+    const drawList = () => {
+      list.replaceChildren();
+      GROUPS.concat(EXPORTERS.map((x) => x.group).filter((g) => !GROUPS.includes(g))).filter((g, i, a) => a.indexOf(g) === i).forEach((g) => {
+        const items = EXPORTERS.filter((x) => x.group === g && !x.noWindow && (!x.when || x.when()));
+        if (!items.length) return;
+        list.appendChild(el('div', 'exp-g', g));
+        items.forEach((x) => {
+          const b = el('button', 'exp-item', x.title); b.type = 'button'; b.setAttribute('role', 'option');
+          b.setAttribute('aria-selected', String(x.id === st.id)); b.dataset.id = x.id;
+          if (!exporterReady(x)) b.classList.add('off');
+          b.onclick = () => { st.id = x.id; saveExportState(); drawList(); drawPane(); };
+          list.appendChild(b);
+        });
+      });
+    };
+    const drawPane = () => {
+      const x = EXPORTERS.find((e) => e.id === st.id) || EXPORTERS[0];
+      const o = exporterOpts(x);
+      pane.replaceChildren();
+      pane.appendChild(el('h3', 'exp-t', x.title));
+      pane.appendChild(el('p', 'note', x.sub()));
+      const info = el('p', 'exp-info'); info.setAttribute('aria-live', 'polite');
+      const refresh = () => { try { info.textContent = x.info ? x.info(o) : ''; } catch (e) { info.textContent = ''; } };
+      const changed = (dl) => { saveExportState(); if (dl === 0) drawPane(); else refresh(); };
+      if (x.layers) {
+        const s = el('div', 'exp-layers'); s.appendChild(el('span', 'lab', 'Layers to include'));
+        LAYER_IDS.forEach(([id, label]) => {
+          const n = makeControl(o, T('layer_' + id, label, { idp: 'ex-' }), () => { o.layersTouched = true; changed(); });
+          if (n) s.appendChild(n);
+        });
+        pane.appendChild(s);
+      }
+      (x.opts || []).forEach((c) => { const n = makeControl(o, Object.assign({}, c, { idp: 'ex-' + x.id + '-', rebuild: () => drawPane() }), changed); if (n) pane.appendChild(n); });
+      pane.appendChild(info); refresh();
+      const ready = exporterReady(x);
+      if (!ready) pane.appendChild(el('p', 'note', doc.text.applied ? 'This format needs a different style.' : 'Apply text art first to use this format.'));
+      const row = el('div', 'row2 exp-go');
+      const go = optBtn('Export', () => { closeDialog(); runExporter(x, o); }, true, !ready); go.id = 'expGo';
+      row.append(optBtn('Cancel', closeDialog), go);
+      pane.appendChild(row);
+    };
+    drawList(); drawPane();
+    setTimeout(() => { const b = list.querySelector('[aria-selected="true"]'); if (b) { b.scrollIntoView({ block: 'nearest' }); b.focus(); } }, 0);
+  }, true);
+}
+
 /* ===== 06-io.js ===== */
-/* ===================== Part 5: history, files, export, Claude, keys, boot ===================== */
+/* ===================== Part 5: history, files, export, AI helpers, keys, boot ===================== */
 const hist = [], future = [];
 let histTimer = null, restoring = false, lastDoc = null;
 /* a history step: everything except which layers are shown, and except image pixels (they live in imgStore and assets) */
@@ -4645,13 +5464,19 @@ function freshImage() {
   rebuildBase(); rebuildPhotoView();
   snapshotMask(); buildAll(); setView('photo'); statusIdle(); queueHistory();
 }
-function loadFile(file) {
+function loadFile(file, asPicture) {
   if (!file) return;
+  if (/\.sungfluence$/i.test(file.name) || /zip/.test(file.type)) { openProjectZip(file); return; }
   if (/\.json$/i.test(file.name) || file.type === 'application/json') {
     file.text().then((t) => openProject(JSON.parse(t))).catch(() => toast('That project file could not be opened.'));
     return;
   }
   if (!file.type.startsWith('image/')) { toast('Choose an image file, such as JPG or PNG.'); return; }
+  // a PNG or SVG exported with its style settings brings the look back onto the open photo
+  if (!asPicture && origImg && /png|svg/.test(file.type)) {
+    recipeInFile(file).then((r) => { if (!(r && applySavedRecipe(r, file.name, file))) loadFile(file, true); });
+    return;
+  }
   const fr = new FileReader();
   fr.onload = () => loadImageURL(fr.result, file.name).then(() => { doc.sample = null; buildSamples(); freshImage(); }).catch((e) => toast(e.message));
   fr.readAsDataURL(file);
@@ -4761,7 +5586,7 @@ function pasteObjects() {
   objChanged({ final: true, list: copies });
   return true;
 }
-function saveProject() { if (origImg) saveFile(baseName() + '.json', JSON.stringify(projectData())); }
+function saveProject() { saveProjectFile(); }
 function duplicateSelection() { if (ui.selObjs.length) duplicateObjects(); else duplicateLayer(doc.text.sel); }
 function deselectAll() { selClear(); if (ui.selObjs.length) { ui.selObjs = []; drawOverlay(); buildOptbar(); } }
 function selectAllObjects() {
@@ -4848,7 +5673,13 @@ function flatPNG(only, suffix, opt) {
   runLayersExport(only, async ({ g, S }) => {
     const c = mk(g.TW, g.TH);
     composeTo(c.getContext('2d'), g, S, Object.assign({ only, mixFade: !only && ui.view === 'mix', ground: doc.out.transparent ? null : 'paper' }, opt || {}));
-    await saveFile(baseName() + suffix + '.png', await toBlob(c, 'image/png'));
+    if (opt && opt.jpg) {
+      // JPG has no transparency: put the paper color under everything
+      const j = mk(c.width, c.height), jx = j.getContext('2d'); jx.fillStyle = doc.out.paper; jx.fillRect(0, 0, j.width, j.height); jx.drawImage(c, 0, 0);
+      await saveFile(baseName() + suffix + '.jpg', await toBlob(j, 'image/jpeg', opt.jpg)); return;
+    }
+    const png = await toBlob(c, 'image/png');
+    await saveFile(baseName() + suffix + '.png', opt && opt.recipe ? await pngWithRecipe(png, recipeData()) : png);
   });
 }
 function vectorSVG() {
@@ -4858,14 +5689,14 @@ function vectorSVG() {
   return '<svg xmlns="http://www.w3.org/2000/svg" width="' + g.TW + '" height="' + g.TH + '" viewBox="0 0 ' + g.TW + ' ' + g.TH + '">\n' + (needFonts ? '<style>' + FONT_IMPORT + '</style>\n' : '') + body + '\n</svg>\n';
 }
 /* everything as one SVG: the photo as an embedded picture, vector shapes, and text art as live letters, in the layer order */
-function fullSVG() {
-  runLayersExport(null, async ({ g, S, out: o }) => {
+function fullSVG(only, recipe) {
+  runLayersExport(only && only.length ? only : null, async ({ g, S, out: o }) => {
     const parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="' + g.TW + '" height="' + g.TH + '" viewBox="0 0 ' + g.TW + ' ' + g.TH + '">', '<style>' + FONT_IMPORT + '</style>'];
     if (!doc.out.transparent) parts.push('<rect width="100%" height="100%" fill="' + doc.out.paper + '"/>');
     const attrs = (L, extra) => ' opacity="' + nf((L.opacity ?? 1) * (extra || 1)) + '"' + (L.blend && L.blend !== 'normal' ? ' style="mix-blend-mode:' + L.blend + '"' : '');
     for (let i = doc.order.length - 1; i >= 0; i--) {
       const id = doc.order[i], L = layerOf(id);
-      if (!L.visible) continue;
+      if (only && only.length ? !only.includes(id) : !L.visible) continue;
       if (id === 'photo' && S.photo) {
         const fade = ui.view === 'mix' && doc.order.indexOf('text') < doc.order.indexOf('photo') && S.text ? doc.out.mixPhoto : 1;
         parts.push('<g id="photo"' + attrs(L, fade) + '><image x="' + g.m + '" y="' + g.m + '" width="' + g.W + '" height="' + g.H + '" preserveAspectRatio="none" href="' + S.photo.toDataURL('image/png') + '"/></g>');
@@ -4877,7 +5708,8 @@ function fullSVG() {
       }
     }
     parts.push('</svg>');
-    await saveFile(baseName() + '-layers.svg', parts.join('\n'));
+    const svg = parts.join('\n');
+    await saveFile(baseName() + '-layers.svg', recipe ? svgWithRecipe(svg, recipeData()) : svg);
   });
 }
 const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;family=JetBrains+Mono:wght@400;700&amp;family=Playfair+Display:wght@400..900&amp;family=Oswald:wght@200..700&amp;family=Noto+Naskh+Arabic:wght@400..700&amp;family=Special+Elite&amp;display=swap');";
@@ -4969,71 +5801,15 @@ async function photoCutout() {
   if (hasRemoval) { x.globalCompositeOperation = 'destination-out'; x.drawImage(remCanvas, cr.x * remCanvas.width, cr.y * remCanvas.height, cr.w * remCanvas.width, cr.h * remCanvas.height, 0, 0, c.width, c.height); }
   await saveFile((doc.fileName || 'photo').replace(/\.[a-z0-9]+$/i, '') + '-cutout.png', await toBlob(c, 'image/png'));
 }
-const EXPORTS = [
-  { head: 'What you see' },
-  { title: 'PNG of the visible layers', sub: () => { const g = artGeom(1); return 'Every shown layer in its order, ' + g.TW + ' × ' + g.TH + ' px'; }, always: true, run: () => flatPNG(null, '-view') },
-  { title: 'SVG of the visible layers', sub: () => 'Photo as a picture, vector shapes and live text art letters', always: true, run: () => fullSVG() },
-  { title: 'Photo and vector, PNG', sub: () => 'The photo layer with shapes and lines, no text art', always: true, run: () => flatPNG(['photo', 'lines'], '-photo-vector') },
-  { title: 'Vector layer, SVG', sub: () => 'Lines drawn as strokes, shapes, text and images', always: true, run: () => saveFile(baseName() + '-vector.svg', vectorSVG()) },
-  { title: 'Vector layer, PNG', sub: () => 'Transparent background', always: true, run: () => flatPNG(['lines'], '-vector', { ground: null, ignoreOpacity: true }) },
-  { title: 'Photo layer, edited', sub: () => 'Adjustments, effects, crop and photo objects, transparent where removed', always: true, run: () => photoCutout() },
-  { head: 'Text art' },
-  { title: 'PNG for print', sub: () => { const g = printGeom(); return g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px, ' + doc.out.print + ' at ' + doc.out.dpi + ' dpi' + (doc.out.transparent ? ', transparent' : ''); },
-    run: () => runExport(printScaleFor, async (r) => saveFile(baseName() + '-' + printTag() + '.png', await toBlob(r.canvas, 'image/png'))) },
-  { title: 'PNG at artboard size', sub: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px'; },
-    run: () => runExport(() => 1, async (r) => saveFile(baseName() + '.png', await toBlob(r.canvas, 'image/png'))) },
-  { title: 'SVG with live text', sub: () => 'Editable letters for Illustrator, Inkscape or Figma',
-    run: () => runExport(null, async (r) => saveFile(baseName() + '.svg', C.toSVG(r.out, FONT_IMPORT))) },
-  { title: 'PDF for print', sub: () => doc.out.print + ' page, artwork at ' + doc.out.dpi + ' dpi',
-    run: () => runExport(printScaleFor, async (r) => {
-      const jsPDF = await jsPDFReady(); const g = printGeom();
-      const pdf = new jsPDF({ orientation: g.land ? 'landscape' : 'portrait', unit: 'mm', format: [g.pw, g.ph].sort((a, b) => a - b), compress: true });
-      if (!doc.out.transparent) { pdf.setFillColor(r.out.paper); pdf.rect(0, 0, g.pw, g.ph, 'F'); pdf.addImage(r.canvas.toDataURL('image/jpeg', 0.93), 'JPEG', g.x, g.y, g.aw, g.ah); }
-      else pdf.addImage(r.canvas.toDataURL('image/png'), 'PNG', g.x, g.y, g.aw, g.ah);
-      await saveFile(baseName() + '-' + printTag() + '.pdf', pdf.output('blob'));
-    }) },
-  { title: 'CMYK PDF, vector', sub: () => 'Live letters with CMYK ink values, ' + doc.out.print, run: () => runExport(null, (r) => cmykPDF(r.out)) },
-  { title: 'CMYK plates', sub: () => 'Four PNG separations in one .zip, for screen print',
-    run: () => runExport((o) => Math.min(printScaleFor(o), 4000 / Math.max(o.W, o.H)), (r) => separations(r.canvas)) },
-  { sep: true },
-  { title: 'Text file, Braille', sub: () => 'Any style as black and white text, 120 characters wide', run: () => runExport(null, (r) => saveFile(baseName() + '-braille.txt', C.toText(r.out, 120, 'braille'))) },
-  { title: 'Text file, ASCII', sub: () => 'Any style as keyboard characters, 120 wide', run: () => runExport(null, (r) => saveFile(baseName() + '-ascii.txt', C.toText(r.out, 120, 'ascii'))) },
-  { title: 'Grid text, exact', sub: () => 'The exact characters of an ASCII or Braille layer', when: () => activeLayers().some((L) => L.mode === 'grid' || L.mode === 'unicode'),
-    run: () => runExport(null, (r) => saveFile(baseName() + '-grid.txt', r.out.layers.filter((L) => L.text).map((L) => L.text).join('\n\n'))) },
-  { title: 'Color terminal text', sub: () => 'ASCII layer with 16-color ANSI codes', when: () => activeLayers().some((L) => L.mode === 'grid'),
-    run: () => runExport(null, (r) => { const t = C.toANSI(r.out); if (t) return saveFile(baseName() + '-ansi.txt', t); }) },
-  { head: 'Project' },
-  { title: 'Save project', sub: () => 'Photo, removed areas, lines, objects, layers and settings (' + MOD + ' S)', always: true, run: () => saveFile(baseName() + '.json', JSON.stringify(projectData())) },
-  { title: 'Open project', sub: () => 'Pick a .json file saved from SungFluence', always: true, run: () => $('fileInput').click() }
-];
-function openMenu() {
-  const m = $('exportMenu'); m.replaceChildren();
-  EXPORTS.forEach((x) => {
-    if (x.sep) { m.appendChild(el('hr')); return; }
-    if (x.head) { if (m.childNodes.length) m.appendChild(el('hr')); m.appendChild(el('div', 'menu-h', x.head)); return; }
-    if (x.when && !x.when()) return;
-    const b = el('button'); b.type = 'button'; b.setAttribute('role', 'menuitem');
-    b.disabled = !x.always && !doc.text.applied;
-    b.append(el('b', null, x.title), el('span', null, x.sub()));
-    if (b.disabled) b.style.opacity = '.5';
-    b.onclick = () => { closeMenu(); if (!origImg) return; x.run(); };
-    m.appendChild(b);
-  });
-  if (!doc.text.applied) { const h = [...m.querySelectorAll('.menu-h')].find((q) => q.textContent === 'Text art'); if (h) h.after(el('div', 'note menu-note', 'Apply text art to unlock these.')); }
-  const r = $('exportBtn').getBoundingClientRect();
-  m.style.top = (r.bottom + 6 + window.scrollY) + 'px';
-  m.style.maxHeight = 'calc(100vh - ' + Math.round(r.bottom + 20) + 'px)'; m.style.overflowY = 'auto';
-  m.hidden = false; $('exportBtn').setAttribute('aria-expanded', 'true');
-  const f = m.querySelector('button:not(:disabled)'); if (f) f.focus();
-}
+/* the formats live in 06-export.js; the Export button opens the Export window */
 function closeMenu() { $('exportMenu').hidden = true; $('exportBtn').setAttribute('aria-expanded', 'false'); }
-$('exportBtn').onclick = (e) => { e.stopPropagation(); $('exportMenu').hidden ? openMenu() : closeMenu(); };
+$('exportBtn').onclick = (e) => { e.stopPropagation(); openExport(); };
 document.addEventListener('click', (e) => {
   if (!$('exportMenu').hidden && !$('exportMenu').contains(e.target)) closeMenu();
   if (!$('help').hidden && !$('help').contains(e.target) && e.target !== $('helpBtn')) toggleHelp(false);
 });
 
-/* ---------------- Claude ---------------- */
+/* ---------------- optional AI helpers (only inside claude.ai, through window.claude) ---------------- */
 let aiReady = false;
 async function photoBlob() {
   const cr = cropRect(), w0 = iw * cr.w, h0 = ih * cr.h, k = Math.min(1, 900 / Math.max(w0, h0));
@@ -5049,11 +5825,11 @@ async function imageOpts(sample) {
 function aiError(e) {
   const code = e && e.code;
   if (code === 'cancelled') return;
-  if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) { aiReady = false; $('aiForm').hidden = true; buildPanel(); toast('Claude is not available on this page.'); return; }
-  if (code === 'rate_limited') { toast('Claude is busy. Try again in a minute.'); return; }
-  if (code === 'invalid_json') { toast('Claude answered in an unexpected format. Try once more.'); return; }
-  if (code === 'refused') { toast('Claude declined that request. Try describing the look differently.'); return; }
-  toast('Claude could not answer just now. Try again.');
+  if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) { aiReady = false; $('aiForm').hidden = true; buildPanel(); toast('The AI helper is not available on this page.'); return; }
+  if (code === 'rate_limited') { toast('The AI helper is busy. Try again in a minute.'); return; }
+  if (code === 'invalid_json') { toast('The AI helper answered in an unexpected format. Try once more.'); return; }
+  if (code === 'refused') { toast('The AI helper declined that request. Try describing the look differently.'); return; }
+  toast('The AI helper could not answer just now. Try again.');
 }
 function allControls(mode) { return MODES[mode].controls.concat(MODES[mode].more, COMMON_MORE, FOCUS_CTL, EFFECT_CTL); }
 function specFor(mode) {
@@ -5087,7 +5863,7 @@ async function direct(request) {
   const sample = await sampleP;
   if (!sample || !request.trim() || !src) return;
   const btn = $('aiBtn'); btn.disabled = true;
-  $('status').textContent = 'Claude is designing';
+  $('status').textContent = 'Designing the look';
   try {
     const im = await imageOpts(sample);
     const modes = Object.keys(MODES).filter((m) => !MODES[m].plugin).map((m) => '- ' + m + ' (' + MODES[m].name + (m === 'paths' ? ', text along traced or drawn lines' : '') + '): ' + specFor(m)).join('\n');
@@ -5103,7 +5879,7 @@ async function direct(request) {
     ].join('\n\n');
     const res = await sample.json(prompt, im.has ? { images: im.images } : {});
     const layers = (res && Array.isArray(res.layers) ? res.layers : []).slice(0, 3).map(cleanLayer).filter(Boolean);
-    if (!layers.length) { toast('Claude answered without usable layers. Try once more.'); statusIdle(); return; }
+    if (!layers.length) { toast('The AI helper answered without usable layers. Try once more.'); statusIdle(); return; }
     if (res.paper && /^#[0-9a-f]{6}$/i.test(res.paper)) doc.out.paper = res.paper;
     if (typeof res.transparent === 'boolean') doc.out.transparent = res.transparent;
     if (MODELS.some((m) => m[0] === res.colorModel)) doc.out.colorModel = res.colorModel;
@@ -5142,10 +5918,10 @@ async function suggestText(L, key, btn) {
     let val = null;
     if (key === 'words' && Array.isArray(res)) val = res.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 24).join('\n');
     if (key !== 'words' && res && typeof res.text === 'string') val = res.text.trim();
-    if (!val) { toast('Claude answered in an unexpected format. Try once more.'); return; }
+    if (!val) { toast('The AI helper answered in an unexpected format. Try once more.'); return; }
     L[key] = val; buildPanel(); queueHistory();
     if (doc.lines.paths.includes(L)) linesChanged(); else scheduleText(0);
-    toast('New text from Claude', { label: 'Undo', fn: undo });
+    toast('New text from the AI helper', { label: 'Undo', fn: undo });
   } catch (e) { aiError(e); }
   finally { btn.disabled = false; btn.textContent = 'Suggest'; }
 }
@@ -5154,13 +5930,13 @@ sampleP.then((s) => { if (s) { aiReady = true; $('aiForm').hidden = false; build
 
 /* ---------------- keyboard ---------------- */
 const SHORTCUTS = [
-  ['1 / 2 / 3', 'Photo, Mix and Text views'], ['H', 'Move around'], ['Z', 'Zoom tool'], ['C', 'Crop'], ['W', 'Magic wand'], ['L', 'Lasso'], ['B', 'Selection brush'],
+  ['1 / 2 / 3', 'Photo, Mix and Text views'], ['H', 'Move around'], ['Z', 'Zoom tool'], ['C', 'Crop'], ['W', 'Magic wand'], ['L', 'Lasso'], ['B', 'Selection brush'], ['Y', 'Liquify, Alt restores'],
   ['V', 'Select objects'], ['U', 'Shapes'], ['T', 'Text'], ['P', 'Pen'], ['N', 'Pencil'], ['A', 'Edit points of lines'],
   ['Shift / Alt', 'Add to or subtract from a selection'], ['Alt drag', 'Copy objects while moving'], ['Arrows', 'Nudge objects, Shift for 10 px'], ['Space', 'Hold to move with any tool'],
   ['Enter', 'Finish a pen line, apply a crop'], ['Delete', 'Delete the selected object, line or point'],
   ['Alt while dragging', 'Move freely, without snapping'], ['Shift while drawing', 'Straight lines in 15° steps'],
   [MOD + ' K', 'Find any command'], [MOD + ' O', 'Open an image or a project'], [MOD + ' A', 'Select all shapes'], [MOD + ' ;', 'Snapping on or off'], [MOD + " '", 'Show the grid'],
-  [MOD + ' C / V', 'Copy and paste objects'], [MOD + ' D', 'Deselect'], [MOD + ' J', 'Duplicate objects or text layer'], [MOD + ' Z', 'Undo'], ['Shift ' + MOD + ' Z', 'Redo'], [MOD + ' S', 'Save project'], [MOD + ' E', 'Export menu'],
+  [MOD + ' C / V', 'Copy and paste objects'], [MOD + ' D', 'Deselect'], [MOD + ' J', 'Duplicate objects or text layer'], [MOD + ' Z', 'Undo'], ['Shift ' + MOD + ' Z', 'Redo'], [MOD + ' S', 'Save project'], [MOD + ' E', 'Export window'],
   [MOD + ' + / − / 0', 'Zoom in, out, fit'], [MOD + ' 1 / 2', 'Actual size, zoom to selection'], [MOD + ' scroll or pinch', 'Smooth zoom'], ['Shift N', 'New artboard'],
   ['/', 'Compare with a divider'], ['Hold \\', 'Show the original photo'], ['F1', 'Help and tutorial'], ['Esc', 'Cancel, close menus']
 ];
@@ -5242,7 +6018,7 @@ Promise.resolve(boot).then(() => {
   const faces = ['400 20px Inter', '900 20px Inter', '200 20px Inter', '400 20px "JetBrains Mono"', '700 20px "Playfair Display"', '600 20px Oswald', '700 20px Oswald', '400 20px "Special Elite"'];
   Promise.race([Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null)).concat(['400 20px "Noto Naskh Arabic"', '700 20px "Noto Naskh Arabic"', '400 20px "Noto Nastaliq Urdu"', '700 20px "Noto Nastaliq Urdu"'].map((f) => document.fonts.load(f, 'خودی کو').catch(() => null)))), new Promise((r) => setTimeout(r, 5000))]).then(() => { C.resetCaches(); if (doc.text.applied) scheduleText(0); thumbsSoon(); });
 });
-window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, EXPORTS, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp, runCommand, COMMANDS, snapAt, gridSize, linesChanged,
+window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, useSample, printGeom, MODES, revealing, applyMotion, setSplitAngle, buildSplitBar, toggleSplit, prefs, photoChanged, rebuildBase, rebuildPhotoView, EXPORTS, EXPORTERS, openExport, runExporter, exporterOpts, recipeFromPNG, recipeFromSVG, codeFor, RECIPES, applyRecipe, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp, runCommand, COMMANDS, snapAt, gridSize, linesChanged,
   toScreen: (x, y) => { const g = artGeom(), q = img2art(x, y, g), r = canvas.getBoundingClientRect(); return [r.left + q[0] * r.width / canvas.width, r.top + q[1] * r.height / canvas.height]; },
   get snapHint() { return ui.snapHint; }, get pen() { return pen; } };
 
