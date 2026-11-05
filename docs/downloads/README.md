@@ -12,14 +12,13 @@ In the file names below, `x.y.z` is the version number, for example `3.2.0`.
 | --- | --- | --- |
 | **Windows 10 or 11** (most PCs) | `SungFluence-Setup-x.y.z-x64.exe` | The usual choice. Run it and follow the steps. |
 | Windows on ARM (for example Snapdragon laptops) | `SungFluence-Setup-x.y.z-arm64.exe` | |
-| Windows, either kind | `SungFluence-Setup-x.y.z.exe` | One installer for both, so it is about twice the size. |
 | Windows, without installing | `SungFluence-Portable-x.y.z.exe` | Runs from any folder or a USB stick. |
-| **macOS 11 or newer** (Intel or Apple silicon) | `SungFluence-x.y.z-mac-universal.dmg` | Open it and drag SungFluence to Applications. The `.zip` holds the same app. |
+| **macOS 11 or newer** (Intel or Apple silicon) | `SungFluence-x.y.z-mac-universal.dmg` | Open it and drag SungFluence to Applications. |
 | **Linux**, any distribution | `SungFluence-x.y.z-linux-x86_64.AppImage` | Make it executable (`chmod +x`), then run it. |
 | Ubuntu, Debian and similar | `SungFluence-x.y.z-linux-amd64.deb` | `sudo apt install ./SungFluence-x.y.z-linux-amd64.deb` |
 | Linux, by hand | `SungFluence-x.y.z-linux-x64.tar.gz` | Unpack and run `sungfluence`. |
 
-Files ending in `.yml` or `.blockmap` are made by the build tools. You do not need them.
+Releases up to 3.3.0 also list a combined Windows installer and files ending in `.yml`, `.blockmap` or `.zip`. You do not need them; newer releases leave them out.
 
 ## The first start
 

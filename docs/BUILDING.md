@@ -32,8 +32,8 @@ Each system builds its own installers best: Windows on Windows, macOS on a Mac, 
 
 | System | Command | Files in `dist/` |
 | --- | --- | --- |
-| Windows | `npm run dist:win` | Setup `.exe` (x64 and arm64) and a portable `.exe` |
-| macOS | `npm run dist:mac` | `.dmg` and `.zip` (universal) |
+| Windows | `npm run dist:win` | Setup `.exe` (x64) and a portable `.exe`. For Windows on ARM, also run `npx electron-builder --win nsis --arm64`. |
+| macOS | `npm run dist:mac` | `.dmg` (universal) |
 | Linux | `npm run dist:linux` | `.AppImage`, `.deb` and `.tar.gz` |
 
 On Linux, install the tools first, for example `sudo apt install git nodejs npm`.

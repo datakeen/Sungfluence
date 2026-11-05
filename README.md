@@ -130,7 +130,7 @@ Details, GitHub Actions and troubleshooting are in **[docs/BUILDING.md](docs/BUI
 
 ```bash
 npm run dist:win     # on Windows: setup .exe and portable .exe
-npm run dist:mac     # on a Mac: .dmg and .zip
+npm run dist:mac     # on a Mac: .dmg
 npm run dist:linux   # on Linux: .AppImage, .deb and .tar.gz
 ```
 

@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- Releases list only the files people download: one Windows installer for each kind of PC, the portable Windows app, the Mac disk image and the three Linux files. The combined Windows installer and the update files (.yml, .blockmap) are gone, because the app does not update itself.
+
 ## [3.3.0] - 2026-11-05
 
 One Export window, project files, text twins and code, print settings, Liquify, and smooth motion.

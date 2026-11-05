@@ -72,8 +72,7 @@
         {
           "target": "nsis",
           "arch": [
-            "x64",
-            "arm64"
+            "x64"
           ]
         },
         {
@@ -92,7 +91,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "artifactName": "SungFluence-Setup-${version}-${arch}.${ext}",
-      "license": "LICENSE"
+      "license": "LICENSE",
+      "differentialPackage": false
     },
     "portable": {
       "artifactName": "SungFluence-Portable-${version}.${ext}"
@@ -101,12 +101,6 @@
       "target": [
         {
           "target": "dmg",
-          "arch": [
-            "universal"
-          ]
-        },
-        {
-          "target": "zip",
           "arch": [
             "universal"
           ]
@@ -126,7 +120,16 @@
       "maintainer": "Ahmed Bilal",
       "synopsis": "Turn photos into typographic art",
       "executableName": "sungfluence"
-    }
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "publishAutoUpdate": false
+      }
+    ]
   },
   "repository": {
     "type": "git",
