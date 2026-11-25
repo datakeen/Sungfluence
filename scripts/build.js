@@ -33,7 +33,7 @@ const running = plugins.filter((f) => !/template/.test(f));
 //     styles.md and shortcuts.md are written from the code first, so they always match the app.
 require('./docs.js').writeDocs();
 const { md } = require('./md.js');
-const HELP_ORDER = ['index', 'getting-started', 'workspace', 'photo', 'vector', 'text-art', 'styles', 'output-and-export', 'printing', 'urdu-and-arabic', 'plugins', 'shortcuts', 'troubleshooting'];
+const HELP_ORDER = ['index', 'getting-started', 'workspace', 'photo', 'vector', 'text-art', 'styles', 'type-toolbox', 'output-and-export', 'printing', 'urdu-and-arabic', 'plugins', 'shortcuts', 'troubleshooting'];
 const helpDir = path.join(root, 'docs', 'help');
 const helpIds = HELP_ORDER.concat(fs.readdirSync(helpDir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)).filter((id) => !HELP_ORDER.includes(id)));
 const help = { order: [], pages: {} };
@@ -58,7 +58,8 @@ for (const f of fs.readdirSync(A('samples')).sort()) {
   const key = f.replace(/^\d+[-_]/, '').replace(/\.[^.]+$/, '');
   samples[key] = 'data:' + MIME[ext] + ';base64,' + fs.readFileSync(A('samples', f)).toString('base64');
 }
-if (!samples.cat) throw new Error('app/samples needs a cat image: it is the first picture people see.');
+if (!samples.coffee) throw new Error('app/samples needs a coffee image: it is the first picture people see.');
+if (!samples.cat) throw new Error('app/samples needs a cat image: the tests use it.');
 const json = (o) => JSON.stringify(o).replace(/<\//g, '<\\/');
 
 const css = read(A('styles.css'));
@@ -84,7 +85,7 @@ write(S('config.js'), "/* Local copies of the export libraries, so PDF and ZIP e
 const csp = "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'";
 const scripts = ['config.js', 'engine.js', ...running.map((f) => 'plugins/' + f), 'samples.js', 'plugin-files.js', 'help.js', 'app.js', 'pwa.js'];
 const html = '<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
-  '<meta http-equiv="Content-Security-Policy" content="' + csp + '">\n<title>' + NAME + '</title>\n' +
+  '<meta http-equiv="Content-Security-Policy" content="' + csp + '">\n<title>' + NAME + ' ' + pkg.version + '</title>\n' +
   '<meta name="description" content="' + pkg.description.replace(/"/g, '&quot;') + '">\n<meta name="theme-color" content="#141416">\n' +
   '<link rel="manifest" href="manifest.webmanifest">\n<link rel="icon" href="icons/icon.svg" type="image/svg+xml">\n<link rel="apple-touch-icon" href="icons/icon-192.png">\n' +
   '<link rel="stylesheet" href="fonts/fonts.css">\n<link rel="stylesheet" href="styles.css">\n</head>\n<body>\n' + body +

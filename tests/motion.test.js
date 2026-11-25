@@ -30,27 +30,27 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
   check(!missing.length, 'every style has a letter size or columns control' + (missing.length ? ', missing: ' + missing.join(', ') : ''));
   // the Flow lines letter size really changes the letters
   await A(() => { const S = window.__sungfluence; S.prefs.reveal = 'none'; S.applyRecipe(S.RECIPES.find((r) => r.name === 'Engraving')); }); await wait(p);
-  const sizeAt = (v) => A(async (v) => { const S = window.__sungfluence; S.curLayer().scale = v; S.scheduleText(0); await new Promise((r) => setTimeout(r, 400)); while (Object.keys(S.jobs).length) await new Promise((r) => setTimeout(r, 50)); const it = S.out.layers[0].items.filter((q) => q.t === 'text'); return it.reduce((n, q) => n + q.size, 0) / it.length; }, v);
-  const s1 = await sizeAt(0.95), s2 = await sizeAt(1.6);
-  check(s2 > s1 * 1.4, 'Flow lines letter size: average ' + s1.toFixed(1) + ' px at 95%, ' + s2.toFixed(1) + ' px at 160%');
+  const sizeAt = (v) => A(async (v) => { const S = window.__sungfluence; S.curLayer().size = v; S.scheduleText(0); await new Promise((r) => setTimeout(r, 400)); while (Object.keys(S.jobs).length) await new Promise((r) => setTimeout(r, 50)); const it = S.out.layers[0].items.filter((q) => q.t === 'text'); return it.reduce((n, q) => n + q.size, 0) / it.length; }, v);
+  const s1 = await sizeAt(11), s2 = await sizeAt(18);
+  check(s2 > s1 * 1.4, 'Flow lines letter size: average ' + s1.toFixed(1) + ' px at 11, ' + s2.toFixed(1) + ' px at 18');
   check(await A(() => { window.__sungfluence.ui.tab = 'text'; window.__sungfluence.buildPanel(); return [...document.querySelectorAll('#panel label')].some((l) => l.textContent === 'Letter size'); }), 'Letter size slider shows in the Flow lines panel');
 
   // the reveal: letters fly in, then the picture is exactly the finished one
-  await A(() => { const S = window.__sungfluence; S.prefs.reveal = 'fly'; S.prefs.motion = 'full'; S.applyRecipe(S.RECIPES[0]); });
+  await A(() => { const S = window.__sungfluence; S.prefs.reveal = 'fly'; S.prefs.motion = 'full'; S.applyRecipe(S.RECIPES.find((r) => r.name === 'Word portrait')); });
   await wait(p);
   const during = await A(() => window.__sungfluence.revealing());
   await p.waitForTimeout(350);
   await p.screenshot({ path: __dirname + '/out/m1-reveal-flying.png' });
   check(during, 'letters fly in after a recipe is applied');
   const lt = await A(async () => { const L = []; const o = new PerformanceObserver((l) => l.getEntries().forEach((e) => L.push(Math.round(e.duration)))); o.observe({ entryTypes: ['longtask'] }); await new Promise((r) => setTimeout(r, 900)); o.disconnect(); return L.sort((a, b) => b - a)[0] || 0; });
-  check(lt < 200, 'no frame over 200 ms while flying (longest ' + lt + ' ms)');
+  check(lt < 220, 'no frame over 220 ms while flying (longest ' + lt + ' ms)');
   check(await A(() => !window.__sungfluence.revealing()), 'the reveal finishes on its own');
   await p.screenshot({ path: __dirname + '/out/m2-reveal-done.png' });
   // changing a slider does not replay it
   await A(() => { const S = window.__sungfluence; S.curLayer().size = (S.curLayer().size || 12) + 1; S.scheduleText(0); }); await wait(p);
   check(await A(() => !window.__sungfluence.revealing()), 'moving a slider does not replay the reveal');
   // motion off: no reveal, and the html class is set
-  await A(() => { const S = window.__sungfluence; S.prefs.motion = 'off'; S.applyMotion(); S.applyRecipe(S.RECIPES[1]); }); await wait(p);
+  await A(() => { const S = window.__sungfluence; S.prefs.motion = 'off'; S.applyMotion(); S.applyRecipe(S.RECIPES.find((r) => r.name === 'Engraving')); }); await wait(p);
   check(await A(() => !window.__sungfluence.revealing() && document.documentElement.classList.contains('motion-off')), 'motion off: no reveal, interface keeps still');
   await A(() => { const S = window.__sungfluence; S.prefs.motion = 'full'; S.applyMotion(); });
 

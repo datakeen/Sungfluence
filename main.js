@@ -15,7 +15,8 @@ function createWindow() {
     minHeight: 640,
     title: 'SungFluence',
     backgroundColor: '#141416',
-    icon: path.join(__dirname, 'src', 'icons', 'icon-512.png'),
+    // Windows picks the sharpest size from the .ico for the title bar and taskbar
+    icon: path.join(__dirname, 'src', 'icons', process.platform === 'win32' ? 'icon.ico' : 'icon-512.png'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

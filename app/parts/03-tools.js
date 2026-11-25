@@ -1,11 +1,13 @@
 /* ===================== Part 3: stage, zoom, tools, overlay ===================== */
 const viewport = $('viewport'), wrap = $('canvasWrap'), frame = $('frame'), overlay = $('overlay');
+// panning moves which part of the picture is on screen, so the sharp redraw starts again
+wrap.addEventListener('scroll', () => scheduleCrisp(), { passive: true });
 const designW = () => doc.out.width * (1 + 2 * (doc.out.margin || 0));
 const ZOOM_MIN = 0.02;
-function fitScale() {
+function fitScale(cw = canvas.width, ch = canvas.height) {
   const pad = 56;
-  const k = Math.min((wrap.clientWidth - pad) / canvas.width, (wrap.clientHeight - pad) / canvas.height);
-  return Math.max(0.02, Math.min(k, 1.6)) * canvas.width / designW();
+  const k = Math.min((wrap.clientWidth - pad) / cw, (wrap.clientHeight - pad - ctaRoom()) / ch);
+  return Math.max(0.02, Math.min(k, 1.6)) * cw / designW();
 }
 let shirtSVG = null;
 /* the Paper and T-shirt previews zoom too: there 1 means "fit", and the page or shirt is scaled around that */
@@ -15,6 +17,7 @@ function clampZoom(z) { return isMock() ? clamp(z, 0.25, 8) : clamp(z, ZOOM_MIN,
 const canPan = () => wrap.scrollWidth > wrap.clientWidth + 1 || wrap.scrollHeight > wrap.clientHeight + 1;
 function wrapClass() { wrap.className = 'canvas-wrap tool-' + ui.tool + (spaceDown ? ' tool-hand' : '') + (canPan() ? ' can-pan' : '') + (drag && drag.kind === 'pan' ? ' panning' : ''); }
 function layoutStage() {
+  layoutRulers(); drawRulersSoon();
   const mock = doc.out.mock !== 'artboard';
   const mz = ui.mockZoom || 1;
   ['zoomIn', 'zoomOut', 'zoomFit', 'zoomPct'].forEach((id) => { $(id).disabled = false; });
@@ -25,7 +28,12 @@ function layoutStage() {
   canvas.removeAttribute('style');
   if (shirtSVG && doc.out.mock !== 'shirt') { shirtSVG.remove(); shirtSVG = null; }
   overlay.style.display = mock ? 'none' : '';
+  // the card that offers the first look sits below the picture, not on it
+  const room = mock ? 0 : ctaRoom();
+  wrap.style.paddingBottom = room ? (28 + room) + 'px' : '';
   if (!mock) {
+    // a clear background gets a thin edge, so the artboard keeps its outline on a stage of the same tone
+    if (doc.out.transparent) frame.classList.add('clear');
     const z = displayZoom();
     const w = Math.max(1, Math.round(designW() * z)), h = Math.max(1, Math.round(w * canvas.height / canvas.width));
     canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
@@ -33,6 +41,7 @@ function layoutStage() {
     frame.style.width = w + 'px'; frame.style.height = h + 'px';
     Object.assign(overlay.style, { width: w + 'px', height: h + 'px' });
     layoutSplit(); positionTextEdit(); wrapClass();
+    scheduleCrisp();
     return;
   }
   layoutSplit();
@@ -172,7 +181,8 @@ const ICON = {
   pen: '<path d="M12 3l6 9-6 9-6-9z"/><circle cx="12" cy="12" r="1.6"/><path d="M12 13.6V21"/>',
   liquify: '<path d="M4 16c3-6 6 2 9-4s5-5 7-3"/><path d="M4 20c3-4 6 1 9-3s5-3 7-2"/><circle cx="9" cy="7" r="3"/>',
   pencil: '<path d="M4 20l1-4L16 5l3 3L8 19z"/><path d="M14 7l3 3"/>',
-  direct: '<path d="M6 3l12 9-5.5 1.2L15 20l-2.6 1.1-2.6-6.6L6 18z"/>'
+  direct: '<path d="M6 3l12 9-5.5 1.2L15 20l-2.6 1.1-2.6-6.6L6 18z"/>',
+  distort: '<circle cx="12" cy="12" r="2"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5" stroke-dasharray="2 2.4"/><path d="M3.5 12A8.5 8.5 0 0 0 12 20.5"/><path d="M14 10l5-5M16 5h3v3"/>'
 };
 const TOOLS = [
   { id: 'hand', name: 'Move around', key: 'H', group: '' },
@@ -189,7 +199,8 @@ const TOOLS = [
   { id: 'text', name: 'Text: click to type', key: 'T', group: 'lines' },
   { id: 'pen', name: 'Pen: click for corners, drag for curves', key: 'P', group: 'lines' },
   { id: 'pencil', name: 'Pencil: draw freely', key: 'N', group: 'lines' },
-  { id: 'direct', name: 'Edit points of lines', key: 'A', group: 'lines' }
+  { id: 'direct', name: 'Edit points of lines', key: 'A', group: 'lines' },
+  { id: 'distort', name: 'Distort: bulge, pinch, twist, stretch or arc lines around a point', key: 'Shift D', group: 'lines' }
 ];
 function buildRail() {
   const r = $('rail');
@@ -208,9 +219,11 @@ function setTool(id) {
   if (ui.tool === 'pen' && id !== 'pen') finishPen();
   if (ui.tool === 'crop' && id !== 'crop') cropCancel();
   commitTextEdit();
-  ui.tool = id; ui.snapHint = null;
+  ui.tool = id; ui.snapHint = null; clearTrack();
   const t = TOOLS.find((x) => x.id === id);
-  const tab = t && t.group ? ((id === 'shape' || id === 'text') && ui.objLayer === 'photo' ? 'photo' : t.group) : null;
+  // shapes, text and the Select tool on objects of the Photo layer stay in the Photo panel
+  const onPhoto = ui.objLayer === 'photo' && (id === 'shape' || id === 'text' || (id === 'select' && selectedObjs().length > 0 && selectedObjs().every((o) => o.layer === 'photo')));
+  const tab = t && t.group ? (onPhoto ? 'photo' : t.group) : null;
   if (tab && ui.tab !== tab) { ui.tab = tab; buildTabs(); buildPanel(); }
   if (t && t.group === 'lines' && !doc.lines.visible) { doc.lines.visible = true; buildStack(); }
   if (t && t.group === 'photo' && !doc.photo.visible) setView('photo');
@@ -233,11 +246,11 @@ function combineSelection(a, mode) {
   refreshSelTint(); compose(); buildOptbar();
 }
 function selMode(e, base) { return e && e.shiftKey ? 'add' : e && e.altKey ? 'sub' : base; }
-function selRemove() {
+function selRemove(what) {
   if (!hasSelection) { toast('Select an area first with the wand, lasso or brush.'); return; }
   remCanvas.getContext('2d').drawImage(selCanvas, 0, 0);
   hasRemoval = true; selClear(true); maskChanged();
-  toast('Removed the selected area', { label: 'Undo', fn: undo });
+  toast('Removed ' + (typeof what === 'string' ? what : 'the selected area'), { label: 'Undo', fn: undo });
 }
 function selKeepOnly() {
   if (!hasSelection) { toast('Select the part to keep first.'); return; }
@@ -271,19 +284,33 @@ function selGrow(px) {
   for (let i = 0; i < a.length; i++) a[i] = px > 0 ? (b[i] > 0.04 ? 255 : 0) : (b[i] > 0.96 ? 255 : 0);
   putAlpha(selCanvas, a); hasSelection = a.some((v) => v > 8); refreshSelTint(); compose(); buildOptbar();
 }
-function selectBackground(tol) {
+function selectBackground(tol, flood) {
   if (!master.base) master.base = C.prepare(photoSrc(), 1200);
   const b = master.base;
-  const m = C.borderFlood(b, tol ?? 0.12);
+  const m = flood || C.borderFlood(b, tol ?? 0.12);
   // borderFlood works on the analysis copy; scale it to mask size
-  const c = mk(b.w, b.h); putAlpha(c, m.map((v) => v * 255));
+  const m255 = new Uint8ClampedArray(m.length);
+  for (let i = 0; i < m.length; i++) m255[i] = m[i] ? 255 : 0;
+  const c = mk(b.w, b.h); putAlpha(c, m255);
   const s = mk(selCanvas.width, selCanvas.height); s.getContext('2d').drawImage(c, 0, 0, s.width, s.height);
-  combineSelection(alphaOf(s).map((v) => v > 127 ? 1 : 0), 'new');
+  const a = alphaOf(s), sel = new Uint8Array(a.length);
+  for (let i = 0; i < a.length; i++) sel[i] = a[i] > 127 ? 1 : 0;
+  combineSelection(sel, 'new');
 }
 function removeBackground() {
-  selectBackground(ui.bgTol ?? 0.12);
-  if (!hasSelection) { toast('No plain background found at the edges. Try the wand instead.'); return; }
-  selRemove();
+  // the 1200 px copy is read in short slices first, so the window does not freeze
+  const tol = ui.bgTol ?? 0.12;
+  runJob('bg', (function* () {
+    if (master && !master.base) master.base = yield* C.prepareGen(photoSrc(), 1200);
+    yield { stage: 'Finding the background', p: 0.6 };
+    const flood = C.borderFlood(master.base, tol);
+    yield { stage: 'Finding the background', p: 0.9 };   // the selection is made in a step of its own
+    return flood;
+  })(), (flood) => {
+    selectBackground(tol, flood);
+    if (!hasSelection) { toast('No plain background found at the edges. Try the wand instead.'); return; }
+    selRemove('the background');
+  });
 }
 function clearRemoval() {
   remCanvas.getContext('2d').clearRect(0, 0, remCanvas.width, remCanvas.height);
@@ -314,6 +341,8 @@ wrap.addEventListener('pointerdown', (e) => {
   const p = evPos(e);
   // handles of the fade shape or the spiral come first, whatever the tool
   if (e.button === 0 && !spaceDown && guideDown(p)) { e.preventDefault(); wrap.setPointerCapture(e.pointerId); return; }
+  // then the guides from the rulers (03g-rulers.js)
+  if (e.button === 0 && !spaceDown && rulerGuideDown(e, p)) { e.preventDefault(); wrap.setPointerCapture(e.pointerId); return; }
   if (e.button === 1 || (e.button === 0 && (ui.tool === 'hand' || spaceDown))) {
     if (!canPan()) return;
     e.preventDefault();
@@ -344,9 +373,11 @@ wrap.addEventListener('pointerdown', (e) => {
     const s = snapAt(ix, iy, penSnap(e, p));
     penDown(p, s[0], s[1]);
   } else if (ui.tool === 'pencil') {
-    drag = { kind: 'pencil', pts: [[ix, iy]], last: [p.cx, p.cy] };
+    drag = { kind: 'pencil', pts: [snapAt(ix, iy, { e, p })], last: [p.cx, p.cy] };
   } else if (ui.tool === 'direct') {
     directDown(p, ix, iy);
+  } else if (ui.tool === 'distort') {
+    distortDown(p, ix, iy, e);
   }
 });
 wrap.addEventListener('pointermove', (e) => {
@@ -367,7 +398,7 @@ wrap.addEventListener('pointermove', (e) => {
     if (ui.tool === 'pen' && pen) { hover = s; drawOverlay(); }
     else if (JSON.stringify(ui.snapHint) !== before) drawOverlay();
   }
-  if (!drag) { if (guideHit(p)) wrap.style.cursor = 'grab'; else if (ui.tool === 'select' || ui.tool === 'crop') hoverCursor(p); else wrap.style.cursor = ''; return; }
+  if (!drag) { if (guideHit(p)) wrap.style.cursor = 'grab'; else if (rulerGuideHover(e, p)) { /* the guide's own cursor */ } else if (ui.tool === 'select' || ui.tool === 'crop') hoverCursor(p); else wrap.style.cursor = ''; return; }
   if (drag.kind === 'pan') { wrap.scrollLeft = drag.sl - (e.clientX - drag.x); wrap.scrollTop = drag.st - (e.clientY - drag.y); return; }
   const [ix, iy] = toImg(p);
   if (drag.kind === 'zoomRect') { drag.b = [p.ax, p.ay]; drawOverlay(); }
@@ -379,7 +410,9 @@ wrap.addEventListener('pointermove', (e) => {
   else if (drag.kind === 'node' || drag.kind === 'handle' || drag.kind === 'path') directMove(ix, iy, e, p);
   else if (drag.kind.startsWith('crop')) cropMove(ix, iy, e);
   else if (drag.kind === 'guide') guideMove(p, e);
+  else if (drag.kind === 'rguide') rulerGuideMove(e, p);
   else if (drag.kind.startsWith('obj') || drag.kind === 'marquee' || drag.kind === 'shapeDraw') objDragMove(ix, iy, e, p);
+  else if (drag.kind.startsWith('dist')) distortMove(p, ix, iy, e);
 });
 const endDrag = (e) => {
   if (e && e.pointerType === 'touch') { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; }
@@ -408,22 +441,32 @@ const endDrag = (e) => {
   } else if (d.kind === 'node' || d.kind === 'handle' || d.kind === 'path') linesChanged();
   else if (d.kind.startsWith('crop')) buildOptbar();
   else if (d.kind === 'guide') guideEnd();
+  else if (d.kind === 'rguide') rulerGuideEnd(d, e);
   else if (d.kind.startsWith('obj') || d.kind === 'marquee' || d.kind === 'shapeDraw') objDragEnd(d);
+  else if (d.kind.startsWith('dist')) distortEnd(d);
   drawOverlay();
 };
 wrap.addEventListener('pointerup', endDrag);
 wrap.addEventListener('pointercancel', endDrag);
 wrap.addEventListener('dblclick', (e) => {
   if (isMock()) { const r = wrap.getBoundingClientRect(); zoomTo((ui.mockZoom || 1) === 1 ? 2 : 'fit', { x: e.clientX - r.left, y: e.clientY - r.top }); return; }
+  { const G = pickGuide(e, evPos(e)); if (G) { editGuide(G); return; } }
   if (ui.tool === 'pen') { finishPen(); return; }
   if (ui.tool === 'crop') { cropApply(); return; }
-  if (ui.tool === 'select') { const [ix, iy] = toImg(evPos(e)); const o = hitObject(ix, iy); if (o && o.type === 'text') editText(o); return; }
+  if (ui.tool === 'select') {
+    const p = evPos(e), [ix, iy] = toImg(p), o = hitObject(ix, iy);
+    if (o && o.type === 'text') { editText(o); return; }
+    // a double-click on a group goes into it, so its parts can be picked one by one
+    const path = !o && doc.lines.visible ? hitPath(p) : null;
+    if (path && path.group != null) { ui.inGroup = path.group; setPathSel([path.id]); drawOverlay(); buildOptbar(); if (ui.tab === 'lines') buildPanel(); }
+    return;
+  }
   if (ui.tool === 'hand' && prefs.dblClick === 'toggle') {
     const r = wrap.getBoundingClientRect();
     zoomTo(ui.zoom === 'fit' ? 1 : 'fit', { x: e.clientX - r.left, y: e.clientY - r.top });
   }
 });
-wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush' || ui.tool === 'liquify') $('brushRing').hidden = true; if (ui.snapHint && !drag) { ui.snapHint = null; drawOverlay(); } });
+wrap.addEventListener('pointerleave', () => { if (ui.tool === 'brush' || ui.tool === 'liquify') $('brushRing').hidden = true; if (ui.snapHint && !drag) { ui.snapHint = null; drawOverlay(); } if (ui.rg.hover != null && !drag) { ui.rg.hover = null; drawOverlay(); } });
 wrap.addEventListener('pointerenter', () => { if (ui.tool === 'brush' || ui.tool === 'liquify') $('brushRing').hidden = false; });
 
 function brushAt(p) {
@@ -463,10 +506,12 @@ function addPath(p) {
   linesChanged();
   if (ui.tab === 'lines') buildPanel();
 }
+/* text art layers that fill the vector shapes or read the lines, so they redraw when the lines change */
+function textReadsLines() { return activeLayers().some((L) => L.maskSource === 'vector' || (MODES[L.mode] && MODES[L.mode].usesLines)); }
 function linesChanged() {
   vecVer++;
   compose();
-  if (doc.text.applied && doc.text.source !== 'photo') scheduleText(200);
+  if (doc.text.applied && (doc.text.source !== 'photo' || textReadsLines())) scheduleText(200);
   queueHistory(); buildStack();
   if (ui.tab === 'lines') updateLineInfo();
 }
@@ -530,20 +575,30 @@ function segDist(px, py, ax, ay, bx, by) {
 function directMove(ix, iy, e, p) {
   const d = drag;
   if (d.kind === 'node') {
-    const N = d.path.nodes, nb = N[d.i - 1] || N[d.i + 1];
-    [ix, iy] = snapAt(ix, iy, { e, p, skipPath: d.path, skipNode: [d.path, d.i], anchor: nb ? [nb.x, nb.y] : null });
+    const N = d.path.nodes, L = N.length, prev = N[d.i - 1] || (d.path.closed ? N[L - 1] : null), next = N[d.i + 1] || (d.path.closed ? N[0] : null), nb = prev || next;
+    [ix, iy] = snapAt(ix, iy, { e, p, skipPath: d.path, skipNode: [d.path, d.i], anchor: nb ? [nb.x, nb.y] : null, refs: [prev, next].filter((q) => q && q !== nb).map((q) => [q.x, q.y]) });
     const n = N[d.i]; n.x = ix; n.y = iy;
   }
   else if (d.kind === 'handle') {
-    const n = d.path.nodes[d.i];
-    [ix, iy] = snapAt(ix, iy, { e, p, skipPath: d.path, anchor: [n.x, n.y] });
+    const N = d.path.nodes, L = N.length, n = N[d.i], at = (j) => N[j] || (d.path.closed ? N[(j + L) % L] : null);
+    // the out handle can aim at the next point or go on straight from the previous one; the in handle the other way round
+    const nb = at(d.which === 'o' ? d.i + 1 : d.i - 1), back = at(d.which === 'o' ? d.i - 1 : d.i + 1), rays = [], unit = (x, y) => { const l = Math.hypot(x, y); return l > 1e-9 ? [x / l, y / l] : null; };
+    const ua = nb && unit(nb.x - n.x, nb.y - n.y), ub = back && back !== nb && unit(n.x - back.x, n.y - back.y);
+    const nx = d.which === 'o' ? 'next' : 'previous', pv = d.which === 'o' ? 'previous' : 'next';
+    if (ua) rays.push({ a: [n.x, n.y], u: ua, to: [nb.x, nb.y], label: 'aims at ' + nx + ' point' });
+    if (ub) rays.push({ a: [n.x, n.y], u: ub, to: [back.x, back.y], label: 'in line with ' + pv + ' point' });
+    [ix, iy] = snapAt(ix, iy, { e, p, skipPath: d.path, anchor: [n.x, n.y], rays });
     const hx = ix - n.x, hy = iy - n.y;
     if (d.which === 'o') { n.ox = hx; n.oy = hy; if (!e.altKey) { const L = Math.hypot(n.ix, n.iy) || Math.hypot(hx, hy); const a = Math.atan2(hy, hx) + Math.PI; n.ix = Math.cos(a) * L; n.iy = Math.sin(a) * L; } }
     else { n.ix = hx; n.iy = hy; if (!e.altKey) { const L = Math.hypot(n.ox, n.oy) || Math.hypot(hx, hy); const a = Math.atan2(hy, hx) + Math.PI; n.ox = Math.cos(a) * L; n.oy = Math.sin(a) * L; } }
   } else if (d.kind === 'path') {
-    const dx = ix - d.last[0], dy = iy - d.last[1];
-    d.path.nodes.forEach((n) => { n.x += dx; n.y += dy; });
-    d.last = [ix, iy];
+    if (!d.orig) { d.orig = d.path.nodes.map((n) => [n.x, n.y]); d.start = d.last; }
+    let dx = ix - d.start[0], dy = iy - d.start[1];
+    if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
+    const xs = d.orig.map((q) => q[0]), ys = d.orig.map((q) => q[1]), x0 = Math.min(...xs), y0 = Math.min(...ys);
+    const keys = d.path.closed ? [] : [d.orig[0], d.orig[d.orig.length - 1]];
+    [dx, dy] = snapMove(null, dx, dy, e, p, { box: { x: x0, y: y0, w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 }, keys, skipPath: d.path });
+    d.path.nodes.forEach((n, i) => { n.x = d.orig[i][0] + dx; n.y = d.orig[i][1] + dy; });
   }
   if (d.path.stroke) { vecVer++; compose(); } else drawOverlay();
 }
@@ -551,8 +606,9 @@ function deleteSelection() {
   if (ui.selObjs.length) { deleteObjects(); return true; }
   const path = findPath(ui.selPath);
   if (!path) return false;
+  const many = selectedPathIds();
   if (ui.selNode != null && path.nodes.length > 2) { path.nodes.splice(ui.selNode, 1); ui.selNode = null; }
-  else { doc.lines.paths = doc.lines.paths.filter((p) => p !== path); ui.selPath = null; ui.selNode = null; }
+  else { doc.lines.paths = doc.lines.paths.filter((p) => !many.includes(p.id)); setPathSel([]); }
   linesChanged(); if (ui.tab === 'lines') buildPanel(); buildOptbar();
   return true;
 }
@@ -563,19 +619,20 @@ function drawOverlay() {
   const g = artGeom();
   overlay.setAttribute('viewBox', '0 0 ' + g.TW + ' ' + g.TH);
   overlay.setAttribute('preserveAspectRatio', 'none');
-  const lineTool = ['pen', 'pencil', 'direct', 'select'].includes(ui.tool);
+  const lineTool = ['pen', 'pencil', 'direct', 'select', 'distort'].includes(ui.tool);
   const show = doc.lines.visible && (!textShown() || lineTool) && doc.out.mock === 'artboard' && !ui.cropDraft;
   const r = canvas.getBoundingClientRect();
   const k = (r.width || 1) / g.TW, u = (px) => (px / k).toFixed(2);
   const map = (x, y) => img2art(x, y, g), sk = imgScale(g);
-  const parts = [];
+  // guides from the rulers first, so lines, handles and boxes stay on top of them
+  const parts = [rulerGuideOverlay(g, k)];
   const col = doc.lines.color;
   if (show) {
     for (const path of doc.lines.paths) {
       const pts = flatten(path, map, sk);
       if (pts.length < 2) continue;
       const d = 'M' + pts.map((q) => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join('L') + (path.closed ? 'Z' : '');
-      const selected = path.id === ui.selPath;
+      const selected = path.id === ui.selPath || (ui.selPaths.includes(path.id) && selectedPathIds().includes(path.id));
       if (path.stroke && !selected && !lineTool) continue;
       parts.push('<path d="' + d + '" fill="none" stroke="' + col + '" stroke-opacity="' + (selected ? 1 : path.stroke ? 0.35 : 0.85) + '" stroke-width="' + (selected ? 2.6 : 1.4) + '" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"' + (path.stroke ? ' stroke-dasharray="4 3"' : '') + '/>');
     }
@@ -612,8 +669,11 @@ function drawOverlay() {
   if (ui.cropDraft) parts.push(cropOverlay(g, k));
   if (doc.out.mock === 'artboard' && !ui.cropDraft) parts.push(objectOverlay(g, k));
   parts.push(guideOverlay(g, k));
+  if (doc.out.mock === 'artboard') parts.push(distortOverlay(g, k));
   parts.push(snapOverlay(g, k));
+  parts.push(rulerGuideTag(g, k));
   overlay.innerHTML = parts.join('');
+  drawRulersSoon();
 }
 
 /* ---------------- option bar ---------------- */
@@ -641,12 +701,22 @@ function selActions(bar) {
 function layerSeg(bar) {
   bar.append(el('span', 'hint', 'Put on'), optSeg([['photo', 'Photo'], ['lines', 'Vector']], ui.objLayer, (v) => { ui.objLayer = v; buildOptbar(); }, 'Layer for new objects'));
 }
+/* a phone or a tablet with no mouse */
+const touchOnly = () => { try { return matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches; } catch (e) { return false; } };
+/* The bar wraps onto a second row when its controls need it. Within one tool it never gets shorter, so selecting
+   or deselecting something never moves the picture or changes the Fit zoom; a new tool or window size starts afresh. */
+let optbarFor = null;
+addEventListener('resize', () => { optbarFor = null; });
 function buildOptbar() {
   const bar = $('optbar');
-  bar.replaceChildren();
   const t = ui.tool;
+  bar.style.minHeight = optbarFor === t ? bar.offsetHeight + 'px' : '';
+  optbarFor = t;
+  bar.replaceChildren();
   if (t === 'hand') {
-    bar.appendChild(el('span', 'hint', 'Drag to move around when zoomed in. ' + MOD + ' + scroll zooms smoothly, and so does a pinch. Hold Space to move with any tool. Double-click toggles Fit and 100%.'));
+    // a touch screen has no scroll wheel, Space key or double-click: only what a finger can do
+    bar.appendChild(el('span', 'hint', touchOnly() ? 'Drag to move around when zoomed in. Pinch to zoom.'
+      : 'Drag to move around when zoomed in. ' + MOD + ' + scroll zooms smoothly, and so does a pinch. Hold Space to move with any tool. Double-click toggles Fit and 100%.'));
   } else if (t === 'zoom') {
     bar.appendChild(el('span', 'hint', 'Click to zoom in, Alt-click to zoom out, or drag a box to fill the window.'));
     bar.append(optBtn('Fit', () => zoomTo('fit')), optBtn('100%', () => zoomTo(1)), optBtn('Zoom to selection', zoomToSelection), optBtn('Settings…', openSettings));
@@ -674,10 +744,16 @@ function buildOptbar() {
       optRange('Size', 4, 200, 1, ui.brush.size, (v) => Math.round(v) + ' px', (v) => { ui.brush.size = v; }));
     selActions(bar);
   } else if (t === 'select') {
-    const n = ui.selObjs.length;
-    bar.appendChild(el('span', 'hint', n ? n + ' selected. Drag to move, Shift keeps a straight line, Alt-drag copies. Arrow keys nudge.' : 'Click a shape, text or image. Shift-click adds. Drag on empty space to select several. Double-click text to edit.'));
+    const n = ui.selObjs.length, np = selectedPathIds().length;
+    bar.appendChild(el('span', 'hint', n ? n + ' selected. Drag to move, Shift keeps a straight line, Alt-drag copies. Arrow keys nudge.'
+      : np ? (ui.inGroup != null ? 'Inside a group: click its parts one by one. Click outside it, or press Esc, to leave.' : selGroupId() != null ? 'A group. Drag to move, drag the handles to scale or turn it. Double-click to go into it.' : np + ' line' + (np === 1 ? '' : 's') + ' selected. Drag to move, drag the handles to scale or turn.')
+      : 'Click a shape, text, image or line. Shift-click adds. Drag on empty space to select several. Double-click text to edit.'));
+    // text becomes lines from here too, so the feature is easy to find
+    if (hasTextSel()) bar.append(optBtn('Convert to outlines', () => runCommand('vector.toOutlines'), true), optBtn('Convert to centerlines', () => runCommand('vector.toCenterlines')));
     if (n) bar.append(optBtn('Duplicate', () => duplicateObjects()), optBtn('Flip ↔', () => flipObjects('x')), optBtn('Flip ↕', () => flipObjects('y')), optBtn('To front', () => arrangeObjects('front')), optBtn('To back', () => arrangeObjects('back')), optBtn('Delete', deleteObjects));
-    else if (ui.selPath) bar.append(optBtn('Delete line', () => deleteSelection()));
+    if (groupable()) bar.append(optBtn('Group', () => runCommand('vector.group')));
+    if (selGroupId() != null) bar.append(optBtn('Ungroup', () => runCommand('vector.ungroup')));
+    if (!n && np) bar.append(optBtn('Distort…', () => setTool('distort')), optBtn(np > 1 ? 'Delete' : 'Delete line', () => deleteSelection()));
   } else if (t === 'shape') {
     bar.appendChild(optSeg([['rect', 'Rectangle'], ['ellipse', 'Ellipse'], ['polygon', 'Polygon'], ['star', 'Star'], ['line', 'Line']], ui.shape.kind, (v) => { ui.shape.kind = v; buildOptbar(); }, 'Shape'));
     if (ui.shape.kind === 'polygon') bar.appendChild(optRange('Sides', 3, 12, 1, ui.shape.sides, String, (v) => { ui.shape.sides = v; }));
@@ -692,11 +768,14 @@ function buildOptbar() {
     bar.appendChild(optBtn('Finish line', () => finishPen(), false, !pen));
   } else if (t === 'pencil') {
     bar.appendChild(el('span', 'hint', 'Draw freely. The line is smoothed into editable curves when you let go.'));
+  } else if (t === 'distort') {
+    buildDistortBar(bar);
   } else if (t === 'direct') {
     bar.appendChild(el('span', 'hint', 'Click a line to select it. Drag points, handles or the whole line. Alt breaks a handle pair. Delete removes.'));
     bar.appendChild(optBtn('Delete', () => deleteSelection(), false, !ui.selPath));
   }
-  if (['select', 'shape', 'text', 'pen', 'direct'].includes(t)) snapButtons(bar);
+  if (['select', 'shape', 'text', 'pen', 'direct', 'distort'].includes(t)) snapButtons(bar);
+  bar.querySelectorAll(':scope > .hint:first-child').forEach((h) => { if (!h.title) h.title = h.textContent; });
   syncMenus();
 }
 /* Snap on or off, and a menu of what it snaps to. Alt turns it off while you drag. */
@@ -706,7 +785,7 @@ function snapButtons(bar) {
   on.setAttribute('aria-pressed', String(!!prefs.snap.on)); on.title = 'Snap to points and lines (' + keyLabel('mod+;') + '). Hold Alt to drag freely.';
   on.onclick = () => runCommand('snap.on');
   const more = el('button', 'btn', '▾'); more.type = 'button'; more.setAttribute('aria-label', 'What to snap to'); more.title = 'What to snap to';
-  more.onclick = (ev) => { ev.stopPropagation(); const r = more.getBoundingClientRect(); dropMenu(resolveMenu([{ id: 'snap.on' }, { sep: true }].concat(SNAP_KINDS.map(([k]) => ({ id: 'snap.' + k })), [{ sep: true }, { id: 'view.grid' }, { id: 'snap.gridSize' }])), r.left, r.bottom + 4, 0); };
+  more.onclick = (ev) => { ev.stopPropagation(); const r = more.getBoundingClientRect(); dropMenu(resolveMenu(snapMenuItems().concat([{ sep: true }, { id: 'view.grid' }, { id: 'snap.gridSize' }])), r.left, r.bottom + 4, 0); };
   box.append(on, more);
   bar.appendChild(box);
 }

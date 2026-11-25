@@ -66,7 +66,15 @@ Public repositories can use GitHub Actions for free. Private repositories get a 
 
 ## Publish the web version
 
-The workflow `.github/workflows/web.yml` publishes `src/` to GitHub Pages on every push to `main`. In your repository, open **Settings → Pages** and under **Build and deployment → Source** choose **GitHub Actions**. The next push, or **Actions → Web app → Run workflow**, publishes it at `https://YOUR-NAME.github.io/REPOSITORY/`.
+The workflow `.github/workflows/web.yml` publishes the website and the web app to GitHub Pages on every push to `main`. It runs `npm run build` (the app in `src/`), then `npm run site`, which writes `pages/`:
+
+- the website from `site/` at the root, with `404.html` for any missing address,
+- the web app, a copy of `src/`, under `try/`,
+- a `sw.js` at the root that clears the offline copy of the old web app, which used to live at the root.
+
+In your repository, open **Settings → Pages** and under **Build and deployment → Source** choose **GitHub Actions**. The next push, or **Actions → Web app → Run workflow**, publishes the website at `https://YOUR-NAME.github.io/REPOSITORY/` and the app at `https://YOUR-NAME.github.io/REPOSITORY/try/`. For another address, set `SITE_BASE` (the path, such as `/REPOSITORY/`) and `SITE_URL` (the full address) in the workflow.
+
+To try the site on your computer: `npm run build`, then `node scripts/site.js --serve`, and open http://localhost:8090/Sungfluence/. The pictures on the website are drawn by the app itself: after a change to how a style looks, run `npm run site:images` and commit the new files in `site/img`. `npm run test:site` checks the site.
 
 ## When something goes wrong
 

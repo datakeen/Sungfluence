@@ -16,15 +16,15 @@ Other styles place letters one at a time, so Urdu does not join in them yet.
 
 ## Tips
 
-- Paste your text into the **Text** box. Line breaks are fine: in a calligram they become a pause, and **Mark between lines of the text** (under More controls) can add an Urdu full stop (۔) or a small ornament where a verse line ends.
+- Paste your text into the **Text** box. Line breaks are fine: in a calligram they become a pause, and **Mark between lines of the text** (in the Words section) can add an Urdu full stop (۔) or a small ornament where a verse line ends.
 - Text in Arabic script uses Nastaliq on its own, whatever the Typeface says. To use Naskh instead, pick **Naskh (Arabic, Urdu)** as the typeface.
 - Nastaliq is tall, so SungFluence adds room between lines for it.
-- **Writing** (under More controls in Calligram) can force right to left or left to right, for mixed text.
+- **Writing** (in the Words section of Calligram) can force right to left or left to right, for mixed text.
 
 ## An idea: a verse in a portrait
 
 1. Open a portrait.
-2. In the Text art panel, choose **Text portrait**, or **Calligram** with the shape set to **Photo**.
+2. In the Text art panel, choose **Text portrait**, or **Calligram** with the shape set to **Subject** or **Photo**.
 3. Paste the verse into **Text**.
 4. Set **Color** to **Photo**, and try light paper and dark paper in the Output panel.
 5. Export **PNG for print** or **SVG with live text**.

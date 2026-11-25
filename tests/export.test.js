@@ -106,6 +106,12 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
   check(pj2.text.applied === false && pj2.layers.photo === false && pj2.objects.length === before.n, 'project with only the vector layer');
   await p.screenshot({ path: __dirname + '/out/e2-after-reopen.png' });
 
+  // the test bridge names each part of the app once
+  const bridge = fs.readFileSync(path.join(__dirname, '../app/parts/06-io.js'), 'utf8').split('window.__sungfluence = {')[1].split('get img2art()')[0];
+  const names = bridge.split(',').map((t) => t.trim()).filter((t) => /^[A-Za-z_$][\w$]*$/.test(t));
+  const twice = names.filter((n, i) => names.indexOf(n) !== i);
+  check(names.length > 100 && !twice.length, 'the test bridge lists each name once' + (twice.length ? ': ' + twice.join(', ') : ''));
+
   check(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));
   await b.close();
   console.log(fails ? fails + ' export checks failed' : 'all export checks passed');

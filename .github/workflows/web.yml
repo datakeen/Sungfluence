@@ -1,5 +1,6 @@
-# Publishes the web version to GitHub Pages on every push to main.
-# People can open it in a browser and choose "Install" to keep it as an app.
+# Publishes the website and the web app to GitHub Pages on every push to main.
+#   https://datakeen.github.io/Sungfluence/       the website (site/), with 404.html for missing pages
+#   https://datakeen.github.io/Sungfluence/try/   the web app (src/). People can choose "Install" there to keep it as an app.
 name: Web app
 
 on:
@@ -27,10 +28,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # the app first, then the website, which copies the app into pages/try
       - run: node scripts/build.js
+      - run: node scripts/site.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: src
+          path: pages
       - id: deploy
         uses: actions/deploy-pages@v4

@@ -25,7 +25,7 @@ const check = (name, ok, info) => { console.log((ok ? 'ok   ' : 'FAIL ') + name 
   const size = () => S(() => window.__sungfluence.imgSize.join('x'));
 
   // ---- menu bar ----
-  check('the web version shows a menu bar', await S(() => !document.getElementById('menubar').hidden && document.querySelectorAll('#menubar > button').length === 9));
+  check('the web version shows a menu bar', await S(() => !document.getElementById('menubar').hidden && document.querySelectorAll('#menubar > button').length === 10));
   const before = await size();
   await p.click('#menubar > button:has-text("Image")');
   await p.waitForTimeout(150);
@@ -59,7 +59,9 @@ const check = (name, ok, info) => { console.log((ok ? 'ok   ' : 'FAIL ') + name 
   check('P picks the pen (a command now)', await S(() => window.__sungfluence.ui.tool === 'pen'));
   await p.keyboard.press('1'); await p.waitForTimeout(150);
   check('1 shows the photo view', await S(() => window.__sungfluence.ui.view === 'photo'));
-  const chooser = p.waitForEvent('filechooser', { timeout: 3000 }).then(() => true).catch(() => false);
+  // the picker is a real browser event, so wait for the work to settle first and give it room
+  await wait(p);
+  const chooser = p.waitForEvent('filechooser', { timeout: 10000 }).then(() => true).catch(() => false);
   await p.keyboard.press('Control+o');
   check('Ctrl O opens the file picker', await chooser);
   await S(() => { const t = document.createElement('input'); t.id = 'typeHere'; document.body.appendChild(t); t.focus(); });

@@ -11,10 +11,12 @@ const REVEAL_MS = { fly: 1150, fade: 650 };
 function revealSoon() { if (!reduceMotion() && prefs.reveal !== 'none') ui.revealNext = true; }
 const revealing = () => !!reveal;
 function stopReveal() { if (reveal) { cancelAnimationFrame(reveal.raf); reveal = null; } }
-function startReveal() {
+/* after: called once the letters have landed (or at once when there is nothing to show) */
+function startReveal(after) {
   stopReveal();
+  const done = () => { if (after) after(); };
   const c = textCanvas;
-  if (!c || reduceMotion() || prefs.reveal === 'none') return;
+  if (!c || reduceMotion() || prefs.reveal === 'none') { done(); return; }
   const W = c.width, H = c.height, T = Math.max(12, Math.round(Math.max(W, H) / 52));
   const cols = Math.ceil(W / T), rows = Math.ceil(H / T);
   // which tiles hold any letters: read a tiny copy, one pixel per tile
@@ -34,12 +36,12 @@ function startReveal() {
     tiles.push({ sx: x * T, sy: y * T, cx, cy, fx: cx + Math.cos(ang) * dist, fy: cy + Math.sin(ang) * dist,
       rot: (rnd() - 0.5) * 2.2, delay: mode === 'fade' ? rnd() * 0.55 : 0.08 + rnd() * 0.3 + r * 0.17 });
   }
-  if (!tiles.length) return;
+  if (!tiles.length) { done(); return; }
   reveal = { t0: performance.now(), dur: REVEAL_MS[mode] || 1000, mode, tiles, T, src: c, out: mk(W, H), raf: 0 };
   const tick = () => {
     if (!reveal) return;
     compose();
-    if (performance.now() - reveal.t0 >= reveal.dur) { reveal = null; compose(); return; }
+    if (performance.now() - reveal.t0 >= reveal.dur) { reveal = null; compose(); done(); return; }
     reveal.raf = requestAnimationFrame(tick);
   };
   reveal.raf = requestAnimationFrame(tick);

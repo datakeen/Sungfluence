@@ -2,7 +2,7 @@
   <nav class="menubar" id="menubar" aria-label="Menu" hidden></nav>
   <header class="top">
     <div class="top-l">
-      <div class="brand"><img class="brand-icon" src="icons/icon.svg" alt="" width="22" height="22"><span class="brand-mark">Sung<b>Fluence</b></span><span class="file" id="fileName">cat.jpg</span></div>
+      <div class="brand"><img class="brand-icon" src="icons/icon.svg" alt="" width="22" height="22"><span class="brand-mark">Sung<b>Fluence</b></span><span class="brand-ver" id="appVer"></span><span class="file" id="fileName">coffee.jpg</span></div>
       <button class="btn" id="newBtn" type="button" title="Start from a blank artboard (N with Shift)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
         New
@@ -45,9 +45,15 @@
         <div class="canvas-wrap" id="canvasWrap">
           <div class="frame" id="frame">
             <canvas id="art" width="1600" height="1066" role="img" aria-label="Artwork"></canvas>
+            <canvas id="crisp" aria-hidden="true" hidden></canvas>
             <svg id="overlay" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
             <div class="split-h" id="splitH" role="slider" tabindex="0" aria-label="Compare divider" hidden><i></i><b></b><span class="split-tag l" id="splitTagL"></span><span class="split-tag r" id="splitTagR"></span></div>
           </div>
+        </div>
+        <div class="rulers" id="rulers" hidden>
+          <button class="ruler-corner" id="rulerCorner" type="button" aria-label="Ruler units and guides" title="Ruler units and guides"><span id="rulerUnitTag">px</span></button>
+          <canvas class="ruler ruler-h" id="rulerH" title="Drag down to add a guide. Right-click for units." aria-hidden="true"></canvas>
+          <canvas class="ruler ruler-v" id="rulerV" title="Drag right to add a guide. Right-click for units." aria-hidden="true"></canvas>
         </div>
         <div class="splitbar" id="splitBar" hidden></div>
         <div class="brush-ring" id="brushRing" hidden></div>
@@ -67,6 +73,7 @@
           <button type="button" id="zoomFit" aria-label="Fit to window" title="Fit to window (Ctrl 0)">Fit</button>
         </div>
         <div class="quality"><span>Preview</span><div class="seg" id="qualitySeg" role="group" aria-label="Preview quality"></div></div>
+        <button class="paper-chip" id="paperChip" type="button" hidden>Made for printing on light paper</button>
         <div class="status" id="status">Loading</div>
         <form class="ai" id="aiForm" hidden>
           <input id="aiInput" type="text" placeholder="Describe a look, e.g. white line text for a black T-shirt" autocomplete="off" aria-label="Describe a look for the AI helper">
@@ -87,4 +94,5 @@
 <div class="toast" id="toast" role="status" hidden></div>
 <div class="help" id="help" role="dialog" aria-label="Keyboard shortcuts" hidden></div>
 <div class="scrim" id="libScrim" hidden><div class="sheet" id="library" role="dialog" aria-modal="true" aria-labelledby="libTitle"></div></div>
+<div class="scrim" id="typeScrim" hidden><div class="sheet" id="typeBox" role="dialog" aria-modal="true" aria-labelledby="typeTitle"></div></div>
 <div class="scrim" id="dlgScrim" hidden><div class="dialog" id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"></div></div>

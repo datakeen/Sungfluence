@@ -1,7 +1,7 @@
 {
   "name": "sungfluence",
   "productName": "SungFluence",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "description": "A small design studio that turns images into art made of letters: word portraits, text along lines, ASCII, Braille, calligrams, plus photo, vector and text tools.",
   "main": "main.js",
   "author": {
@@ -26,7 +26,7 @@
     "prestart": "node scripts/build.js",
     "start": "electron .",
     "web": "npx --yes http-server src -p 8080 -c-1",
-    "test": "node tests/regression.test.js && node tests/plugins.test.js && node tests/studio.test.js && node tests/effects.test.js && node tests/commands.test.js && node tests/export.test.js && node tests/output.test.js && node tests/motion.test.js",
+    "test": "node tests/regression.test.js && node tests/plugins.test.js && node tests/studio.test.js && node tests/effects.test.js && node tests/commands.test.js && node tests/export.test.js && node tests/output.test.js && node tests/motion.test.js && node tests/type.test.js && node tests/cloud.test.js && node tests/turn.test.js && node tests/marks.test.js && node tests/words.test.js && node tests/wall.test.js && node tests/flip.test.js && node tests/office.test.js && node tests/size.test.js && node tests/styles.test.js && node tests/photo.test.js && node tests/snap.test.js && node tests/vector.test.js && node tests/paper.test.js && node tests/fill.test.js && node tests/firstlook.test.js && node tests/mirror.test.js && node tests/shared.test.js && node tests/panel.test.js && node tests/firstpick.test.js && node tests/flagship.test.js && node tests/cloudgrid.test.js && node tests/rulers.test.js && node tests/checkup.test.js && node tests/transparency.test.js && node tests/site.test.js",
     "predist": "node scripts/build.js",
     "dist": "electron-builder --publish never",
     "dist:linux": "electron-builder --linux --publish never",
@@ -35,8 +35,13 @@
     "vendor": "node scripts/vendor.js",
     "icons": "node scripts/icons.js",
     "test:smoke": "node tests/smoke.test.js",
+    "test:rulers": "node tests/rulers.test.js",
     "help:shots": "node scripts/help-shots.js",
-    "docs": "node scripts/docs.js"
+    "docs": "node scripts/docs.js",
+    "site": "node scripts/site.js",
+    "site:serve": "node scripts/site.js --serve",
+    "site:images": "node scripts/site-images.js",
+    "test:site": "node tests/site.test.js"
   },
   "devDependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -82,7 +87,7 @@
           ]
         }
       ],
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "signAndEditExecutable": true
     },
     "nsis": {
@@ -107,7 +112,7 @@
         }
       ],
       "category": "public.app-category.graphics-design",
-      "icon": "build/icon.png"
+      "icon": "build/icon-mac.png"
     },
     "linux": {
       "target": [
@@ -116,7 +121,7 @@
         "tar.gz"
       ],
       "category": "Graphics",
-      "icon": "build/icon.png",
+      "icon": "build/icons",
       "maintainer": "Ahmed Bilal",
       "synopsis": "Turn photos into typographic art",
       "executableName": "sungfluence"

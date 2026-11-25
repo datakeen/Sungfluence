@@ -37,6 +37,8 @@ const VERSE = 'خودی کو کر بلند اتنا کہ ہر تقدیر سے پ
   const layerOut = () => S(() => { const A = window.__sungfluence; const L = A.curLayer(); const r = A.out.layers.find((x) => x.id === L.id); const all = r.items; return { n: all.length, ms: r.ms, minA: Math.min(...all.map((i) => i.a ?? 1)), maxSize: Math.max(...all.map((i) => i.size || 0)), minSize: Math.min(...all.map((i) => i.size || 99)), fills: Array.from(new Set(all.map((i) => i.fill))), items: r.items.slice(0, 400).map((i) => ({ s: i.s, font: i.font, a: i.a, italic: !!i.italic, fill: i.fill, rot: i.rot, size: i.size })), palette: r.palette }; });
   const shot = (name) => p.locator('#viewport').screenshot({ path: __dirname + '/out/' + name + '.png' });
 
+  check('the app opens on the coffee sample', await S(() => window.__sungfluence.doc.sample === 'coffee'));
+  await S(() => window.__sungfluence.useSample('cat')); await p.waitForTimeout(1500);
   check('the sample cat is the new picture', await S(() => window.__sungfluence.doc.sample === 'cat' && window.__sungfluence.imgSize[0] === 1600));
 
   // Confetti: packed letters, small in the detail
@@ -85,7 +87,7 @@ const VERSE = 'خودی کو کر بلند اتنا کہ ہر تقدیر سے پ
   // Fade shapes on Typewriter: oval, turned band, and dragging a handle
   for (const [focus, extra, name] of [['ellipse', { fr: 0.75, fs: 0.5, fe: 0.7 }, 'oval'], ['circle', { fr: 0.8, fs: 0.4 }, 'circle'], ['vertical', { fr: 0.45, fs: 0.3, fa: 30 }, 'band-turned']]) {
     await style('typewriter', Object.assign({ focus }, extra), '#f3efe6');
-    await S(() => { window.__sungfluence.ui.open.focus = true; window.__sungfluence.buildPanel(); });
+    await S(() => { window.__sungfluence.ui.open.shape = true; window.__sungfluence.buildPanel(); });
     await p.waitForTimeout(150);
     await shot('fx9-typewriter-' + name);
   }

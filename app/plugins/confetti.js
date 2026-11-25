@@ -134,7 +134,8 @@ Sungfluence.plugin({
           else if (p.turn === 'random') angle = (R() - 0.5) * Math.PI * 1.4;
           angle += (R() - 0.5) * Math.PI * (p.spin ?? 0.3);
           // letters a little smaller in light areas, so tones still read
-          api.addText(c, px, py, { size: s * (0.75 + 0.25 * ink), angle, weight: p.weightMod === false ? undefined : Math.round((400 + 500 * ink) / 100) * 100 });
+          // sizes in half pixels: the canvas draws a few dozen sizes much faster than thousands
+          api.addText(c, px, py, { size: Math.max(0.5, Math.round(s * (0.75 + 0.25 * ink) * 2) / 2), angle, weight: p.weightMod === false ? undefined : Math.round((400 + 500 * ink) / 100) * 100 });
         }
       }
     }

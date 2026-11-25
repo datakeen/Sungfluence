@@ -23,9 +23,26 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
 
   // labels follow the preview
   await outTab();
-  check(/Paper color \(background\)/.test(await panelText()), 'artboard: section is called Paper color (background)');
+  const secName = () => A(() => { const s = document.getElementById('sec-paper'); return s.querySelector('.sec-t').textContent + ' / ' + s.querySelector(':scope > .note').textContent; });
+  check(/^Background \/ The paper color behind the letters/.test(await secName()), 'artboard: section is called Background, and the note says it is the paper color');
+  // the panel runs Artboard, Background, Output color, Print, Show on; Mix strength and Gentle live elsewhere
+  const order = await A(() => [...document.querySelectorAll('#panel .sec-t')].map((t) => t.textContent));
+  check(order.join('|') === 'Artboard|Background|Output color|Print|Show on', 'Output panel order: ' + order.join(', '));
+  check(await A(() => !document.getElementById('c-o-mixPhoto') && !document.getElementById('c-o-gentle') && !!document.getElementById('c-o-margin')), 'Margin is under Artboard; Mix strength and Gentle are not in the Output panel');
+  const mix = await A(async () => {
+    const S = window.__sungfluence, b = document.querySelector('#viewSeg [data-view="mix"]');
+    S.setView('mix'); b.click(); await new Promise((r) => setTimeout(r, 50));
+    const pop = document.getElementById('mixPop'), inp = document.getElementById('mixPhoto');
+    const shown = !!pop && !pop.hidden;
+    inp.value = '0.6'; inp.dispatchEvent(new Event('input'));
+    const v = S.doc.out.mixPhoto;
+    S.setView('text');
+    return { shown, v, closed: pop.hidden };
+  });
+  check(mix.shown && mix.v === 0.6 && mix.closed, 'Mix again opens Photo strength, it sets the strength, and it closes with another view', JSON.stringify(mix));
+  await A(() => { window.__sungfluence.doc.out.mixPhoto = 0.35; });
   await A(() => { const S = window.__sungfluence; S.doc.out.mock = 'shirt'; S.doc.out.shirt = S.doc.out.paper; S.buildPanel(); S.compose(); });
-  check(/T-shirt color \(background\)/.test(await panelText()), 'T-shirt preview: section is called T-shirt color (background)');
+  check(/^Background \/ The T-shirt color behind the letters/.test(await secName()), 'T-shirt preview: the same Background section, and the note says it is the shirt color');
   await A(() => { const S = window.__sungfluence; S.doc.out.transparent = true; S.buildPanel(); });
   const tnote = await panelText();
   check(/JPG cannot be transparent/.test(tnote) && /PNG, SVG, PDF and the text outputs/.test(tnote), 'transparent note names the formats and what JPG does');
@@ -49,10 +66,16 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
   await A(() => { const S = window.__sungfluence; S.doc.out.mock = 'paper'; S.doc.out.paper = '#111113'; S.buildPanel(); S.scheduleText(0); S.compose(); }); await wait(p);
   const sheet = await A(() => getComputedStyle(document.getElementById('frame')).backgroundColor);
   check(sheet === 'rgb(17, 17, 19)', 'Paper preview shows the black paper: ' + sheet);
-  await A(() => { const S = window.__sungfluence; S.doc.out.paper = '#f3efe6'; S.curLayer().inkColor = '#14213d'; S.buildPanel(); });
-  await p.click('button[aria-label="Black paper"]'); await wait(p);
+  // with Fit colors to the paper on (the default), the engine prints the navy ink lighter and the panel says so
+  await A(() => { const S = window.__sungfluence; S.doc.out.paper = '#f3efe6'; Object.assign(S.curLayer(), { color: 'ink', inkColor: '#14213d', colorFit: 'gentle' }); S.buildPanel(); });
+  await p.click('button[aria-label="Warm black paper"]'); await wait(p);
+  const fit = await A(() => { const S = window.__sungfluence, f = S.out.layers[0].items.find((q) => q.t === 'text'); return { ink: S.curLayer().inkColor, fill: f && f.fill, c: f ? window.Sungfluence.contrastRatio(f.fill, '#15120f') : 0 }; });
+  check(fit.ink === '#14213d' && fit.c >= 3.5, 'black paper prints a navy ink lighter, keeping the chosen ink: ' + fit.ink + ' prints as ' + fit.fill);
+  // with Fit colors Off, the ink itself is swapped, and the app says so
+  await A(() => { const S = window.__sungfluence; S.doc.out.paper = '#f3efe6'; Object.assign(S.curLayer(), { inkColor: '#14213d', colorFit: 'off' }); S.buildPanel(); });
+  await p.click('button[aria-label="Warm black paper"]'); await wait(p);
   const ink = await A(() => window.__sungfluence.curLayer().inkColor);
-  check(ink === '#f2efe6' && /so it shows on this paper/.test(await A(() => document.getElementById('toast').textContent)), 'black paper turns navy ink light, and says so: ' + ink);
+  check(ink === '#f2efe6' && /so it shows on this paper/.test(await A(() => document.getElementById('toast').textContent)), 'with Fit colors Off, black paper turns navy ink light, and says so: ' + ink);
   await p.screenshot({ path: __dirname + '/out/o2-paper-black.png' });
   await p.click('#zoomIn'); await p.waitForTimeout(400);
   check((await A(() => document.getElementById('zoomPct').textContent)).includes('%'), 'zoom works on the Paper preview');

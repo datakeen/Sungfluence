@@ -12,12 +12,12 @@ Sungfluence.plugin({
   id: 'contour-words',
   name: 'Contours',
   icon: '≈',
-  version: '1.0.0',
+  version: '1.1.0',
   author: 'SungFluence',
   description: 'Text along lines of equal tone, like a topographic or river depth map.',
   stage: 'Drawing contour lines',
 
-  defaults: { text: 'river · flow · depth · current · bank · bed · sediment · channel', levels: 10, size: 11, smooth: 4, detail: 260, index: 5, minLen: 4, color: 'ink', font: 'condensed', weight: 500, upper: true, sep: ' · ', tracking: 0.04 },
+  defaults: { text: 'river · flow · depth · current · bank · bed · sediment · channel', levels: 16, size: 10, smooth: 3, detail: 200, index: 5, minLen: 10, color: 'ink', font: 'condensed', weight: 500, upper: true, sep: ' · ', tracking: 0.04 },
 
   controls: [
     { key: 'text', label: 'Text along the contours', type: 'textarea' },

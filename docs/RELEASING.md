@@ -9,6 +9,7 @@ A checklist for maintainers, so every release is complete. Version numbers follo
 3. In `package.json`, set `"version"` to the same number.
 4. If the app looks different, retake the tutorial pictures: `npm run build`, then `npm run help:shots`.
 5. Check that the help pages still match the app (`docs/help`). The style reference and shortcuts are written from the code on every build, so they are always current.
+6. If a style looks different, redraw the pictures on the website: `npm run build`, then `npm run site:images`. Look at the files in `site/img` and `site/og.jpg` and commit them.
 
 ## 2. Check
 
@@ -22,6 +23,10 @@ npm test
 
 ```bash
 npm run test:smoke
+```
+
+```bash
+npm run test:site
 ```
 
 Look at the screenshots in `tests/out/`. Open the app (`npm start`) and try the new features once by hand.
@@ -54,4 +59,5 @@ GitHub builds the installers for Windows, macOS and Linux (about 15 minutes) and
 
 1. Open the draft release on GitHub. Paste the version's part of `CHANGELOG.md` as the description. Download one installer and try it.
 2. Click **Publish release**.
-3. On SourceForge, upload the installers (or let it mirror the GitHub release). Upload `docs/downloads/README.md` into the same folder: SourceForge shows it under the file list. Update the summary if needed.
+3. The website and the web app update by themselves after the push to `main` (**Actions → Web app**). The website shows the version from `package.json`.
+4. On SourceForge, upload the installers (or let it mirror the GitHub release). Upload `docs/downloads/README.md` into the same folder: SourceForge shows it under the file list. Update the summary if needed.

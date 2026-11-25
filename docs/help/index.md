@@ -16,6 +16,7 @@ New here? Start with **[Getting started](getting-started.md)**. It takes five mi
 - [Vector panel](vector.md): lines, shapes, text, images, step and repeat.
 - [Text art panel](text-art.md): recipes, layers, styles and their shared settings.
 - [Text art styles](styles.md): every style and every setting, with ranges and starting values.
+- [Type toolbox](type-toolbox.md): styled letters, symbols, faces, decorations and keyword expansions.
 - [Output and export](output-and-export.md): paper, size, print, every export format, projects.
 - [Printing](printing.md): print sizes, page, angle, and which dpi to use.
 - [Plugins](plugins.md): extra effects, and how to add more.

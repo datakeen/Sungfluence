@@ -18,18 +18,19 @@ function aboutBytes(n) { return n > 1e6 ? 'about ' + (n / 1e6).toFixed(n > 1e7 ?
 function recipeData() {
   const o = doc.out, ph = Object.assign({}, doc.photo); delete ph.crop; delete ph.ratio; delete ph.liquify;
   return { app: 'sungfluence', kind: 'recipe', v: 1,
-    text: { source: doc.text.source, sel: doc.text.sel, layers: doc.text.layers.map((L) => { const c = Object.assign({}, L); delete c.id; return c; }) },
-    out: { paper: o.paper, transparent: o.transparent, margin: o.margin, colorModel: o.colorModel }, photo: ph };
+    text: { source: doc.text.source, sel: doc.text.sel, flipX: !!doc.text.flipX, flipY: !!doc.text.flipY, layers: doc.text.layers.map((L) => { const c = Object.assign({}, L); delete c.id; return c; }) },
+    out: { paper: o.paper, transparent: o.transparent, margin: o.margin, colorModel: o.colorModel, printedOn: o.printedOn || 'auto' }, photo: ph };
 }
 function applySavedRecipe(r, fileName, file) {
   if (!r || r.kind !== 'recipe' || !r.text || !Array.isArray(r.text.layers)) return false;
-  const layers = r.text.layers.filter((L) => MODES[L.mode]).map((L) => newLayer(L.mode, Object.assign({}, L, { id: undefined })));
+  const layers = r.text.layers.filter((L) => MODES[L.mode]).map((L) => newLayer(L.mode, Object.assign(legacyFor(L.mode), L, { id: undefined })));
   if (!layers.length) return false;
   commitHistory(); revealSoon();
   doc.text.layers = layers.concat(doc.text.layers.filter((L) => L.mode === 'paths' && doc.text.source === 'both'));
   doc.text.sel = clamp(r.text.sel || 0, 0, layers.length - 1);
+  doc.text.flipX = !!r.text.flipX; doc.text.flipY = !!r.text.flipY;
   if (r.text.source && r.text.source !== 'lines') doc.text.source = r.text.source === 'both' && !doc.lines.paths.length ? 'photo' : r.text.source;
-  Object.assign(doc.out, r.out || {});
+  Object.assign(doc.out, { printedOn: 'auto' }, r.out || {});
   if (r.photo) { const crop = doc.photo.crop, ratio = doc.photo.ratio, liquify = doc.photo.liquify; doc.photo = migratePhoto(Object.assign({}, PHOTO_DEFAULTS, r.photo, { crop, ratio, liquify })); rebuildBase(); rebuildPhotoView(); }
   doc.text.applied = true;
   buildAll(); if (ui.view === 'photo') setView('text'); else compose();
@@ -160,7 +161,7 @@ async function openProjectZip(file) {
 }
 
 /* ---------------- text twins and code outputs ---------------- */
-const TEXT_DEF = { cols: 80, chars: 'ramp', own: '', aspect: 2, blank: true, invert: false, color: true, depth: 256, lang: 'js', form: 'string', name: 'art', prog: 'mytool' };
+const TEXT_DEF = { cols: 80, chars: 'ramp', own: '', aspect: 2, blank: true, invert: false, color: true, depth: 256, lang: 'js', form: 'string', name: 'art', prog: 'mytool', page: 'a4', landscape: false, shades: 64, cell: 10, levels: 6, blankPaper: true, tint: 'true', fillToo: false, ink: '#1f4e79', blankCells: true };
 const CHAR_CHOICES = [['ramp', 'Keyboard characters, light to dark'], ['blocks', 'Shade blocks ░▒▓█'], ['braille', 'Braille dots (fine detail)'], ['az', 'The letters A to Z, in order'],
   ['digits', 'Digits 0 to 9'], ['letters', 'ASCII letters only'], ['symbols', 'ASCII symbols only'], ['own', 'Your own characters']];
 const TEXT_OPTS = [
@@ -234,42 +235,57 @@ function registerExporter(x) {
   if (i >= 0) EXPORTERS[i] = x; else EXPORTERS.push(x);
   return x;
 }
+/* The Vector layer exports have nothing to draw: why, in words, or '' when there is something */
+function vectorEmpty() {
+  if (pathUnits(doc.lines.paths).length || doc.objects.some((o) => o.layer !== 'photo' && !o.hidden)) return '';
+  return doc.lines.paths.length ? 'Your lines only guide text: they have no stroke or fill to draw. Select a line and turn on Draw this line as a stroke in the Vector panel.'
+    : 'The Vector layer is empty. Draw or trace lines, or add shapes, first.';
+}
 const GROUPS = ['Picture', 'Text art', 'Text twins', 'Code', 'Project'];
+/* The Export window lists these first, under Most used, and not again in their own group */
+const MOST_USED = ['png-art', 'pdf-print', 'svg-art'];
 [
-  { id: 'png-view', group: 'Picture', title: 'PNG of the visible layers', always: true, layers: true, opts: [RECIPE_OPT],
-    sub: () => { const g = artGeom(1); return 'Every shown layer in its order, ' + g.TW + ' × ' + g.TH + ' px'; },
+  { id: 'png-view', group: 'Picture', title: 'PNG of the visible layers', hint: 'What you see: photo, vector and text art together', always: true, layers: true, opts: [RECIPE_OPT],
+    sub: () => 'Every shown layer in its order, at the size of the artboard',
     info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + pngSize(g.TW, g.TH); },
     run: (o) => flatPNG(o && o.layers ? o.layers : null, '-view', { recipe: o && o.recipe }) },
-  { id: 'jpg-view', group: 'Picture', title: 'JPG of the visible layers', always: true, layers: true, opts: [SEL('quality', 'Quality', [[0.92, 'High'], [0.85, 'Good, smaller file'], [0.75, 'Small file']])],
+  { id: 'jpg-view', group: 'Picture', title: 'JPG of the visible layers', hint: 'The same, as a smaller file. No transparency', always: true, layers: true, opts: [SEL('quality', 'Quality', [[0.92, 'High'], [0.85, 'Good, smaller file'], [0.75, 'Small file']])],
     sub: () => 'A smaller file for sharing. JPG has no transparency: the background gets the ' + (doc.out.mock === 'shirt' ? 'T-shirt' : 'paper') + ' color',
     info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + aboutBytes(g.TW * g.TH * 0.35) + ', background ' + doc.out.paper; },
     run: (o) => flatPNG(o && o.layers ? o.layers : null, '-view', { jpg: (o && +o.quality) || 0.92, ground: 'paper' }) },
-  { id: 'svg-view', group: 'Picture', title: 'SVG of the visible layers', always: true, layers: true, opts: [RECIPE_OPT],
+  { id: 'svg-view', group: 'Picture', title: 'SVG of the visible layers', hint: 'Every layer, with the letters still editable', always: true, layers: true, opts: [RECIPE_OPT],
     sub: () => 'Photo as a picture, vector shapes and live text art letters',
     info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, letters stay editable'; },
     run: (o) => fullSVG(o && o.layers, o && o.recipe) },
-  { id: 'png-photo-vector', group: 'Picture', title: 'Photo and vector, PNG', always: true, sub: () => 'The photo layer with shapes and lines, no text art',
+  { id: 'png-photo-vector', group: 'Picture', title: 'PNG of the photo and vector', hint: 'The photo with your shapes and lines, no text art', always: true, sub: () => 'The photo layer with shapes and lines, no text art',
     info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px'; }, run: () => flatPNG(['photo', 'lines'], '-photo-vector') },
-  { id: 'svg-vector', group: 'Picture', title: 'Vector layer, SVG', always: true, sub: () => 'Lines drawn as strokes, shapes, text and images',
-    info: () => (doc.lines.paths.length + doc.objects.length) + ' lines and objects', run: () => saveFile(baseName() + '-vector.svg', vectorSVG()) },
-  { id: 'png-vector', group: 'Picture', title: 'Vector layer, PNG', always: true, sub: () => 'Transparent background',
-    info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, transparent'; }, run: () => flatPNG(['lines'], '-vector', { ground: null, ignoreOpacity: true }) },
-  { id: 'png-photo', group: 'Picture', title: 'Photo layer, edited', always: true, sub: () => 'Adjustments, effects, crop and photo objects, transparent where removed',
+  { id: 'svg-vector', group: 'Picture', title: 'SVG of the vector layer', hint: 'Your lines and shapes, to edit in design apps', always: true, sub: () => 'Lines drawn as strokes, shapes, text and images',
+    info: () => { const n = pathUnits(doc.lines.paths).length + doc.objects.filter((o) => o.layer !== 'photo' && !o.hidden).length, guides = doc.lines.paths.length && !pathUnits(doc.lines.paths).length;
+      // nothing to draw: the window says why below, in the same words as PNG of the vector layer
+      return n ? n + (n === 1 ? ' shape or line' : ' shapes and lines') + ' to draw' + (guides ? '. Lines without a stroke only guide text, so they stay out' : '') : ''; },
+    // an empty layer would give an empty file, so the window dims Export and says why
+    empty: vectorEmpty,
+    run: () => (vectorEmpty() ? toast(vectorEmpty()) : saveFile(baseName() + '-vector.svg', vectorSVG())) },
+  { id: 'png-vector', group: 'Picture', title: 'PNG of the vector layer', hint: 'Only your lines and shapes, on a clear background', always: true, sub: () => 'Transparent background',
+    info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, transparent'; }, empty: vectorEmpty,
+    run: () => (vectorEmpty() ? toast(vectorEmpty()) : flatPNG(['lines'], '-vector', { ground: null, ignoreOpacity: true })) },
+  { id: 'png-photo', group: 'Picture', title: 'PNG of the edited photo', hint: 'The photo alone, with your edits and crop', always: true, sub: () => 'Adjustments, effects, crop and photo objects, transparent where removed',
     info: () => { const cr = cropRect(); return Math.round(cr.w * iw) + ' × ' + Math.round(cr.h * ih) + ' px'; }, run: () => photoCutout() },
 
-  { id: 'png-print', group: 'Text art', title: 'PNG for print', opts: [RECIPE_OPT],
-    sub: () => { const g = printGeom(); return g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px, ' + g.name + ' at ' + g.realDpi + ' dpi' + (doc.out.transparent ? ', transparent' : ''); },
+  { id: 'png-print', group: 'Text art', title: 'PNG for print', hint: 'The text art at the pixel size your print needs', opts: [RECIPE_OPT],
+    sub: () => 'The text art at the print size chosen under Print in the Output panel' + (doc.out.transparent ? ', transparent' : ''),
     info: () => { const g = printGeom(); return g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px, ' + g.name + ' at ' + g.realDpi + ' dpi, ' + pngSize(g.needPx, g.needH); },
     run: (o) => runExport(printScaleFor, async (r) => saveFile(baseName() + '-' + printTag() + '.png', await withRecipePNG(await toBlob(r.canvas, 'image/png'), o))) },
-  { id: 'png-art', group: 'Text art', title: 'PNG at artboard size', opts: [RECIPE_OPT],
-    sub: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px'; }, info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + pngSize(g.TW, g.TH); },
+  { id: 'png-art', group: 'Text art', title: 'PNG at artboard size', hint: 'The text art alone. Best for sharing and the web', opts: [RECIPE_OPT],
+    sub: () => 'The text art alone, as wide as the artboard', info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + pngSize(g.TW, g.TH); },
     run: (o) => runExport(() => 1, async (r) => saveFile(baseName() + '.png', await withRecipePNG(await toBlob(r.canvas, 'image/png'), o))) },
-  { id: 'svg-art', group: 'Text art', title: 'SVG with live text', opts: [RECIPE_OPT], sub: () => 'Editable letters for Illustrator, Inkscape or Figma',
+  { id: 'svg-art', group: 'Text art', title: 'SVG with live text', hint: 'Letters stay editable in design apps', opts: [RECIPE_OPT], sub: () => 'Editable letters for Illustrator, Inkscape or Figma',
     info: () => (out ? out.layers.reduce((n, L) => n + L.items.length, 0).toLocaleString() + ' letters and shapes' : 'Editable letters'),
-    run: (o) => runExport(null, async (r) => { const s = C.toSVG(r.out, FONT_IMPORT); return saveFile(baseName() + '.svg', o && o.recipe ? svgWithRecipe(s, recipeData()) : s); }) },
-  { id: 'pdf-print', group: 'Text art', title: 'PDF for print', sub: () => printGeom().name + ' page, artwork at ' + printGeom().realDpi + ' dpi', info: () => { const g = printGeom(); return g.name + ' ' + (g.land ? 'landscape' : 'portrait') + ', ' + g.realDpi + ' dpi' + (g.rot ? ', art turned ' + g.rot + '°' : ''); },
+    run: (o) => runExport(null, async (r) => { const s = C.toSVG(r.out, FONT_IMPORT, fillHrefs(r.fill)); return saveFile(baseName() + '.svg', o && o.recipe ? svgWithRecipe(s, recipeData()) : s); }) },
+  { id: 'pdf-print', group: 'Text art', title: 'PDF for print', hint: 'A page ready to print, at your print size', sub: () => printGeom().name + ' page, artwork at ' + printGeom().realDpi + ' dpi', info: () => { const g = printGeom(); return g.name + ' ' + (g.land ? 'landscape' : 'portrait') + ', ' + g.realDpi + ' dpi' + (g.rot ? ', art turned ' + g.rot + '°' : ''); },
     run: () => runExport(printScaleFor, async (r) => {
       const jsPDF = await jsPDFReady(); const g = printGeom();
+      r = Object.assign({}, r, { canvas: withVector(r.canvas) });
       const pdf = new jsPDF({ orientation: g.land ? 'landscape' : 'portrait', unit: 'mm', format: [g.pw, g.ph].sort((a, b) => a - b), compress: true });
       if (g.rot) {
         // turned art: draw the whole page as one picture, at the chosen dpi or as close as fits
@@ -283,47 +299,48 @@ const GROUPS = ['Picture', 'Text art', 'Text twins', 'Code', 'Project'];
       } else if (!doc.out.transparent) { pdf.setFillColor(r.out.paper); pdf.rect(0, 0, g.pw, g.ph, 'F'); pdf.addImage(r.canvas.toDataURL('image/jpeg', 0.93), 'JPEG', g.x, g.y, g.aw, g.ah); }
       else pdf.addImage(r.canvas.toDataURL('image/png'), 'PNG', g.x, g.y, g.aw, g.ah);
       await saveFile(baseName() + '-' + printTag() + '.pdf', pdf.output('blob'));
-    }) },
-  { id: 'pdf-cmyk', group: 'Text art', title: 'CMYK PDF, vector', sub: () => 'Live letters with CMYK ink values, ' + printGeom().name, info: () => printGeom().name + ' page, live letters' + (printGeom().rot ? ', art kept straight' : ''), run: () => runExport(null, (r) => cmykPDF(r.out)) },
-  { id: 'cmyk-plates', group: 'Text art', title: 'CMYK plates', sub: () => 'Four PNG separations in one .zip, for screen print', info: () => 'Four PNG files in a .zip',
+    }, vectorInPrint() ? { noPaper: true } : undefined) },
+  { id: 'pdf-cmyk', group: 'Text art', title: 'CMYK PDF, vector', hint: 'Live letters in print inks, for print shops', sub: () => 'Live letters with CMYK ink values, ' + printGeom().name, info: () => printGeom().name + ' page, live letters' + (printGeom().rot ? ', art kept straight' : ''), run: () => runExport(null, (r) => cmykPDF(r.out, r.fill), null, pdfFillScale) },
+  { id: 'cmyk-plates', group: 'Text art', title: 'CMYK plates', hint: 'Four ink separations, for screen print', sub: () => 'Four PNG separations in one .zip, for screen print', info: () => 'Four PNG files in a .zip',
     run: () => runExport((o) => Math.min(printScaleFor(o), 4000 / Math.max(o.W, o.H)), (r) => separations(r.canvas)) },
 
-  { id: 'txt-plain', group: 'Text twins', title: 'Plain text', sub: () => 'Any style as characters you can paste anywhere', opts: TEXT_OPTS,
+  { id: 'txt-plain', group: 'Text twins', title: 'Plain text', hint: 'Characters to paste anywhere', sub: () => 'Any style as characters you can paste anywhere', opts: TEXT_OPTS,
     info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters',
     run: (o) => runExport(null, (r) => saveFile(baseName() + '-' + (o.chars === 'braille' ? 'braille' : 'text') + '.txt', twinLines(r, o).join('\n') + '\n')) },
-  { id: 'txt-md', group: 'Text twins', title: 'Markdown', sub: () => 'Text art inside a code block, for README files and chats', opts: TEXT_OPTS,
+  { id: 'txt-md', group: 'Text twins', title: 'Markdown', hint: 'In a code block, for README files and chats', sub: () => 'Text art inside a code block, for README files and chats', opts: TEXT_OPTS,
     info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters in a code block',
     run: (o) => runExport(null, (r) => saveFile(baseName() + '.md', '```text\n' + twinLines(r, o).join('\n').replace(/```/g, '`\u200b``') + '\n```\n')) },
-  { id: 'txt-html', group: 'Text twins', title: 'HTML page', sub: () => 'Colored characters in a web page', opts: TEXT_OPTS.concat([T('color', 'Keep the colors')]),
+  { id: 'txt-html', group: 'Text twins', title: 'HTML page', hint: 'Colored characters in a web page', sub: () => 'Colored characters in a web page', opts: TEXT_OPTS.concat([T('color', 'Keep the colors')]),
     info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters' + (o.color ? ', in color' : ''),
     run: (o) => runExport(null, (r) => saveFile(baseName() + '.html', C.gridHTML(twinGrid(r, o), o.color, doc.fileName))) },
-  { id: 'txt-ansi', group: 'Text twins', title: 'Terminal colors', sub: () => 'Any style as colored text for a terminal (cat the file)', opts: TEXT_OPTS.concat([S('depth', 'Colors', [[16, '16'], [256, '256'], ['full', 'Full color']])]),
+  { id: 'txt-ansi', group: 'Text twins', title: 'Terminal colors', hint: 'Colored text for a terminal', sub: () => 'Any style as colored text for a terminal (cat the file)', opts: TEXT_OPTS.concat([S('depth', 'Colors', [[16, '16'], [256, '256'], ['full', 'Full color']])]),
     info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters, ' + (o.depth === 'full' ? 'full color' : o.depth + ' colors'),
     run: (o) => runExport(null, (r) => saveFile(baseName() + '-ansi' + (o.depth === 'full' ? '-full' : o.depth) + '.txt', C.gridANSI(twinGrid(r, o), o.depth) + '\n')) },
-  { id: 'txt-svg', group: 'Text twins', title: 'SVG for README files', sub: () => 'Text rows in a small SVG that GitHub and GitLab show as a picture', opts: TEXT_OPTS.concat([T('color', 'Keep the colors')]),
+  { id: 'txt-svg', group: 'Text twins', title: 'SVG for README files', hint: 'Text rows that GitHub shows as a picture', sub: () => 'Text rows in a small SVG that GitHub and GitLab show as a picture', opts: TEXT_OPTS.concat([T('color', 'Keep the colors')]),
     info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters, no fonts or scripts',
     run: (o) => runExport(null, (r) => saveFile(baseName() + '-readme.svg', C.gridSVG(twinGrid(r, o), o.color))) },
-  { id: 'txt-grid', group: 'Text twins', title: 'Grid text, exact', sub: () => 'The exact characters of an ASCII or Braille layer', when: () => activeLayers().some((L) => L.mode === 'grid' || L.mode === 'unicode'),
+  { id: 'txt-grid', group: 'Text twins', title: 'Grid text, exact', hint: 'ASCII or Braille, character for character', sub: () => 'The exact characters of an ASCII or Braille layer', when: () => activeLayers().some((L) => L.mode === 'grid' || L.mode === 'unicode'),
     info: () => 'The characters exactly as placed',
     run: () => runExport(null, (r) => saveFile(baseName() + '-grid.txt', r.out.layers.filter((L) => L.text).map((L) => L.text).join('\n\n'))) },
-  { id: 'txt-ansi-grid', group: 'Text twins', title: 'Color terminal text, exact', sub: () => 'ASCII layer with 16-color codes, letter for letter', when: () => activeLayers().some((L) => L.mode === 'grid'),
+  { id: 'txt-ansi-grid', group: 'Text twins', title: 'Color terminal text, exact', hint: 'ASCII with 16 colors, letter for letter', sub: () => 'ASCII layer with 16-color codes, letter for letter', when: () => activeLayers().some((L) => L.mode === 'grid'),
     info: () => '16 colors, letter for letter', run: () => runExport(null, (r) => { const t = C.toANSI(r.out); if (t) return saveFile(baseName() + '-ansi.txt', t); }) },
 
-  { id: 'code', group: 'Code', title: 'Code', sub: () => 'The art as a string or a comment block in a programming language',
+  { id: 'code', group: 'Code', title: 'Code', hint: 'A string or a comment in your language', sub: () => 'The art as a string or a comment block in a programming language',
     opts: [SEL('lang', 'Language', LANGS), S('form', 'As', [['string', 'A string'], ['comment', 'A comment block']]), { key: 'name', label: 'Name of the string', type: 'text', show: (o) => o.form === 'string' }].concat(TEXT_OPTS),
     info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters, ' + (LANGS.find((l) => l[0] === o.lang) || ['', ''])[1],
     run: (o) => runExport(null, (r) => saveFile(baseName() + (o.form === 'comment' ? '-comment' : '') + '.' + LANG_EXT[o.lang], codeFor(twinLines(r, o), o.lang, o.form, o.name))) },
-  { id: 'help-header', group: 'Code', title: '--help header', sub: () => 'A shell script whose --help starts with the art', opts: [{ key: 'prog', label: 'Name of the tool', type: 'text' }].concat(TEXT_OPTS),
+  { id: 'help-header', group: 'Code', title: '--help header', hint: 'A shell script that starts with the art', sub: () => 'A shell script whose --help starts with the art', opts: [{ key: 'prog', label: 'Name of the tool', type: 'text' }].concat(TEXT_OPTS),
     info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters, then the usage text',
     run: (o) => runExport(null, (r) => saveFile((o.prog || 'mytool').replace(/[^A-Za-z0-9._-]/g, '') + '-help.sh', helpHeader(twinLines(r, o), o.prog))) },
-  { id: 'motd', group: 'Code', title: 'Login message', sub: () => 'A motd file that a server shows when someone signs in', opts: TEXT_OPTS.concat([S('depth', 'Colors', [['none', 'None'], [16, '16'], [256, '256']])]),
-    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters. On Linux it goes in /etc/motd',
-    run: (o) => runExport(null, (r) => saveFile('motd', (o.depth === 'none' || !o.depth ? twinLines(r, o).join('\n') : C.gridANSI(twinGrid(r, o), o.depth)) + '\n')) },
+  { id: 'motd', group: 'Code', title: 'Login message', hint: 'A motd file for a server', sub: () => 'A motd file that a server shows when someone signs in', opts: TEXT_OPTS.concat([Object.assign(S('depth', 'Colors', [['none', 'None'], [16, '16'], [256, '256']]), { def: 'none' })]),
+    info: (o) => (+o.cols) + ' × ' + rowsFor(o) + ' characters' + (o.depth === 'none' ? '' : ', with color codes') + '. The file is named motd: on Linux, copy it to /etc/motd',
+    // a file with no extension, sent as plain bytes so the browser does not add .txt
+    run: (o) => runExport(null, (r) => saveFile('motd', new Blob([(o.depth === 'none' || !o.depth ? twinLines(r, o).join('\n') : C.gridANSI(twinGrid(r, o), o.depth)) + '\n'], { type: 'application/octet-stream' }))) },
 
-  { id: 'project', group: 'Project', title: 'Save project', always: true, layers: true, sub: () => 'One ' + PROJECT_EXT + ' file with the photo, removed areas, lines, objects, layers and settings (' + MOD + ' S)',
+  { id: 'project', group: 'Project', title: 'Save project', hint: 'Everything, to open and edit again', always: true, layers: true, sub: () => 'One ' + PROJECT_EXT + ' file with the photo, removed areas, lines, objects, layers and settings (' + MOD + ' S)',
     info: (o) => { const L = layerList(o); return L.length ? 'Keeps ' + L.map((id) => LAYER_IDS.find((x) => x[0] === id)[1].toLowerCase()).join(', ') : 'Choose at least one layer'; },
     run: (o) => saveProjectFile(o && o.layers ? { photo: o.layers.includes('photo'), lines: o.layers.includes('lines'), text: o.layers.includes('text') } : null) },
-  { id: 'open', group: 'Project', title: 'Open project', always: true, noWindow: true, sub: () => 'Pick a ' + PROJECT_EXT + ' or .json file saved from SungFluence', run: () => $('fileInput').click() }
+  { id: 'open', group: 'Project', title: 'Open project', hint: 'Pick a saved project', always: true, noWindow: true, sub: () => 'Pick a ' + PROJECT_EXT + ' or .json file saved from SungFluence', run: () => $('fileInput').click() }
 ].forEach(registerExporter);
 
 async function withRecipePNG(blob, o) { return o && o.recipe ? pngWithRecipe(blob, recipeData()) : blob; }
@@ -347,7 +364,7 @@ const EXPORT_KEY = 'sungfluence-export';
 let expState = null;
 function exportState() {
   if (expState) return expState;
-  expState = { id: 'png-view', opts: {} };
+  expState = { id: doc.text.applied ? 'png-art' : 'png-view', opts: {} };
   try { const s = JSON.parse(localStorage.getItem(EXPORT_KEY) || 'null'); if (s && s.id) expState = Object.assign(expState, s); } catch (e) { /* storage blocked */ }
   return expState;
 }
@@ -355,11 +372,11 @@ function saveExportState() { try { localStorage.setItem(EXPORT_KEY, JSON.stringi
 function exporterOpts(x) {
   const st = exportState();
   const o = st.opts[x.id] || (st.opts[x.id] = {});
-  (x.opts || []).forEach((c) => { if (o[c.key] === undefined) o[c.key] = c.key in TEXT_DEF ? TEXT_DEF[c.key] : (c.key === 'recipe' ? false : c.type === 'toggle' ? false : c.options ? c.options[0][0] : ''); });
+  (x.opts || []).forEach((c) => { if (o[c.key] === undefined) o[c.key] = c.def !== undefined ? c.def : c.key in TEXT_DEF ? TEXT_DEF[c.key] : (c.key === 'recipe' ? false : c.type === 'toggle' ? false : c.options ? c.options[0][0] : ''); });
   if (x.layers) LAYER_IDS.forEach(([id]) => { if (o['layer_' + id] === undefined || !o.layersTouched) o['layer_' + id] = x.id === 'project' ? true : layerOf(id).visible; });
   return o;
 }
-const exporterReady = (x) => !!origImg && (x.always || doc.text.applied) && (!x.when || x.when());
+const exporterReady = (x) => !!origImg && (x.always || doc.text.applied) && (!x.when || x.when()) && !(x.empty && x.empty());
 function runExporter(x, o) {
   if (!origImg) return;
   if (!x.always && !doc.text.applied) { toast('Apply text art first, or export the photo itself.'); return; }
@@ -379,20 +396,36 @@ function openExport(id) {
     list.setAttribute('role', 'listbox'); list.setAttribute('aria-label', 'Formats');
     wrapEl.append(list, pane); body.appendChild(wrapEl);
     const drawList = () => {
+      const top = list.scrollTop;
       list.replaceChildren();
-      GROUPS.concat(EXPORTERS.map((x) => x.group).filter((g) => !GROUPS.includes(g))).filter((g, i, a) => a.indexOf(g) === i).forEach((g) => {
-        const items = EXPORTERS.filter((x) => x.group === g && !x.noWindow && (!x.when || x.when()));
+      const shown = (x) => !x.noWindow && (!x.when || x.when());
+      const groups = [['Most used', MOST_USED.map((id) => EXPORTERS.find((x) => x.id === id)).filter((x) => x && shown(x))]];
+      GROUPS.concat(EXPORTERS.map((x) => x.group).filter((g) => !GROUPS.includes(g))).filter((g, i, a) => a.indexOf(g) === i)
+        .forEach((g) => groups.push([g, EXPORTERS.filter((x) => x.group === g && shown(x) && !MOST_USED.includes(x.id))]));
+      groups.forEach(([g, items]) => {
         if (!items.length) return;
         list.appendChild(el('div', 'exp-g', g));
         items.forEach((x) => {
-          const b = el('button', 'exp-item', x.title); b.type = 'button'; b.setAttribute('role', 'option');
+          const b = el('button', 'exp-item'); b.type = 'button'; b.setAttribute('role', 'option');
+          b.appendChild(el('span', 'exp-name', x.title));
+          // a one-line hint, so the PNG choices can be told apart
+          if (x.hint) b.appendChild(el('small', 'exp-hint', x.hint));
           b.setAttribute('aria-selected', String(x.id === st.id)); b.dataset.id = x.id;
           if (!exporterReady(x)) b.classList.add('off');
           b.onclick = () => { st.id = x.id; saveExportState(); drawList(); drawPane(); };
           list.appendChild(b);
         });
       });
+      // while more formats sit below: a fade and a button that scrolls to them
+      const more = el('button', 'exp-more'); more.type = 'button'; more.tabIndex = -1; more.setAttribute('aria-hidden', 'true');
+      more.innerHTML = '<span>More formats</span>' + CHEV;
+      more.onclick = () => list.scrollBy({ top: list.clientHeight * 0.7, behavior: 'smooth' });
+      list.appendChild(more);
+      list.scrollTop = top;
+      cue();
     };
+    const cue = () => list.classList.toggle('more-below', list.scrollTop + list.clientHeight < list.scrollHeight - 30);
+    list.addEventListener('scroll', cue, { passive: true });
     const drawPane = () => {
       const x = EXPORTERS.find((e) => e.id === st.id) || EXPORTERS[0];
       const o = exporterOpts(x);
@@ -413,13 +446,13 @@ function openExport(id) {
       (x.opts || []).forEach((c) => { const n = makeControl(o, Object.assign({}, c, { idp: 'ex-' + x.id + '-', rebuild: () => drawPane() }), changed); if (n) pane.appendChild(n); });
       pane.appendChild(info); refresh();
       const ready = exporterReady(x);
-      if (!ready) pane.appendChild(el('p', 'note', doc.text.applied ? 'This format needs a different style.' : 'Apply text art first to use this format.'));
+      if (!ready) pane.appendChild(el('p', 'note exp-why', (x.empty && x.empty()) || (doc.text.applied || x.always ? 'This format needs a different style.' : 'Apply text art first to use this format.')));
       const row = el('div', 'row2 exp-go');
       const go = optBtn('Export', () => { closeDialog(); runExporter(x, o); }, true, !ready); go.id = 'expGo';
       row.append(optBtn('Cancel', closeDialog), go);
       pane.appendChild(row);
     };
     drawList(); drawPane();
-    setTimeout(() => { const b = list.querySelector('[aria-selected="true"]'); if (b) { b.scrollIntoView({ block: 'nearest' }); b.focus(); } }, 0);
+    setTimeout(() => { const b = list.querySelector('[aria-selected="true"]'); if (b) { b.scrollIntoView({ block: 'nearest' }); b.focus(); } cue(); }, 0);
   }, true);
 }

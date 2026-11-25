@@ -20,6 +20,7 @@ On a Mac, use Cmd where this page says Ctrl. Press **F1** at any time to open th
 | P | Pen |
 | N | Pencil |
 | A | Edit points of lines |
+| Shift D | Distort lines around a point |
 | Shift / Alt | Add to or subtract from a selection |
 | Alt drag | Copy objects while moving |
 | Arrows | Nudge objects, Shift for 10 px |
@@ -29,13 +30,20 @@ On a Mac, use Cmd where this page says Ctrl. Press **F1** at any time to open th
 | Alt while dragging | Move freely, without snapping |
 | Shift while drawing | Straight lines in 15° steps |
 | Ctrl K | Find any command |
+| R | Shuffle the text art |
+| Shift E | Every style: the wall of styles |
+| Shift Ctrl T | Type toolbox |
 | Ctrl O | Open an image or a project |
 | Ctrl A | Select all shapes |
 | Ctrl ; | Snapping on or off |
 | Ctrl ' | Show the grid |
+| Ctrl R | Show or hide the rulers |
 | Ctrl C / V | Copy and paste objects |
 | Ctrl D | Deselect |
 | Ctrl J | Duplicate objects or text layer |
+| Ctrl G | Group |
+| Shift Ctrl G | Ungroup |
+| Shift Ctrl O | Convert text to outlines |
 | Ctrl Z | Undo |
 | Shift Ctrl Z | Redo |
 | Ctrl S | Save project |

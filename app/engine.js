@@ -30,6 +30,9 @@ function rng(seed) {
   };
 }
 const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+/* Font sizes in half pixels. The canvas caches glyphs per font size, so styles that draw thousands of
+   letters at a few dozen sizes draw many times faster than at thousands of slightly different sizes. */
+const halfPx = (v) => Math.max(0.5, Math.round(v * 2) / 2);
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /* ---------- measuring ---------- */
@@ -50,8 +53,49 @@ function measure(s, size, weight, fam) {
 }
 
 /* ---------- source image ---------- */
+/* Heavy photo steps are generators that yield now and then, so the app can run them in short slices
+   (runJob). prepare and treat run the same steps in one go, for small copies and for exports. */
+const runAll = (gen) => { let r; while (!(r = gen.next()).done); return r.value; };
+const SLICE = 1 << 17;   // pixels between yields, a few milliseconds of work
+/* The pixel loops live in plain functions that work on a range [a, e): the browser speeds up plain
+   functions while they run, but not loops inside a generator. */
+function readRange(d, r, g, b, lum, a, e) {
+  for (let i = a; i < e; i++) {
+    const j = (i - a) * 4;
+    r[i] = d[j] / 255; g[i] = d[j + 1] / 255; b[i] = d[j + 2] / 255;
+    lum[i] = 0.2126 * r[i] + 0.7152 * g[i] + 0.0722 * b[i];
+  }
+}
+function levelsRange(r, g, b, l0, lut, a, e) {
+  for (let i = a; i < e; i++) {
+    // whole-number table positions keep this loop quick
+    if (lut) { let v = r[i]; r[i] = lut[v <= 0 ? 0 : v >= 1 ? 1024 : (v * 1024 + 0.5) | 0]; v = g[i]; g[i] = lut[v <= 0 ? 0 : v >= 1 ? 1024 : (v * 1024 + 0.5) | 0]; v = b[i]; b[i] = lut[v <= 0 ? 0 : v >= 1 ? 1024 : (v * 1024 + 0.5) | 0]; }
+    if (l0) l0[i] = 0.2126 * r[i] + 0.7152 * g[i] + 0.0722 * b[i];
+  }
+}
+function toneRange(c, a, e) {
+  const { r, g, b, lum, l0, bc, bs, clar, sharp, con, bri, sat, temp, tint, inv } = c;
+  for (let i = a; i < e; i++) {
+    let R0 = r[i], G0 = g[i], B0 = b[i];
+    if (l0) {
+      const l = l0[i];
+      // clarity is gentler in the deepest shadows and the brightest lights, so they do not clip
+      let d = 0;
+      if (clar) d += clar * (l - bc[i]) * (1 - Math.abs(2 * l - 1) * 0.5);
+      if (sharp) d += sharp * (l - bs[i]);
+      R0 = clamp(R0 + d, 0, 1); G0 = clamp(G0 + d, 0, 1); B0 = clamp(B0 + d, 0, 1);
+    }
+    R0 += temp; G0 -= tint; B0 -= temp;
+    if (inv) { R0 = 1 - R0; G0 = 1 - G0; B0 = 1 - B0; }
+    let R = (R0 - 0.5) * con + 0.5 + bri, G = (G0 - 0.5) * con + 0.5 + bri, B = (B0 - 0.5) * con + 0.5 + bri;
+    const l = 0.2126 * R + 0.7152 * G + 0.0722 * B;
+    R = l + (R - l) * sat; G = l + (G - l) * sat; B = l + (B - l) * sat;
+    r[i] = clamp(R, 0, 1); g[i] = clamp(G, 0, 1); b[i] = clamp(B, 0, 1);
+    lum[i] = 0.2126 * r[i] + 0.7152 * g[i] + 0.0722 * b[i];
+  }
+}
 /* crop = {x, y, w, h} as fractions of the image */
-function prepare(img, maxSide, crop) {
+function* prepareGen(img, maxSide, crop) {
   maxSide = maxSide || 640;
   const iw0 = img.naturalWidth || img.width, ih0 = img.naturalHeight || img.height;
   const cr = crop || { x: 0, y: 0, w: 1, h: 1 };
@@ -60,103 +104,116 @@ function prepare(img, maxSide, crop) {
   const w = Math.max(8, Math.round(iw * k)), h = Math.max(8, Math.round(ih * k));
   const c = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
   const x = c.getContext('2d', { willReadFrequently: true });
+  // see-through pixels of a PNG read as white paper; without this they come out black
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, w, h);
   x.drawImage(img, sx, sy, iw, ih, 0, 0, w, h);
-  const d = x.getImageData(0, 0, w, h).data;
   const n = w * h, r = new Float32Array(n), g = new Float32Array(n), b = new Float32Array(n), lum = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    r[i] = d[i * 4] / 255; g[i] = d[i * 4 + 1] / 255; b[i] = d[i * 4 + 2] / 255;
-    lum[i] = 0.2126 * r[i] + 0.7152 * g[i] + 0.0722 * b[i];
+  // read in bands of rows, so a big copy is never one long step
+  const band = Math.max(1, Math.floor(SLICE / w));
+  for (let y0 = 0; y0 < h; y0 += band) {
+    const bh = Math.min(band, h - y0);
+    readRange(x.getImageData(0, y0, w, bh).data, r, g, b, lum, y0 * w, (y0 + bh) * w);
+    yield { stage: 'Reading the photo', p: y0 / h };
   }
   return { w, h, r, g, b, lum };
 }
+function prepare(img, maxSide, crop) { return runAll(prepareGen(img, maxSide, crop)); }
 
 /* Photo treatment, applied once before any text style.
-   T = { gray, brightness, contrast, saturation, sharpen, smooth, bgRemove, bgTol, knock, knockColor, knockTol, feather } */
-function treat(base, T) {
+   T = { gray, brightness, contrast, saturation, levelLo, levelHi, gamma, clarity, sharpen, smooth, bgRemove, bgTol, knock, knockColor, knockTol, feather } */
+function* treatGen(base, T) {
   T = T || {};
   const { w, h } = base, n = w * h;
+  const step = (p) => ({ stage: 'Adjusting the photo', p });
   let r = Float32Array.from(base.r), g = Float32Array.from(base.g), b = Float32Array.from(base.b);
   // background and color removal are judged on the untouched photo colors
   const removed = new Float32Array(n);
   const dist = (i, c) => Math.hypot(base.r[i] - c[0], base.g[i] - c[1], base.b[i] - c[2]) / 1.732;
   if (T.bgRemove) {
-    const tol = T.bgTol ?? 0.12;
-    // median of the border as the background reference
-    const border = [];
-    for (let x = 0; x < w; x++) border.push(x, (h - 1) * w + x);
-    for (let y = 0; y < h; y++) border.push(y * w, y * w + w - 1);
-    const med = [0, 1, 2].map((ch) => { const a = border.map((i) => [base.r, base.g, base.b][ch][i]).sort((p, q) => p - q); return a[a.length >> 1]; });
-    const seen = new Uint8Array(n), q = new Int32Array(n);
-    let qh = 0, qt = 0;
-    for (const i of border) if (!seen[i] && dist(i, med) < tol * 1.6) { seen[i] = 1; q[qt++] = i; }
-    while (qh < qt) {
-      const i = q[qh++]; removed[i] = 1;
-      const x = i % w, y = (i / w) | 0;
-      const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
-      for (const j of nb) {
-        if (j < 0 || seen[j]) continue;
-        const local = Math.hypot(base.r[j] - base.r[i], base.g[j] - base.g[i], base.b[j] - base.b[i]) / 1.732;
-        if (local < tol * 0.6 && dist(j, med) < tol * 2.2) { seen[j] = 1; q[qt++] = j; }
-      }
-    }
+    const fl = borderFlood(base, T.bgTol ?? 0.12);
+    removed.set(fl);
+    yield step(0.1);
   }
   if (T.knock && T.knockColor) {
     const c = parseHex(T.knockColor), tol = T.knockTol ?? 0.15;
-    for (let i = 0; i < n; i++) if (dist(i, c) < tol) removed[i] = 1;
+    (() => { for (let i = 0; i < n; i++) if (dist(i, c) < tol) removed[i] = 1; })();
+    yield step(0.15);
   }
   let keep = null;
   if (T.bgRemove || T.knock || T.keepMask) {
-    keep = new Float32Array(n);
-    for (let i = 0; i < n; i++) keep[i] = (1 - removed[i]) * (T.keepMask ? T.keepMask[i] : 1);
+    // plain functions inside, so the browser can speed the loops up (see readRange)
+    keep = ((km) => { const k = new Float32Array(n); for (let i = 0; i < n; i++) k[i] = (1 - removed[i]) * (km ? km[i] : 1); return k; })(T.keepMask);
     const f = Math.round(T.feather ?? 1);
     if (f > 0) {
       // open then soften: remove specks, then feather the edge
       keep = blur(keep, w, h, f, 1);
-      for (let i = 0; i < n; i++) keep[i] = clamp((keep[i] - 0.35) / 0.3, 0, 1);
+      ((k) => { for (let i = 0; i < n; i++) k[i] = clamp((k[i] - 0.35) / 0.3, 0, 1); })(keep);
     }
+    yield step(0.2);
   }
-  if (T.smooth > 0) { const rad = Math.max(1, Math.round(T.smooth * w / 640)); r = blur(r, w, h, rad, 1); g = blur(g, w, h, rad, 1); b = blur(b, w, h, rad, 1); }
-  if (T.sharpen > 0) {
-    const amt = T.sharpen * 1.6;
-    const br = blur(r, w, h, 1, 1), bg = blur(g, w, h, 1, 1), bb = blur(b, w, h, 1, 1);
-    for (let i = 0; i < n; i++) { r[i] = clamp(r[i] + amt * (r[i] - br[i]), 0, 1); g[i] = clamp(g[i] + amt * (g[i] - bg[i]), 0, 1); b[i] = clamp(b[i] + amt * (b[i] - bb[i]), 0, 1); }
+  if (T.smooth > 0) {
+    const rad = Math.max(1, Math.round(T.smooth * w / 640));
+    r = blur(r, w, h, rad, 1); yield step(0.25);
+    g = blur(g, w, h, rad, 1); yield step(0.3);
+    b = blur(b, w, h, rad, 1); yield step(0.35);
   }
+  // levels: black point, white point and midtones, the same on every channel so colors keep their balance
+  const lo = T.levelLo || 0, hi = T.levelHi ?? 1, gm = T.gamma || 1;
+  const levels = lo > 0 || hi < 1 || gm !== 1, clar = T.clarity > 0 ? T.clarity : 0, sharp = T.sharpen > 0 ? T.sharpen * 1.6 : 0;
+  let l0 = null;
+  if (levels || clar || sharp) {
+    let lut = null;
+    if (levels) {
+      const span = Math.max(0.05, hi - lo), e = 1 / gm;
+      lut = new Float32Array(1025);
+      for (let k = 0; k <= 1024; k++) lut[k] = Math.pow(clamp((k / 1024 - lo) / span, 0, 1), e);
+    }
+    if (clar || sharp) l0 = new Float32Array(n);
+    for (let a = 0; a < n; a += SLICE) { levelsRange(r, g, b, l0, lut, a, Math.min(n, a + SLICE)); yield step(0.35 + 0.15 * a / n); }
+  }
+  // clarity: local contrast at about the size of a letter, so flat areas keep their shapes in text art.
+  // sharpen: fine detail. Both work on the brightness alone, so they add no color fringes, and both
+  // radii grow with the copy, so a 1600 px export looks like the 800 px preview.
+  let bc = null;
+  if (clar) { const rad = Math.max(2, Math.round(w / 48)); bc = blur(l0, w, h, rad, 1); yield step(0.55); bc = blur(bc, w, h, rad, 1); yield step(0.6); }
+  const bs = sharp ? blur(l0, w, h, Math.max(1, Math.round(w / 800)), 1) : null;
+  if (sharp) yield step(0.68);
   const con = T.contrast ?? 1, bri = T.brightness ?? 0, sat = T.gray ? 0 : (T.saturation ?? 1);
   const temp = (T.temperature || 0) * 0.12, tint = (T.tint || 0) * 0.1, inv = !!T.invert;
-  const lum = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    let R0 = r[i] + temp, G0 = g[i] - tint, B0 = b[i] - temp;
-    if (inv) { R0 = 1 - R0; G0 = 1 - G0; B0 = 1 - B0; }
-    let R = (R0 - 0.5) * con + 0.5 + bri, G = (G0 - 0.5) * con + 0.5 + bri, B = (B0 - 0.5) * con + 0.5 + bri;
-    const l = 0.2126 * R + 0.7152 * G + 0.0722 * B;
-    R = l + (R - l) * sat; G = l + (G - l) * sat; B = l + (B - l) * sat;
-    r[i] = clamp(R, 0, 1); g[i] = clamp(G, 0, 1); b[i] = clamp(B, 0, 1);
-    lum[i] = 0.2126 * r[i] + 0.7152 * g[i] + 0.0722 * b[i];
-  }
+  const lum = new Float32Array(n), tc = { r, g, b, lum, l0, bc, bs, clar, sharp, con, bri, sat, temp, tint, inv };
+  for (let a = 0; a < n; a += SLICE) { toneRange(tc, a, Math.min(n, a + SLICE)); yield step(0.7 + 0.3 * a / n); }
   return { w, h, r, g, b, lum, keep };
 }
+function treat(base, T) { return runAll(treatGen(base, T)); }
 
-/* Pixels connected to the border that look like the border: the usual plain background. Returns 1 = background. */
+/* Pixels connected to the border that look like the border: the usual plain background. Returns 1 = background.
+   Distances are compared squared and neighbours are visited without making arrays, so a 1200 px photo stays quick. */
 function borderFlood(base, tol) {
-  const { w, h } = base, n = w * h;
+  const { w, h } = base, n = w * h, R = base.r, G = base.g, B = base.b;
   const out = new Uint8Array(n);
-  const dist = (i, c) => Math.hypot(base.r[i] - c[0], base.g[i] - c[1], base.b[i] - c[2]) / 1.732;
   const border = [];
   for (let x = 0; x < w; x++) border.push(x, (h - 1) * w + x);
   for (let y = 0; y < h; y++) border.push(y * w, y * w + w - 1);
-  const med = [0, 1, 2].map((ch) => { const a = border.map((i) => [base.r, base.g, base.b][ch][i]).sort((p, q) => p - q); return a[a.length >> 1]; });
+  const med = [R, G, B].map((ch) => { const a = Float32Array.from(border, (i) => ch[i]).sort(); return a[a.length >> 1]; });
+  // the same tests as Math.hypot(...) / 1.732 < limit, without the square roots
+  const sq = (t) => (t * 1.732) * (t * 1.732);
+  const seedLim = sq(tol * 1.6), farLim = sq(tol * 2.2), stepLim = sq(tol * 0.6);
+  const dMed = (i) => { const dr = R[i] - med[0], dg = G[i] - med[1], db = B[i] - med[2]; return dr * dr + dg * dg + db * db; };
   const seen = new Uint8Array(n), q = new Int32Array(n);
   let qh = 0, qt = 0;
-  for (const i of border) if (!seen[i] && dist(i, med) < tol * 1.6) { seen[i] = 1; q[qt++] = i; }
+  for (const i of border) if (!seen[i] && dMed(i) < seedLim) { seen[i] = 1; q[qt++] = i; }
+  const visit = (i, j) => {
+    if (seen[j]) return;
+    const dr = R[j] - R[i], dg = G[j] - G[i], db = B[j] - B[i];
+    if (dr * dr + dg * dg + db * db < stepLim && dMed(j) < farLim) { seen[j] = 1; q[qt++] = j; }
+  };
   while (qh < qt) {
     const i = q[qh++]; out[i] = 1;
-    const x = i % w, y = (i / w) | 0;
-    const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
-    for (const j of nb) {
-      if (j < 0 || seen[j]) continue;
-      const local = Math.hypot(base.r[j] - base.r[i], base.g[j] - base.g[i], base.b[j] - base.b[i]) / 1.732;
-      if (local < tol * 0.6 && dist(j, med) < tol * 2.2) { seen[j] = 1; q[qt++] = j; }
-    }
+    const x = i % w;
+    if (x > 0) visit(i, i - 1);
+    if (x < w - 1) visit(i, i + 1);
+    if (i >= w) visit(i, i - w);
+    if (i < n - w) visit(i, i + w);
   }
   return out;
 }
@@ -247,6 +304,19 @@ function* samplerGen(src, P) {
     if ((i & 262143) === 0) yield 0;
     ink[i] *= (keep ? keep[i] : 1) * (inkFade ? fw[i] : 1);
   }
+  // Draw on a shape: the shape has to read even where the photo is as light as the paper, so inside it the
+  // ink never drops below a middle tone (and, further down, the colors never get lighter than a middle gray)
+  let shapeIn = null;
+  if (P.__shapeAt && P.__shapeFloor) {
+    shapeIn = new Uint8Array(n);
+    for (let y = 0; y < h; y++) {
+      if ((y & 63) === 0) yield 0;
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if ((!keep || keep[i] > 0.5) && P.__shapeAt((x + 0.5) / w, (y + 0.5) / h)) { shapeIn[i] = 1; if (ink[i] < P.__shapeFloor) ink[i] = P.__shapeFloor; }
+      }
+    }
+  }
   // smoothed ink for direction fields
   const sat = P.saturation ?? 1;
   const R = new Float32Array(n), G = new Float32Array(n), B = new Float32Array(n);
@@ -256,10 +326,15 @@ function* samplerGen(src, P) {
     R[i] = clamp(m + (src.r[i] - m) * sat, 0, 1);
     G[i] = clamp(m + (src.g[i] - m) * sat, 0, 1);
     B[i] = clamp(m + (src.b[i] - m) * sat, 0, 1);
+    if (shapeIn && shapeIn[i]) {
+      const y = 0.2126 * R[i] + 0.7152 * G[i] + 0.0722 * B[i], cap = 0.5;
+      if (!dark && y > cap) { const k = cap / y; R[i] *= k; G[i] *= k; B[i] *= k; }
+      else if (dark && y < cap) { const t = (cap - y) / Math.max(1e-3, 1 - y); R[i] += (1 - R[i]) * t; G[i] += (1 - G[i]) * t; B[i] += (1 - B[i]) * t; }
+    }
   }
   let IR, IG, IB, II;
   const S = {
-    w, h, ink, R, G, B, dark,
+    w, h, ink, R, G, B, dark, cut: !!keep,
     idx(u, v) { return clamp(Math.floor(v * h), 0, h - 1) * w + clamp(Math.floor(u * w), 0, w - 1); },
     inkAt(u, v) {
       const fx = clamp(u * w - 0.5, 0, w - 1), fy = clamp(v * h - 0.5, 0, h - 1);
@@ -321,39 +396,217 @@ function toHex(r, g, b) {
 }
 function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }
 
-/* Photo color for a letter. colorLift brightens dark colors toward full strength, so they still show on dark paper
-   (or darkens light ones on light paper). */
-function photoHex(P, r, g, b) {
-  const lift = P.colorLift || 0;
-  if (lift > 0) {
-    if (isDark(P.paper || '#ffffff')) {
-      const m = Math.max(r, g, b, 1e-3), t = m + (1 - m) * lift, k = t / m;
-      r *= k; g *= k; b *= k;
-    } else {
-      const m = Math.min(r, g, b), t = m * (1 - lift);
-      const k = (1 - t) / Math.max(1e-3, 1 - m);
-      r = 1 - (1 - r) * k; g = 1 - (1 - g) * k; b = 1 - (1 - b) * k;
-    }
+/* ---------------- colors that fit the paper ----------------
+   The paper is light, gray or dark. The app decides that (paperClass in the scene, from the ground the art is
+   printed on, or set by hand), so the engine never guesses. Every letter's final color passes through fitRGB:
+   a color too close to the paper moves away from it in lightness only, keeping its hue, until it reaches a
+   minimum contrast. Pale colors deepen on light paper, dark colors lighten on dark paper, and on gray paper each
+   color goes to the side that reads better. Colors that already stand out stay as they are.
+   colorFit: 'off' keeps the exact colors, 'gentle' or 'strong' set the contrast to reach. */
+const linC = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+const gamC = (c) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+function lumOf(rgb) { return 0.2126 * linC(rgb[0]) + 0.7152 * linC(rgb[1]) + 0.0722 * linC(rgb[2]); }
+/* contrast between two colors, 1 to 21, the way WCAG measures it */
+function contrastRatio(a, b) {
+  const x = lumOf(typeof a === 'string' ? parseHex(a) : a), y = lumOf(typeof b === 'string' ? parseHex(b) : b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+/* CIE L*, 0 (black) to 100 (white): how light a color looks */
+function lightnessOf(hex) { const Y = lumOf(parseHex(hex)); return Y > 0.008856 ? 116 * Math.cbrt(Y) - 16 : 903.3 * Y; }
+const PAPER_CLASSES = ['light', 'gray', 'dark'];
+function paperClassOf(hex) { const L = lightnessOf(hex); return L > 70 ? 'light' : L < 35 ? 'dark' : 'gray'; }
+// a class set by hand that the ground does not match is fitted for a typical ground of that class
+const CLASS_GROUND = { light: '#ffffff', gray: '#8a8a8a', dark: '#141414' };
+const FIT_RATIO = { gentle: { light: 3, gray: 2.4, dark: 3.6 }, strong: { light: 4.5, gray: 3.4, dark: 5.5 } };
+function toOklab(r, g, b) {
+  r = linC(r); g = linC(g); b = linC(b);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+}
+/* OKLab to linear RGB, which may fall outside 0 to 1 */
+function oklabLin(L, a, b) {
+  const l = Math.pow(L + 0.3963377774 * a + 0.2158037573 * b, 3), m = Math.pow(L - 0.1055613458 * a - 0.0638541728 * b, 3), s = Math.pow(L - 0.0894841775 * a - 1.2914855480 * b, 3);
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+}
+const inGamut = (c) => c[0] >= -1e-4 && c[0] <= 1.0001 && c[1] >= -1e-4 && c[1] <= 1.0001 && c[2] >= -1e-4 && c[2] <= 1.0001;
+/* a color at lightness L with the hue of (a, b): as much of its colorfulness as fits, in 0..1 sRGB */
+function atLightness(L, a, b) {
+  L = clamp(L, 0, 1);
+  let c = oklabLin(L, a, b);
+  if (!inGamut(c)) {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 12; i++) { const k = (lo + hi) / 2; if (inGamut(oklabLin(L, a * k, b * k))) lo = k; else hi = k; }
+    c = oklabLin(L, a * lo, b * lo);
+  }
+  return [gamC(clamp(c[0], 0, 1)), gamC(clamp(c[1], 0, 1)), gamC(clamp(c[2], 0, 1))];
+}
+const fitCaches = new Map();
+/* The fitting for one layer: null when colorFit is off. cls: 'light' | 'gray' | 'dark'; ground: the paper color. */
+function fitSetup(level, cls, ground, ratioOf) {
+  if (!level || level === 'off') return null;
+  const lv = level === 'strong' ? 'strong' : 'gentle';
+  ground = /^#[0-9a-f]{3,6}$/i.test(ground || '') ? ground.toLowerCase() : '#ffffff';
+  if (!PAPER_CLASSES.includes(cls)) cls = paperClassOf(ground);
+  if (paperClassOf(ground) !== cls) ground = CLASS_GROUND[cls];
+  // ratioOf: another contrast to reach, for the strong end of Tone
+  const Yp = lumOf(parseHex(ground)), ratio = ratioOf || FIT_RATIO[lv][cls];
+  // the lightness a neutral color needs to reach the ratio below and above the paper; null where it cannot
+  const yDown = (Yp + 0.05) / ratio - 0.05, yUp = ratio * (Yp + 0.05) - 0.05;
+  const key = lv + cls + ground + (ratioOf ? '@' + ratio.toFixed(3) : '');
+  if (!fitCaches.has(key)) { if (fitCaches.size > 24) fitCaches.clear(); fitCaches.set(key, new Map()); }
+  return { key, lv, cls, ground, Yp, Lp: Math.cbrt(Yp), ratio, down: yDown > 0.003 ? Math.cbrt(yDown) : null, up: yUp < 0.96 ? Math.cbrt(yUp) : null,
+    knee: lv === 'strong' ? 0.22 : 0.2, cache: fitCaches.get(key) };
+}
+/* One color (0..1 sRGB) fitted to the paper, as hex. Photo colors and color sets (soft) near the limit are
+   eased toward it rather than cut at it, so the tones of the photo keep their order. A solid ink (soft false)
+   that already shows stays exactly as it is, and one that does not moves just far enough. */
+function fitRGB(F, r, g, b, soft = true) {
+  const id = ((Math.round(clamp(r, 0, 1) * 255) << 16) | (Math.round(clamp(g, 0, 1) * 255) << 8) | Math.round(clamp(b, 0, 1) * 255)) + (soft ? 0 : 0x1000000);
+  let hex = F.cache.get(id);
+  if (!hex) {
+    hex = fitCompute(F, ((id >> 16) & 255) / 255, ((id >> 8) & 255) / 255, (id & 255) / 255, soft);
+    if (F.cache.size > 60000) { F.cache.clear(); if (F.cache.moved) F.cache.moved.clear(); }
+    F.cache.set(id, hex);
+    if (parseInt(hex.slice(1), 16) !== (id & 0xffffff)) (F.cache.moved || (F.cache.moved = new Set())).add(id);
+  }
+  // whether the fitting moved any color, so the app can say when it changed nothing
+  F.n = (F.n || 0) + 1;
+  if (!F.moved && F.cache.moved && F.cache.moved.has(id)) F.moved = 1;
+  return hex;
+}
+function fitCompute(F, r, g, b, soft) {
+  const [L, A, B] = toOklab(r, g, b);
+  let side = F.cls === 'light' ? 'down' : F.cls === 'dark' ? 'up' : (L >= F.Lp ? 'up' : 'down');
+  if (side === 'up' && F.up == null) side = 'down';
+  if (side === 'down' && F.down == null) side = 'up';
+  if ((side === 'up' ? F.up : F.down) == null) return toHex(r, g, b);
+  // on gray paper each side only takes the colors on its own side of the paper
+  const split = F.cls === 'gray' && F.up != null && F.down != null;
+  let L2 = L, k = 1;
+  if (!soft) {
+    if (fitsRatio(F, toHex(r, g, b), side)) return toHex(r, g, b);
+    L2 = side === 'down' ? Math.min(L, F.down) : Math.max(L, F.up);
+  } else if (side === 'down') {
+    const t = F.down, s = Math.max(0, t - F.knee), top = split ? F.Lp : 1;
+    if (L > s) L2 = top - s > 1e-4 ? s + (Math.min(L, top) - s) * (t - s) / (top - s) : t;
+  } else {
+    const t = F.up, e = Math.min(1, t + F.knee), bot = split ? F.Lp : 0;
+    if (L < e) L2 = e - bot > 1e-4 ? e - (e - Math.max(L, bot)) * (e - t) / (e - bot) : t;
+  }
+  // a color moved in lightness keeps its warmth: a little more colorfulness, as far as it fits, so a pale
+  // cream deepens to caramel rather than to gray, and a dark brown lightens to a warm light brown
+  if (L2 !== L) k = clamp(Math.sqrt(Math.max(L, L2) / Math.max(0.05, Math.min(L, L2))), 1, 1.45);
+  if (L2 === L && k === 1) {
+    const ok = side === 'down' ? lumOf([r, g, b]) <= (F.Yp + 0.05) / F.ratio - 0.05 + 1e-4 : lumOf([r, g, b]) >= F.ratio * (F.Yp + 0.05) - 0.05 - 1e-4;
+    if (ok) return toHex(r, g, b);
+  }
+  // hue and colorfulness kept, lightness moved; then nudged until the rounded color really reaches the contrast
+  for (let i = 0; i < 40; i++) {
+    const c = atLightness(L2, A * k, B * k), hex = toHex(c[0], c[1], c[2]);
+    if (fitsRatio(F, hex, side)) return hex;
+    L2 += side === 'down' ? -0.01 : 0.01;
+    if (L2 < 0 || L2 > 1) return hex;
   }
   return toHex(r, g, b);
 }
+function fitsRatio(F, hex, side) {
+  const Y = lumOf(parseHex(hex));
+  return side === 'down' ? (F.Yp + 0.05) / (Y + 0.05) >= F.ratio - 1e-3 : (Y + 0.05) / (F.Yp + 0.05) >= F.ratio - 1e-3;
+}
+function fitHex(F, hex, soft) { if (!F || typeof hex !== 'string' || !/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) return hex; const c = parseHex(hex); return fitRGB(F, c[0], c[1], c[2], !!soft); }
+/* for the app: one color fitted the way a layer would fit it, as a solid ink or (photo true) as a photo color */
+function fitColor(hex, ground, cls, level, photo) { const F = fitSetup(level, cls, ground); return F ? fitHex(F, hex, photo) : hex; }
+
+/* Tone on gray or dark paper. A fitted ink there often just reaches the contrast, and fading it into the paper
+   would take the faint letters below it, where they nearly vanish. So the strong end of the fade is the ink
+   carried further from the paper (about 2.6 times the contrast, as far as the paper allows, keeping its hue), and
+   the fade stops where it still reaches the contrast of the fitting. { top, floor }: the strong ink as hex, and
+   how far from the paper toward it the faintest letter sits, 0 to 1. Found once for each paper and ink. */
+function toneEnds(F, paperHex, inkHex) {
+  const key = paperHex + inkHex;
+  if (!F.tone) F.tone = new Map();
+  if (F.tone.has(key)) return F.tone.get(key);
+  const q0 = parseHex(inkHex), up = lumOf(q0) >= F.Yp;
+  const most = up ? 1.05 / (F.Yp + 0.05) : (F.Yp + 0.05) / 0.05;
+  // dark paper: the strong end goes near white in the hue of the ink, so the cloud keeps its depth; gray paper
+  // keeps it near 2.6 times the contrast, which already sits close to what it allows
+  const want = F.cls === 'dark' ? 1 + (most - 1) * 0.85 : Math.min(2.6 * F.ratio, 1 + (most - 1) * 0.8);
+  let top = inkHex;
+  if (want > F.ratio && contrastRatio(inkHex, F.ground) < want) {
+    const F2 = fitSetup(F.lv, F.cls, F.ground, want);
+    if (F2) { const t2 = fitHex(F2, inkHex); if ((lumOf(parseHex(t2)) >= F.Yp) === up) top = t2; }
+  }
+  const p = parseHex(paperHex), q = parseHex(top);
+  const reach = (t) => { const Y = lumOf(mix(p, q, t)); return (Math.max(Y, F.Yp) + 0.05) / (Math.min(Y, F.Yp) + 0.05) >= F.ratio - 1e-3; };
+  let floor = 1;
+  if (reach(1)) { let lo = 0, hi = 1; for (let i = 0; i < 18; i++) { const m = (lo + hi) / 2; if (reach(m)) hi = m; else lo = m; } floor = hi; }
+  const r = { top, floor };
+  F.tone.set(key, r);
+  return r;
+}
+/* Photo color for a letter, fitted to the paper unless the layer keeps the exact colors */
+function photoHex(P, r, g, b) {
+  return P.__fit ? fitRGB(P.__fit, r, g, b) : toHex(r, g, b);
+}
 
 /* Ink color for an item. mode: 'ink' | 'image' | 'tone' (ink fades into paper with darkness) */
+/* Ready sets of colours. A set is read as a gradient: the darker the spot in the photo,
+   the further along the set the colour comes from, blending between neighbours. */
+const PALETTES = {
+  'Sunset': ['#ffd166', '#ef8354', '#d1495b', '#6a2c70'],
+  'Ocean': ['#caf0f8', '#48cae4', '#0077b6', '#03045e'],
+  'Forest': ['#e9f5db', '#a7c957', '#386641', '#1b2d1f'],
+  'Earth': ['#f3e9d2', '#d4a373', '#a4633a', '#4a2c1a'],
+  'Ink and gold': ['#f2efe6', '#e8a33d', '#9a5b06', '#14213d'],
+  'Riso': ['#ffe14d', '#ff5964', '#35a7ff', '#1b1b2f'],
+  'Pastel': ['#fdf2f8', '#f8c8dc', '#b8c0ff', '#6c63a6'],
+  'Neon': ['#faff00', '#00f5d4', '#f20089', '#2b0a3d'],
+  'Rust and teal': ['#f6f4ef', '#e2b04a', '#c1502e', '#1f5f5b'],
+  'Mono warm': ['#faf6f0', '#cbbba0', '#7d6b55', '#241f1a'],
+  'Mono cool': ['#f4f7fa', '#b3c2cf', '#5c7184', '#172029'],
+  'Heat': ['#fff3b0', '#ffb703', '#fb5607', '#9d0208']
+};
+const PALETTE_NAMES = Object.keys(PALETTES);
+function paletteColors(P) {
+  const own = Array.isArray(P.paletteColors) && P.paletteColors.length >= 2 ? P.paletteColors : null;
+  const list = own || PALETTES[P.palette] || PALETTES.Sunset;
+  return P.paletteFlip ? list.slice().reverse() : list;
+}
+function paletteAt(P, t) {
+  const list = paletteColors(P);
+  const x = clamp(t, 0, 1) * (list.length - 1);
+  const i = Math.min(list.length - 2, Math.floor(x)), f = x - i;
+  if (P.paletteSteps) return list[Math.round(x)];
+  const a = parseHex(list[i]), b = parseHex(list[i + 1]);
+  const c = mix(a, b, f);
+  return toHex(c[0], c[1], c[2]);
+}
 function colorFor(S, P, rgb, inkAmt) {
-  const mode = P.color || 'ink';
+  const mode = P.color || 'ink', F = P.__fit;
   if (mode === 'image') return photoHex(P, rgb[0], rgb[1], rgb[2]);
-  const inkC = parseHex(P.inkColor || (S.dark ? '#f2efe6' : '#111111'));
+  const ink = P.inkColor || (S.dark ? '#f2efe6' : '#111111');
   if (mode === 'tone') {
-    const paper = parseHex(P.paper || '#ffffff');
-    const c = mix(paper, inkC, clamp(0.25 + 0.75 * inkAmt, 0, 1));
+    // the ink is fitted, then fades into the paper with the tone, as Tone always did. On gray and dark paper
+    // the fade stops at the color that still reaches the fitted contrast, so the faintest letters still read.
+    const paper = parseHex(P.paper || '#ffffff'), fitted = fitHex(F, ink);
+    if (F && F.cls !== 'light') {
+      // the amount is lifted as on light paper, so the mid tones sit well above the floor instead of near it
+      const e = toneEnds(F, P.paper || '#ffffff', fitted), t = 0.25 + 0.75 * clamp(inkAmt, 0, 1);
+      const c = mix(paper, parseHex(e.top), e.floor + (1 - e.floor) * t);
+      return toHex(c[0], c[1], c[2]);
+    }
+    const c = mix(paper, parseHex(fitted), clamp(0.25 + 0.75 * inkAmt, 0, 1));
     return toHex(c[0], c[1], c[2]);
   }
+  if (mode === 'palette') return fitHex(F, paletteAt(P, inkAmt), true);
   if (mode === 'duotone') {
     const c2 = parseHex(P.inkColor2 || '#d9732e');
-    const c = mix(c2, inkC, clamp(inkAmt, 0, 1));
-    return toHex(c[0], c[1], c[2]);
+    const c = mix(c2, parseHex(ink), clamp(inkAmt, 0, 1));
+    return fitHex(F, toHex(c[0], c[1], c[2]), true);
   }
-  return P.inkColor || (S.dark ? '#f2efe6' : '#111111');
+  return fitHex(F, ink);
 }
 
 /* region filter: which parts of the picture this layer may draw on */
@@ -364,19 +617,172 @@ function regionOK(P, inkAmt) {
   return true;
 }
 
-/* text stream that loops forever */
+
+/* ---------------- word lists ----------------
+   Words can be given a weight by writing ": 5" after them: those come out bigger and appear more often.
+   Filler words carry no meaning in a word picture, so they can be dropped in one go. The lists below cover
+   English, Urdu and Arabic, the languages SungFluence already sets properly. */
+const STOP_WORDS = new Set((
+  'a an the and or but if then than that this these those of in on at to for from by with without within into onto upon ' +
+  'is are was were be been being am do does did done have has had having will would shall should can could may might must ' +
+  'i you he she it we they me him her us them my your his its our their mine yours as so too very just only also not no yes ' +
+  'there here when where why how what which who whom whose all any both each few more most other some such own same ' +
+  'و في من على إلى عن مع هذا هذه ذلك التي الذي ما لا هو هي هم أن إن كان كانت قد ثم أو ' +
+  'اور کا کی کے کو سے میں پر ہے ہیں تھا تھی تھے یہ وہ جو کہ نہ نہیں بھی تو ہی ایک سا کر گیا گئی'
+).split(/\s+/).filter(Boolean));
+const isFiller = (w) => STOP_WORDS.has(String(w).toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ''));
+/* Reads ": 5" off the end of a word. Without any number, the words near the top of the list count for most. */
+function weighWords(list) {
+  const parsed = list.map((q) => {
+    const m = /^(.+?)\s*[:：]\s*(\d+(?:\.\d+)?)$/.exec(q.w);
+    return { w: (m ? m[1] : q.w).trim(), given: m ? +m[2] : null, e: q.e };
+  }).filter((q) => q.w);
+  const anyGiven = parsed.some((q) => q.given !== null);
+  const out = parsed.map((q, i) => ({ w: q.w, e: q.e, wt: q.given !== null ? q.given : (anyGiven ? 1 : parsed.length - i) }));
+  const wmax = Math.max(1, ...out.map((q) => q.wt));
+  out.forEach((q) => { q.rel = clamp(q.wt / wmax, 0.02, 1); });
+  return out;
+}
+
+/* ---------------- marks typed in the text ----------------
+   A small set of marks, typed straight into any text box, that follow the words into the artwork:
+     **bold**   *italic*   __underlined__   ^big^   ~small~   [word]{#c0392b}
+     a line starting with "# " is big, a line starting with "> " is a quote (italic)
+     a backslash before a mark keeps it as an ordinary character
+   A mark only counts when its partner is on the same line, so "3 * 4" and "a_b" are left alone.
+   The marks never reach the artwork or the text outputs: only the words do. */
+const emphCache = new Map();
+function emphKey(e) {
+  const k = (e.b ? 'b' : '') + (e.i ? 'i' : '') + (e.u ? 'u' : '') + (e.big ? 'B' : '') + (e.small ? 's' : '') + (e.q ? 'q' : '') + (e.c || '');
+  if (!k) return null;
+  if (!emphCache.has(k)) emphCache.set(k, Object.freeze({ b: !!e.b, i: !!e.i, u: !!e.u, big: !!e.big, small: !!e.small, q: !!e.q, c: e.c || null }));
+  return emphCache.get(k);
+}
+const EMPH_COLOR = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20})$/;
+function parseEmph(text) {
+  const src = String(text == null ? '' : text);
+  if (!/[*_^~[#>\\]/.test(src)) return { plain: src, marks: null };
+  const out = [], marks = [];
+  let any = false;
+  const lines = src.split('\n');
+  for (let li = 0; li < lines.length; li++) {
+    if (li) { out.push('\n'); marks.push(null); }
+    let line = lines[li];
+    let lineBig = false, lineQ = false;
+    if (/^#\s+\S/.test(line)) { line = line.replace(/^#\s+/, ''); lineBig = true; any = true; }
+    else if (/^>\s*\S/.test(line)) { line = line.replace(/^>\s*/, ''); lineQ = true; any = true; }
+    // a mark needs its partner on this line, otherwise it is just a character
+    const n = (re) => (line.match(re) || []).length;
+    const singles = (line.replace(/\*\*/g, '').match(/\*/g) || []).length;
+    const live = { bb: n(/\*\*/g) >= 2, uu: n(/__/g) >= 2, i: singles >= 2, big: n(/\^/g) >= 2, small: n(/~/g) >= 2 };
+    const st = { b: false, i: false, u: false, big: false, small: false, c: null };
+    const chars = Array.from(line);
+    let k = 0;
+    while (k < chars.length) {
+      const ch = chars[k], two = ch + (chars[k + 1] || '');
+      if (ch === '\\' && chars[k + 1] && '*_^~[#>\\'.includes(chars[k + 1])) {
+        out.push(chars[k + 1]); marks.push(emphKey(Object.assign({}, st, { big: st.big || lineBig, q: lineQ })));
+        k += 2; any = true; continue;
+      }
+      if (live.bb && two === '**') { st.b = !st.b; k += 2; any = true; continue; }
+      if (live.uu && two === '__') { st.u = !st.u; k += 2; any = true; continue; }
+      if (live.i && ch === '*') { st.i = !st.i; k++; any = true; continue; }
+      if (live.big && ch === '^') { st.big = !st.big; k++; any = true; continue; }
+      if (live.small && ch === '~') { st.small = !st.small; k++; any = true; continue; }
+      if (ch === '[') {
+        const m = /^\[([^\]\n]*)\]\{([^}\n]*)\}/.exec(chars.slice(k).join(''));
+        if (m && EMPH_COLOR.test(m[2].trim())) {
+          any = true;
+          const e = emphKey(Object.assign({}, st, { c: m[2].trim(), big: st.big || lineBig, q: lineQ }));
+          for (const c2 of Array.from(m[1])) { out.push(c2); marks.push(e); }
+          k += Array.from(m[0]).length;
+          continue;
+        }
+      }
+      out.push(ch); marks.push(emphKey(Object.assign({}, st, { big: st.big || lineBig, q: lineQ })));
+      k++;
+    }
+  }
+  return { plain: out.join(''), marks: any ? marks : null };
+}
+/* the text with every mark taken out, for the places that only want the words */
+const emphPlain = (text) => parseEmph(text).plain;
+/* words with the marks that belong to them, for the styles that place whole words */
+function emphWords(text, split) {
+  const { plain, marks } = parseEmph(text);
+  const parts = [];
+  const re = split || /[\n,]+/;
+  let at = 0;
+  plain.split(re).forEach((w) => {
+    const i = plain.indexOf(w, at);
+    const start = i < 0 ? at : i;
+    at = start + w.length;
+    const t = w.trim();
+    if (t) parts.push({ w: t, e: marks ? (marks[start + w.indexOf(t)] || null) : null });
+  });
+  return parts;
+}
+/* how a mark changes a letter */
+const emphSize = (e, size) => (e ? size * (e.big ? 1.5 : 1) * (e.small ? 0.68 : 1) : size);
+const emphWeight = (e, w) => {
+  if (!e) return w;
+  if (e.b) return Math.min(900, Math.max(700, (w || 400) + 300));
+  if (e.small || e.q) return Math.max(200, (w || 400) - 200);
+  return w;
+};
+/* the parts a mark adds to a finished piece: slant, colour and the line underneath */
+function emphItem(it, e) {
+  if (!e) return it;
+  it.e = e;
+  if (e.i || e.q) it.italic = true;
+  if (e.c) { it.fill = e.c; it.own = true; }
+  return it;
+}
+
+/* A number from 0 to 1 for each row that follows no pattern (a hash of the row number); 0 for the first row */
+function rowStart(row) {
+  if (!row) return 0;
+  let h = Math.imul(row ^ 0x9e3779b9, 0x85ebca6b);
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+/* text stream that loops forever. With opts.emph it also carries the mark typed around each letter,
+   which the styles read from st.e straight after calling next(). */
 function stream(text, opts) {
   opts = opts || {};
-  let s = (text || 'SUNGFLUENCE').replace(/\s+/g, ' ').trim();
-  if (opts.upper) s = s.toUpperCase();
-  if (opts.noSpaces) s = s.replace(/ /g, '');
-  if (opts.sep !== undefined && !opts.noSpaces) s = s + opts.sep;
-  else s = s + ' ';
-  const chars = Array.from(s);
+  let raw = (text === undefined || text === null || text === '') ? 'SUNGFLUENCE' : String(text);
+  let marks = null;
+  if (opts.emph) { const p = parseEmph(raw); raw = p.plain; marks = p.marks; }
+  const src = Array.from(raw).map((c, k) => [c, marks ? marks[k] || null : null]);
+  const tidy = [];
+  let wasSpace = false;
+  for (const [c, e] of src) {
+    if (/\s/.test(c)) { if (!wasSpace) tidy.push([' ', null]); wasSpace = true; continue; }
+    const u = opts.upper ? c.toUpperCase() : c;
+    tidy.push([u.length === 1 ? u : c, e]);
+    wasSpace = false;
+  }
+  while (tidy.length && tidy[0][0] === ' ') tidy.shift();
+  while (tidy.length && tidy[tidy.length - 1][0] === ' ') tidy.pop();
+  let list = opts.noSpaces ? tidy.filter((q) => q[0] !== ' ') : tidy;
+  // noSpaces (halftone) adds no separator at all: a trailing space made every other dot blank
+  const tail = opts.noSpaces ? '' : (opts.sep !== undefined ? opts.sep : ' ');
+  Array.from(tail).forEach((c) => list.push([c, null]));
+  if (!list.length) list = [['A', null]];
+  const chars = list.map((q) => q[0]);
   let i = 0;
   return {
-    next() { const c = chars[i % chars.length]; i++; return c; },
-    peek() { return chars[i % chars.length]; },
+    e: null,
+    next() { const q = list[i % list.length]; i++; this.e = q[1]; return q[0]; },
+    peek() { return list[i % list.length][0]; },
+    // go on from a share (0 to 1) of the way through the text, at the start of the next word (or, exact,
+    // at that very letter)
+    seek(f, exact) {
+      const n = list.length;
+      i = Math.floor(clamp(f, 0, 0.9999) * n);
+      if (!exact) for (let k = 0; k < n && list[(i + n - 1) % n][0] !== ' '; k++) i++;
+    },
+    marked: list.some((q) => q[1]),
     chars
   };
 }
@@ -424,41 +830,74 @@ function blur(a, w, h, rad, passes) {
         if (x >= 0) tmp[y * w + x] = acc / cnt;
       }
     }
-    for (let x = 0; x < w; x++) {
-      let acc = 0, cnt = 0;
-      for (let y = -rad; y < h; y++) {
-        const ya = y + rad; if (ya < h) { acc += tmp[ya * w + x]; cnt++; }
-        const yr = y - rad - 1; if (yr >= 0) { acc -= tmp[yr * w + x]; cnt--; }
-        if (y >= 0) dst[y * w + x] = acc / cnt;
-      }
+    // the down pass walks whole rows with one running sum per column, which is kinder to the memory cache
+    // than walking each column; the sums are added in the same order, so the result is the same
+    const acc = new Float64Array(w);
+    let cnt = 0;
+    for (let y = -rad; y < h; y++) {
+      const ya = y + rad; if (ya < h) { const o = ya * w; for (let x = 0; x < w; x++) acc[x] += tmp[o + x]; cnt++; }
+      const yr = y - rad - 1; if (yr >= 0) { const o = yr * w; for (let x = 0; x < w; x++) acc[x] -= tmp[o + x]; cnt--; }
+      if (y >= 0) { const o = y * w; for (let x = 0; x < w; x++) dst[o + x] = acc[x] / cnt; }
     }
     src = dst; dst = new Float32Array(a.length);
   }
   return src;
 }
-function fields(S, smooth) {
+/* The direction field of the sampled photo, worked out in steps so a large picture never holds the window.
+   It is kept on the sampler, so a style that asks twice, or a redraw of the same photo, reuses it. */
+function* fieldsGen(S, smooth) {
+  const r = Math.max(1, Math.round(smooth || 4));
+  const cache = S.__fields || (S.__fields = new Map());
+  if (cache.has(r)) return cache.get(r);
   const { w, h } = S;
   const L = blur(S.ink, w, h, 1, 1);
+  yield;
   const gx = new Float32Array(w * h), gy = new Float32Array(w * h);
   for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
     const i = y * w + x;
     gx[i] = (L[i - w + 1] + 2 * L[i + 1] + L[i + w + 1]) - (L[i - w - 1] + 2 * L[i - 1] + L[i + w - 1]);
     gy[i] = (L[i + w - 1] + 2 * L[i + w] + L[i + w + 1]) - (L[i - w - 1] + 2 * L[i - w] + L[i - w + 1]);
   }
+  yield;
   const mag = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) mag[i] = Math.hypot(gx[i], gy[i]);
   // structure tensor -> smooth tangent angle
   const n = w * h, jxx = new Float32Array(n), jxy = new Float32Array(n), jyy = new Float32Array(n);
   for (let i = 0; i < n; i++) { jxx[i] = gx[i] * gx[i]; jxy[i] = gx[i] * gy[i]; jyy[i] = gy[i] * gy[i]; }
-  const r = Math.max(1, Math.round(smooth || 4));
-  const Sxx = blur(jxx, w, h, r, 2), Sxy = blur(jxy, w, h, r, 2), Syy = blur(jyy, w, h, r, 2);
+  yield;
+  const Sxx = blur(jxx, w, h, r, 2);
+  yield;
+  const Sxy = blur(jxy, w, h, r, 2);
+  yield;
+  const Syy = blur(jyy, w, h, r, 2);
+  yield;
   const ang = new Float32Array(n), coh = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     ang[i] = 0.5 * Math.atan2(2 * Sxy[i], Sxx[i] - Syy[i]) + Math.PI / 2; // tangent (along edges)
     const tr = Sxx[i] + Syy[i];
     coh[i] = tr > 1e-6 ? Math.sqrt((Sxx[i] - Syy[i]) ** 2 + 4 * Sxy[i] ** 2) / tr : 0;
   }
-  return { gx, gy, mag, ang, coh };
+  const F = { gx, gy, mag, ang, coh };
+  cache.set(r, F);
+  return F;
+}
+function fields(S, smooth) { const g = fieldsGen(S, smooth); let r; while (!(r = g.next()).done); return r.value; }
+
+/* Tone shaping on a cell grid (one value per glyph). Local contrast lifts features above their
+   surroundings, the paper knee keeps flat light areas (sky, wall, paper) blank instead of a carpet of
+   dots, and the gamma leaves more paper in the mid tones so the darks carry the picture.
+   Each key is off when missing, so old projects keep their look. */
+function shapeTone(tone, cols, rows, P) {
+  const lc = P.localContrast ?? 0, knee = P.paperKnee ?? 0, g = P.toneGamma ?? 1;
+  if (!(lc > 0 || knee > 0 || g !== 1)) return tone;
+  const bl = lc > 0 ? blur(tone, cols, rows, Math.max(1, Math.round(Math.min(cols, rows) / 40)), 2) : null;
+  for (let i = 0; i < tone.length; i++) {
+    let t = tone[i];
+    if (bl) t += lc * (t - bl[i]);
+    t = clamp((t - knee) / (1 - knee), 0, 1);
+    tone[i] = g !== 1 ? Math.pow(t, g) : t;
+  }
+  return tone;
 }
 
 /* =============== MODES =============== */
@@ -478,9 +917,12 @@ function* modeGrid(S, P, W, H, R) {
     const b = S.box(x / cols, y / rows, (x + 1) / cols, (y + 1) / rows);
     tone[y * cols + x] = b.ink; cr.push(b);
   }
+  // regions and edges read the photo's own tone; the glyphs read the shaped tone
+  const raw = Float32Array.from(tone);
+  shapeTone(tone, cols, rows, P);
   // optional edge strokes
   let F = null;
-  if ((P.edges || 0) > 0) F = fields(S, 2);
+  if ((P.edges || 0) > 0) F = yield* fieldsGen(S, 2);
   const out = new Array(cols * rows);
   const work = Float32Array.from(tone);
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { if ((++_op & 1023) === 0) yield (0.3 + 0.5 * y / rows);
@@ -497,7 +939,7 @@ function* modeGrid(S, P, W, H, R) {
         if (x + 1 < cols) work[i + cols + 1] += err * 1 / 16;
       }
     }
-    if (F && tone[i] > 0.12) {
+    if (F && raw[i] > 0.12) {
       const si = S.idx((x + 0.5) / cols, (y + 0.5) / rows);
       // average magnitude over the cell
       const m = F.mag[si];
@@ -506,17 +948,17 @@ function* modeGrid(S, P, W, H, R) {
         a = ((a % Math.PI) + Math.PI) % Math.PI;
         const deg = a * 180 / Math.PI;
         ch = (deg < 22.5 || deg >= 157.5) ? '-' : deg < 67.5 ? '\\' : deg < 112.5 ? '|' : '/';
-        if (tone[i] > 0.75 && ch === '-') ch = '=';
+        if (raw[i] > 0.75 && ch === '-') ch = '=';
       }
     }
-    if (!regionOK(P, tone[i])) ch = ' ';
+    if (!regionOK(P, raw[i])) ch = ' ';
     out[i] = ch;
   }
   const colorMode = P.color || 'ink';
   if (colorMode === 'fill') {
     for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
       const i = y * cols + x, b = cr[i];
-      if (!regionOK(P, tone[i])) continue;
+      if (!regionOK(P, raw[i])) continue;
       items.push({ t: 'rect', x: x * cellW, y: y * lineH, w: cellW + 0.4, h: lineH + 0.4, fill: toHex(b.r, b.g, b.b) });
       const l = 0.2126 * b.r + 0.7152 * b.g + 0.0722 * b.b;
       const ch = out[i] === ' ' ? (P.fillText ? P.fillText[i % P.fillText.length] : ' ') : out[i];
@@ -552,17 +994,22 @@ function* modeUnicode(S, P, W, H, R) {
   if ((P.style || 'braille') === 'braille') {
     const gw = cols * 2, gh = rows * 4;
     const v = new Float32Array(gw * gh);
-    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) v[y * gw + x] = S.box(x / gw, y / gh, (x + 1) / gw, (y + 1) / gh).ink;
+    for (let y = 0; y < gh; y++) { if ((y & 63) === 0) yield (0.2 * y / gh); for (let x = 0; x < gw; x++) v[y * gw + x] = S.box(x / gw, y / gh, (x + 1) / gw, (y + 1) / gh).ink; }
+    const raw = Float32Array.from(v);
+    shapeTone(v, gw, gh, P);
     const on = new Uint8Array(gw * gh);
     const thr = P.threshold ?? 0.5;
-    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) { if ((++_op & 4095) === 0) yield (0.7 * y / gh);
-      const i = y * gw + x, old = v[i], nw = old >= thr ? 1 : 0;
-      on[i] = nw && regionOK(P, old) ? 1 : 0;
-      if (P.dither !== false) {
-        const err = old - (nw ? 1 : 0) * 1 + (nw ? 0 : 0) - (nw ? 0 : 0);
-        const e = old - (nw ? 1 : 0);
-        if (x + 1 < gw) v[i + 1] += e * 7 / 16;
-        if (y + 1 < gh) { if (x > 0) v[i + gw - 1] += e * 3 / 16; v[i + gw] += e * 5 / 16; if (x + 1 < gw) v[i + gw + 1] += e / 16; }
+    // serpentine error diffusion: no diagonal worms; error is not carried out of blank paper
+    for (let y = 0; y < gh; y++) { const rev = y & 1;
+      for (let k = 0; k < gw; k++) { if ((++_op & 4095) === 0) yield (0.2 + 0.5 * y / gh);
+        const x = rev ? gw - 1 - k : k, dx = rev ? -1 : 1;
+        const i = y * gw + x, old = v[i], nw = old >= thr ? 1 : 0;
+        on[i] = nw && regionOK(P, raw[i]) ? 1 : 0;
+        if (P.dither !== false && old > 0) {
+          const e = old - nw;
+          if (x + dx >= 0 && x + dx < gw) v[i + dx] += e * 7 / 16;
+          if (y + 1 < gh) { if (x - dx >= 0 && x - dx < gw) v[i + gw - dx] += e * 3 / 16; v[i + gw] += e * 5 / 16; if (x + dx >= 0 && x + dx < gw) v[i + gw + dx] += e / 16; }
+        }
       }
     }
     const bits = [[1, 8], [2, 16], [4, 32], [64, 128]];
@@ -606,43 +1053,85 @@ function* modeFlowRows(S, P, W, H, R) {
   const fam = P.font || 'sans';
   const base = P.size || 14;
   const lineH = base * (P.leading || 1.0);
-  const st = stream(P.text, { upper: P.upper, sep: P.sep ?? ' ' });
+  const st = stream(P.text, { upper: P.upper, sep: P.sep ?? ' ', emph: P.emph !== false });
   const items = [];
   const text = String(P.text || '');
   if (RTL.test(text)) {
     // Urdu and Arabic: whole words from right to left, so the letters stay joined
     const f2 = famFor(text, fam), k = famScale(f2);
-    const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+    const words = P.emph !== false ? emphWords(String(P.text || ''), / /) : text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).map((w) => ({ w, e: null }));
     let wi = 0;
     const lh = lineH * (f2 === 'nastaliq' ? 1.3 : 1);
     for (let y = lh / 2; y < H + lh / 2; y += lh) { if ((++_op & 1) === 0) yield (y / H);
       let x = W;
       while (x > 0) {
-        const s = words[wi++ % words.length];
+        const pick = words[wi++ % words.length], s = pick.w, e = pick.e;
         const v = clamp(y / H, 0, 1), t = S.inkAt(clamp((x - base) / W, 0, 1), v);
         let size = base * k, weight = P.weight || 400;
-        if (P.sizeMod) size *= 0.45 + 0.55 * Math.pow(t, 0.8);
+        if (P.sizeMod) size = halfPx(size * (0.45 + 0.55 * Math.pow(t, 0.8)));
         if (P.weightMod) weight = t > 0.5 ? 700 : 400;
+        size = emphSize(e, size); weight = emphWeight(e, weight);
         const w = measure(s, size, weight, f2), sp = measure(' ', size, weight, f2) + (P.tracking || 0) * base;
         const b = S.box(clamp((x - w) / W, 0, 1), clamp((y - size * 0.4) / H, 0, 1), clamp(x / W, 0, 1), clamp((y + size * 0.4) / H, 0, 1));
-        if (regionOK(P, b.ink) && b.ink > (P.minInk ?? 0.02)) items.push({ t: 'text', s, x: x - w, y, size, font: f2, weight, fill: colorFor(S, P, [b.r, b.g, b.b], b.ink) });
+        if (regionOK(P, b.ink) && b.ink > (P.minInk ?? 0.02)) items.push(emphItem({ t: 'text', s, x: x - w, y, size, font: f2, weight, fill: colorFor(S, P, [b.r, b.g, b.b], b.ink) }, e));
         x -= Math.max(w + sp, size * 0.5);
       }
     }
     return { items };
   }
+  // A short text, or one with marks, repeats on every row. Picked up where the last row ended, each row
+  // starts the same step further along, and its letters and marked words line up in diagonal stripes. So
+  // each row starts at its own place in the text instead, picked by a hash of the row so the places follow
+  // no pattern. A very short text may start a row inside a word: with only a few words to start from, rows
+  // starting on the same word would still line up. The first row starts at the start. A long plain text
+  // keeps reading on from row to row.
+  const textW = st.chars.length * base * 0.5, shortText = textW < W * 0.3 || (st.marked && textW < W * 4);
+  // Turn each: every letter takes its angle here, and the row makes room for it, so a turned letter keeps
+  // its full size and never runs into the next one. turnItems leaves these letters alone (turned).
+  const turn = turnWanted(P) ? {
+    presets: (Array.isArray(P.turnSet) && P.turnSet.length ? P.turnSet : [0]).map(Number),
+    g: (P.turnAngle || 0) * Math.PI / 180, tilt: Math.abs(P.turnTilt || 0) * Math.PI / 180,
+    F: P.turn === 'flow' ? yield* turnField(S) : null
+  } : null;
+  let row = 0, wd = 0;
+  const recent = [];
   for (let y = lineH / 2; y < H + lineH / 2; y += lineH) { if ((++_op & 1) === 0) yield (y / H);
     let x = 0;
+    // a word cut by the end of a row counts as two, one on each row
+    wd++;
+    if (shortText) {
+      // a very short text has only a few places to start from, so rows near each other could start at the
+      // same one and stack its words in columns. A row skips the starts of the two rows above it, and starts
+      // a little left of the edge by its own amount, so no two rows line up.
+      let f = rowStart(row);
+      const n = st.chars.length, at = (q) => Math.floor(clamp(q, 0, 0.9999) * n);
+      for (let k = 0; k < 3 && recent.some((r) => { const d = Math.abs(at(f) - r); return Math.min(d, n - d) < Math.max(1, n / 6); }); k++) f = (f + 0.37) % 1;
+      recent.unshift(at(f)); recent.length = Math.min(recent.length, 2);
+      st.seek(f, n < 48);
+      if (n < 48 && row > 0) x = -rowStart(row + 104729) * base * 2.5;
+      row++;
+    }
     while (x < W) {
-      const ch = st.next();
+      const ch = st.next(), e = st.e;
+      if (ch === ' ') wd++;
       const u = clamp((x + base * 0.3) / W, 0, 1), v = clamp(y / H, 0, 1);
       const t = S.inkAt(u, v);
       let size = base, weight = P.weight || 400;
-      if (P.sizeMod) size = base * (0.45 + 0.55 * Math.pow(t, 0.8));
+      if (P.sizeMod) size = halfPx(base * (0.45 + 0.55 * Math.pow(t, 0.8)));
       if (P.weightMod) weight = Math.round((100 + 800 * clamp(t, 0, 1)) / 100) * 100;
-      const adv = measure(ch, size, weight, fam) + (P.tracking || 0) * base;
+      size = emphSize(e, size); weight = emphWeight(e, weight);
+      let adv = measure(ch, size, weight, fam) + (P.tracking || 0) * base, rot = 0;
+      if (turn && ch !== ' ') {
+        const extra = turn.g + (turn.tilt ? (R() * 2 - 1) * turn.tilt : 0);
+        rot = turn.F ? turn.F.at(u, v) + extra : turn.presets[Math.floor(R() * turn.presets.length)] * Math.PI / 180 + extra;
+        // the width of the turned letter: its height on its side, with a little air on both sides
+        const cs = Math.abs(Math.cos(rot)), sn = Math.abs(Math.sin(rot));
+        if (sn > 0.02) adv = (adv - (P.tracking || 0) * base) * cs + size * 0.72 * sn + size * 0.1 * sn + (P.tracking || 0) * base;
+      }
       if (ch !== ' ' && regionOK(P, t) && t > (P.minInk ?? 0.02)) {
-        items.push({ t: 'text', s: ch, x, y, size, font: fam, weight, fill: colorFor(S, P, S.rgbAt(u, v), t) });
+        const it = { t: 'text', s: ch, x, y, size, font: fam, weight, fill: colorFor(S, P, S.rgbAt(u, v), t), wd };
+        if (turn) Object.assign(it, { x: x + adv / 2, align: 'center', rot, turned: 1 });
+        items.push(emphItem(it, e));
       }
       x += Math.max(adv, size * 0.15);
     }
@@ -655,22 +1144,43 @@ function* modeHalftone(S, P, W, H, R) {
   let _op = 0;
   const fam = P.font || 'sans';
   const cols = Math.round(P.cols || 60);
-  const cell = W / cols, rows = Math.round(H / cell);
-  const st = stream(P.text || 'A', { upper: P.upper, noSpaces: true });
-  const F = P.rotate === 'flow' ? fields(S, 5) : null;
+  const cell = W / cols;
+  const st = stream(P.text || 'A', { upper: P.upper, noSpaces: true, emph: P.emph !== false });
+  const F = P.rotate === 'flow' ? yield* fieldsGen(S, 5) : null;
   const items = [];
   const gridType = P.grid || 'square';
-  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { if ((++_op & 255) === 0) yield (y / rows);
+  // an offset grid is a true hex screen: rows sit 0.866 of a cell apart, so dots are evenly spaced
+  const pitch = gridType === 'hex' ? cell * 0.866 : cell;
+  const rows = Math.max(1, Math.round(H / pitch));
+  const tone = new Float32Array(cols * rows), cs = [];
+  for (let y = 0; y < rows; y++) { if ((y & 15) === 0) yield (0.4 * y / rows);
+    for (let x = 0; x < cols; x++) {
+      const off = gridType === 'hex' && (y % 2) ? 0.5 : 0;
+      const cx = (x + 0.5 + off) * cell, cy = (y + 0.5) * pitch;
+      const b = S.box((cx - cell / 2) / W, (cy - pitch / 2) / H, (cx + cell / 2) / W, (cy + pitch / 2) / H);
+      tone[y * cols + x] = clamp(b.ink, 0, 1); cs.push(b);
+    }
+  }
+  const raw = Float32Array.from(tone);
+  shapeTone(tone, cols, rows, P);
+  const mod = P.modulate || 'size';
+  const minSz = cell * (P.minDot ?? 0);
+  const cd = P.chromaDot || 0;
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { if ((++_op & 255) === 0) yield (0.4 + 0.6 * y / rows);
     const off = gridType === 'hex' && (y % 2) ? 0.5 : 0;
-    const cx = (x + 0.5 + off) * cell, cy = (y + 0.5) * cell;
-    if (cx > W) continue;
-    const b = S.box((cx - cell / 2) / W, (cy - cell / 2) / H, (cx + cell / 2) / W, (cy + cell / 2) / H);
-    const t = clamp(b.ink, 0, 1);
+    const cx = (x + 0.5 + off) * cell, cy = (y + 0.5) * pitch;
+    if (cx > W + cell * 0.25) continue;
+    const i = y * cols + x, b = cs[i];
+    // chromaDot: a bright, strong color still gets a dot, so an orange glow does not turn into empty paper.
+    // Soft colors, such as cream or steam, are left to their tone.
+    const t = cd > 0 ? Math.max(tone[i], cd * clamp((Math.max(b.r, b.g, b.b) - Math.min(b.r, b.g, b.b) - 0.2) / 0.6, 0, 1)) : tone[i];
     const ch = st.next();
-    if (t < (P.minInk ?? 0.04) || !regionOK(P, t)) continue;
-    const mod = P.modulate || 'size';
+    if (t < (P.minInk ?? 0.04) || !regionOK(P, raw[i])) continue;
     let size = cell * (P.scale || 1.15), weight = P.weight || 700;
     if (mod === 'size' || mod === 'both') size *= Math.pow(t, P.power ?? 0.75);
+    if (size < minSz) continue;
+    // a few dozen sizes instead of thousands: the canvas caches glyphs per font size, so this draws many times faster
+    size = Math.max(0.5, Math.round(size * 2) / 2);
     if (mod === 'weight' || mod === 'both') weight = Math.round((100 + 800 * t) / 100) * 100;
     let rot = 0;
     if (F) rot = F.ang[S.idx(cx / W, cy / H)];
@@ -684,18 +1194,25 @@ function* modeHalftone(S, P, W, H, R) {
 function* modeMosaic(S, P, W, H, R) {
   let _op = 0;
   const fam = P.font || 'sans';
-  const words = (P.words || 'sungfluence').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-  if (P.upper) for (let i = 0; i < words.length; i++) words[i] = words[i].toUpperCase();
+  let words = weighWords(emphWords(P.words || 'sungfluence'));
+  if (P.skipFiller) { const keep = words.filter((q) => !isFiller(q.w)); if (keep.length) words = keep; }
+  if (P.upper) words = words.map((q) => Object.assign({}, q, { w: q.w.toUpperCase() }));
+  if (!words.length) words = [{ w: 'sungfluence', e: null, wt: 1, rel: 1 }];
+  const wtot = words.reduce((a, q) => a + q.rel, 0) || 1;
   const c = P.cell || 3;
   const gw = Math.ceil(W / c), gh = Math.ceil(H / c);
   const allowed = new Uint8Array(gw * gh), occ = new Uint8Array(gw * gh);
   const thr = P.threshold ?? 0.35;
   const freeList = [];
+  // a fade by Density thins the cells words may take. With Color or Both the whole silhouette stays: the
+  // words fade (see post), and toward the faded part only the smaller sizes are placed (below).
+  const focusAff = P.focus && P.focus !== 'none' ? (P.focusAffect || 'density') : 'none';
+  const thinCells = focusAff === 'density';
   for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
     if ((++_op & 16383) === 0) yield 0.05 * y / gh;
     const u = (x + 0.5) * c / W, v = (y + 0.5) * c / H;
     const t = S.inkAt(u, v);
-    if (t >= thr && regionOK(P, t) && S.keepAt(u, v) > 0.5 && R() < S.focusAt(u, v) && (!P.__shapeAt || P.__shapeAt(u, v))) { allowed[y * gw + x] = 1; freeList.push(y * gw + x); }
+    if (t >= thr && regionOK(P, t) && S.keepAt(u, v) > 0.5 && R() < (thinCells ? S.focusAt(u, v) : 1) && (!P.__shapeAt || P.__shapeAt(u, v))) { allowed[y * gw + x] = 1; freeList.push(y * gw + x); }
   }
   const items = [];
   if (!freeList.length) return { items };
@@ -703,14 +1220,14 @@ function* modeMosaic(S, P, W, H, R) {
   const rasters = new Map();
   const rc = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(16, 16) : document.createElement('canvas');
   const rx = rc.getContext('2d', { willReadFrequently: true });
-  function raster(word, size, vert) {
-    const key = word + '|' + size.toFixed(1) + '|' + vert;
+  function raster(word, size, vert, wgt) {
+    const key = word + '|' + size.toFixed(1) + '|' + vert + '|' + wgt;
     if (rasters.has(key)) return rasters.get(key);
     const fs = size / c;
-    const tw = Math.ceil(measure(word, size, weight, fam) / c) + 4, th = Math.ceil(fs * 1.25) + 4;
+    const tw = Math.ceil(measure(word, size, wgt, fam) / c) + 4, th = Math.ceil(fs * 1.25) + 4;
     rc.width = tw; rc.height = th;
     rx.clearRect(0, 0, tw, th);
-    rx.font = fontStr(fs, weight, fam); rx.textBaseline = 'middle'; rx.textAlign = 'center'; rx.fillStyle = '#000';
+    rx.font = fontStr(fs, wgt, fam); rx.textBaseline = 'middle'; rx.textAlign = 'center'; rx.fillStyle = '#000';
     rx.fillText(word, tw / 2, th / 2);
     const d = rx.getImageData(0, 0, tw, th).data;
     const m = new Uint8Array(tw * th);
@@ -731,17 +1248,30 @@ function* modeMosaic(S, P, W, H, R) {
     rasters.set(key, r);
     return r;
   }
-  const maxS = P.maxSize || 120, minS = P.minSize || 8;
+  // Sizes stay within a pleasing range: the smallest word is never less than a fixed share of the
+  // largest (no giant outliers over a carpet of specks). P.ratio is largest / smallest.
+  const maxS = P.maxSize || 120, minS = Math.max(P.minSize || 8, maxS / (P.ratio || 6));
+  // which words may take a size: the top quarter of the list (by weight) from the largest size down,
+  // the rest join as the sizes get smaller, so no single word owns every large slot
+  const fits = (q, lvl) => q.rel >= (1 - lvl) * 0.75 - 1e-6;
   const levels = [];
-  for (let s = maxS; s >= minS; s *= (P.step || 0.8)) levels.push(s);
+  // half pixels, rounded up so no size drops below the smallest; the first never above the largest
+  for (let s = maxS; s >= minS * 0.999; s *= (P.step || 0.84)) levels.push(levels.length ? Math.ceil(s * 2) / 2 : Math.max(0.5, Math.floor(s * 2) / 2));
   const area = freeList.length * c * c;
   const tol = P.spill ?? 0.06;
   const t0 = Date.now(), budget = P.budget || 6000;
   // detail map: busy areas (eyes, edges) only accept small words, calm areas take big ones
-  const F = fields(S, 2);
+  const F = yield* fieldsGen(S, 2);
+  yield 0.01;
   let dm = blur(F.mag, S.w, S.h, 3, 2);
-  const sorted = Float32Array.from(dm).sort();
-  const p95 = sorted[Math.floor(sorted.length * 0.95)] || 1;
+  yield 0.015;
+  // the 95th percentile from a histogram: sorting the whole map took longer than one slice
+  let dmax = 0;
+  for (let i = 0; i < dm.length; i++) if (dm[i] > dmax) dmax = dm[i];
+  const hist = new Uint32Array(1024);
+  for (let i = 0; i < dm.length; i++) hist[Math.min(1023, Math.floor(dm[i] / (dmax || 1) * 1024))]++;
+  let p95 = dmax || 1;
+  for (let k = 0, acc = 0; k < 1024; k++) { acc += hist[k]; if (acc >= dm.length * 0.95) { p95 = (k + 1) / 1024 * dmax || 1; break; } }
   const detailAt = (px, py) => clamp(dm[S.idx(px / W, py / H)] / p95, 0, 1);
   const detailK = P.detail ?? 0.8;
   let wi = 0;
@@ -752,13 +1282,27 @@ function* modeMosaic(S, P, W, H, R) {
     const tries = Math.min(40000, Math.round((P.density || 1) * 6 * area / (s * s * 2.5)) + 60);
     let placedHere = 0;
     for (let a = 0; a < tries; a++) { if ((++_op & 255) === 0) yield ((li + a / tries) / levels.length);
-      const word = P.order === 'random' ? words[Math.floor(R() * words.length)] : words[wi % words.length];
+      if ((_op & 255) === 0 && Date.now() - t0 > budget) { li = levels.length; break; }
+      let pick;
+      // a heavier word is also allowed to be bigger
+      const lvl = levels.length > 1 ? li / (levels.length - 1) : 1;
+      if (P.order === 'random') { let r = R() * wtot; pick = words[0]; for (const z of words) { r -= z.rel; if (r <= 0) { pick = z; break; } } }
+      else {
+        // in order, skipping the words too light for this size; without the skip the list stalls on
+        // the first light word and each size gets only one word
+        let n = 0; while (n < words.length && !fits(words[wi % words.length], lvl)) { wi++; n++; }
+        pick = words[wi % words.length];
+      }
+      if (!fits(pick, lvl)) continue;
+      const word = pick.w, e = pick.e;
+      const sz = emphSize(e, s), wg = emphWeight(e, weight);
       const vert = R() < (P.vertical ?? 0.25);
-      const rr = raster(word, s, vert);
+      const rr = raster(word, sz, vert, wg);
       let cell = -1;
       for (let k = 0; k < 20; k++) { const q = freeList[Math.floor(R() * freeList.length)]; if (!occ[q]) { cell = q; break; } }
       if (cell < 0) continue;
       if (detailK > 0 && detailAt((cell % gw) * c, Math.floor(cell / gw) * c) > maxDetail) continue;
+      if (focusAff === 'both' && sizeRank < 1 - focusWeight(P, (cell % gw) * c / W, Math.floor(cell / gw) * c / H, W / H)) continue;
       const ox = (cell % gw) - (rr.w >> 1), oy = Math.floor(cell / gw) - (rr.h >> 1);
       if (ox < 0 || oy < 0 || ox + rr.w > gw || oy + rr.h > gh) continue;
       let ok = true, outside = 0;
@@ -774,32 +1318,560 @@ function* modeMosaic(S, P, W, H, R) {
       const bw = (vert ? rr.h : rr.w) * c, bh = (vert ? rr.w : rr.h) * c;
       const hw = (vert ? bh : bw) / 2 * 0.8, hh = (vert ? bw : bh) / 2 * 0.5;
       const b = S.box((cx - hw) / W, (cy - hh) / H, (cx + hw) / W, (cy + hh) / H);
-      items.push({ t: 'text', s: word, x: cx, y: cy, size: s, font: fam, weight, fill: colorFor(S, P, [b.r, b.g, b.b], b.ink), align: 'center', rot: vert ? -Math.PI / 2 : 0 });
+      items.push(emphItem({ t: 'text', s: word, x: cx, y: cy, size: sz, font: fam, weight: wg, fill: colorFor(S, P, [b.r, b.g, b.b], b.ink), align: 'center', rot: vert ? -Math.PI / 2 : 0 }, e));
       wi++; placedHere++;
     }
   }
   return { items, stats: { placed: items.length } };
 }
 
+
+/* 12. Word cloud: the words packed inside a silhouette, biggest first, so the shape still reads.
+   Every word is placed whole and turned in place, so Urdu and Arabic keep their joined letters. */
+/* A shape read from the photo that is more ragged than this (see rough in modeCloud) gets no outline */
+const SHAPE_ROUGH = 2;
+/* A tidied shape (shapeTidy) still more ragged than this is not a clear shape: the words fill an oval instead */
+const TIDY_ROUGH = 1.6;
+function* modeCloud(S, P, W, H, R) {
+  let _op = 0;
+  const fam = P.font || 'sans', weight = P.weight || 700;
+  // "elephant: 5" gives a word more weight. Without a number, the words near the top count for most.
+  const raw = emphWords(P.words || 'sungfluence');
+  if (!raw.length) return { items: [] };
+  const parsed = raw.map((q) => {
+    const m = /^(.+?)\s*[:：]\s*(\d+(?:\.\d+)?)$/.exec(q.w);
+    return { word: (m ? m[1] : q.w).trim(), given: m ? +m[2] : null, e: q.e };
+  }).filter((q) => q.word);
+  // once any word is given a number, the rest all count the same; otherwise the ones near the top count for most
+  const anyGiven = parsed.some((q) => q.given !== null);
+  let list = parsed.map((q, i) => ({ w: P.upper ? q.word.toUpperCase() : q.word, e: q.e, wt: q.given !== null ? q.given : (anyGiven ? 1 : parsed.length - i) }));
+  if (P.skipFiller) { const keep = list.filter((q) => !isFiller(q.w)); if (keep.length) list = keep; }
+  const wmax = Math.max(...list.map((q) => q.wt)) || 1;
+  list.forEach((q) => { q.rel = clamp(q.wt / wmax, 0.02, 1); });
+
+  // cloudGrid: the number of cells across the artboard, whatever its size in pixels. The words are packed on
+  // that grid, so the Fast preview, the Full preview and every export place the same words in the same shape.
+  // Without it (older projects) a cell is cell pixels, so a bigger artboard packs more, smaller words.
+  const fixedGrid = P.cloudGrid > 0;
+  const c = fixedGrid ? W / P.cloudGrid : (P.cell || 3);
+  const gw = Math.ceil(W / c), gh = Math.ceil(H / c);
+  const mask = buildMask(S, P, W, H);
+  const allowed = new Uint8Array(gw * gh), occ = new Uint8Array(gw * gh);
+  const freeList = [];
+  // how much of the photo is in middle tones: next to none for a photo made into a silhouette (two tones)
+  let midTones = 0;
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    if ((++_op & 16383) === 0) yield 0.04 * y / gh;
+    const px = (x + 0.5) * c, py = (y + 0.5) * c, u = px / W, v = py / H, t = S.inkAt(u, v);
+    if (t > 0.15 && t < 0.85) midTones++;
+    if (px < W && py < H && mask.at(px, py) && S.keepAt(u, v) > 0.5 && regionOK(P, t)) allowed[y * gw + x] = 1;
+  }
+  // margin: a band of paper along the edge of the picture, so a shape that runs off the frame ends inside it
+  const mg = Math.round(clamp(P.margin || 0, 0, 0.3) * Math.min(W, H) / c);
+  if (mg > 0) for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) if (x < mg || y < mg || x >= gw - mg || y >= gh - mg) allowed[y * gw + x] = 0;
+  // A smooth shape: the mask is rounded off over a few cells, and specks and pinholes (pieces under about
+  // 0.3% of the shape) are dropped, so the words and the outline follow the silhouette instead of its noise.
+  // A shape read from the photo is noisier: narrow gaps are closed first (grown, then shrunk back), so a
+  // head stays one piece; it is rounded off over a wider area, and pieces under 2% of it are dropped.
+  const fromPhoto = ['image', 'detail'].includes(P.maskSource || 'image');
+  const soft = new Float32Array(gw * gh);
+  for (let i = 0; i < soft.length; i++) soft[i] = allowed[i];
+  let sm;
+  if (fromPhoto) {
+    const side = Math.min(gw, gh), rc = Math.max(1, Math.round(side * 0.012)), rs = Math.max(1, Math.round(side * 0.008));
+    const grown = blur(soft, gw, gh, rc, 2);
+    yield 0.015;
+    for (let i = 0; i < grown.length; i++) grown[i] = grown[i] > 0.22 ? 1 : 0;
+    const back = blur(grown, gw, gh, rc, 2);
+    yield 0.025;
+    for (let i = 0; i < back.length; i++) back[i] = back[i] > 0.78 ? 1 : 0;
+    sm = blur(back, gw, gh, rs, 2);
+  } else sm = blur(soft, gw, gh, Math.max(1, Math.round(6 / (fixedGrid ? 3 : c))), 2);
+  yield 0.03;
+  for (let i = 0; i < sm.length; i++) allowed[i] = sm[i] >= 0.5 ? 1 : 0;
+  if (fromPhoto || P.maskSource === 'cutout' || (P.region && P.region !== 'all')) {
+    let total = 0;
+    for (let i = 0; i < allowed.length; i++) total += allowed[i];
+    // a shape read from the photo and tidied drops pieces under 2% of it; minPiece can ask for more, or for less on a clean shape
+    const minPiece = Math.max(4, total * Math.max(P.minPiece ?? 0.003, fromPhoto && P.shapeTidy !== false ? 0.02 : 0));
+    // edgePiece: a bigger floor for pieces that touch the edge of the artboard, such as a bright window behind
+    // the subject, which would float as a stray island of words
+    const edgePiece = Math.max(minPiece, total * clamp(P.edgePiece || 0, 0, 0.5));
+    const seen = new Uint8Array(gw * gh), stack = new Int32Array(gw * gh), piece = new Int32Array(gw * gh);
+    for (let i0 = 0; i0 < allowed.length; i0++) {
+      if (seen[i0]) continue;
+      if ((++_op & 1023) === 0) yield 0.03 + 0.01 * i0 / allowed.length;
+      const v = allowed[i0];
+      let sp = 0, n = 0, edge = false;
+      stack[sp++] = i0; seen[i0] = 1;
+      while (sp) {
+        const i = stack[--sp]; piece[n++] = i;
+        const x = i % gw, y = (i - x) / gw;
+        if (x === 0 || y === 0 || x === gw - 1 || y === gh - 1) edge = true;
+        if (x > 0 && !seen[i - 1] && allowed[i - 1] === v) { seen[i - 1] = 1; stack[sp++] = i - 1; }
+        if (x < gw - 1 && !seen[i + 1] && allowed[i + 1] === v) { seen[i + 1] = 1; stack[sp++] = i + 1; }
+        if (y > 0 && !seen[i - gw] && allowed[i - gw] === v) { seen[i - gw] = 1; stack[sp++] = i - gw; }
+        if (y < gh - 1 && !seen[i + gw] && allowed[i + gw] === v) { seen[i + gw] = 1; stack[sp++] = i + gw; }
+      }
+      // a small piece of shape goes; a small hole inside the shape is filled. A subject found by its detail
+      // keeps no holes at all, so calm parts inside it, such as the top of a cup of coffee, still hold words.
+      if ((n < minPiece && (v === 1 || !edge)) || (v === 1 && edge && n < edgePiece) || (v === 0 && !edge && P.maskSource === 'detail')) for (let k = 0; k < n; k++) { allowed[piece[k]] = 1 - v; sm[piece[k]] = 1 - v; }
+    }
+  }
+  // Tidy (a shape read from the photo): the shape keeps a margin from the edges of the artboard, so its
+  // outline always closes; only its biggest piece stays, with every hole inside it filled; and deep bites
+  // are filled part of the way toward its convex hull (a shape that is clean already keeps its exact edge).
+  // A shape that is still ragged after that, very small, or that runs along most of the edge (the
+  // background) gives way to a plain oval over where the shape lay, and the panel says so.
+  let fellBack = false, edgeShare = 0;
+  if (fromPhoto && P.shapeTidy !== false) {
+    const side = Math.min(gw, gh), mg = Math.max(2, Math.round(side * 0.035));
+    // how much of the edge of the artboard the shape covers: a subject meets it at one side at most, while
+    // a shape that runs along most of the edge is the background
+    let en = 0, ein = 0;
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) if (x < mg || y < mg || x >= gw - mg || y >= gh - mg) { en++; ein += allowed[y * gw + x]; }
+    edgeShare = en ? ein / en : 0;
+    // where the shape lies, for the oval when there is no clear shape: its middle and its spread
+    let mx = 0, my = 0, mxx = 0, myy = 0, mn = 0, e0 = 0;
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const i = y * gw + x;
+      if (!allowed[i]) continue;
+      mn++; mx += x; my += y; mxx += x * x; myy += y * y;
+      if (x === 0 || y === 0 || x === gw - 1 || y === gh - 1 || !allowed[i - 1] || !allowed[i + 1] || !allowed[i - gw] || !allowed[i + gw]) e0++;
+    }
+    // a shape that is clean already (a silhouette) keeps its exact edge: no closing and no filling of bites
+    // (and so does the shape of a photo in two tones, such as one made into a silhouette: its edge is exact)
+    const clean0 = mn > 0 && (e0 / (2 * Math.sqrt(Math.PI * mn)) < 1.3 || midTones < 0.02 * gw * gh);
+    const band = (a) => { for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) if (x < mg || y < mg || x >= gw - mg || y >= gh - mg) a[y * gw + x] = 0; };
+    band(allowed);
+    // close the gaps between nearby parts, over a wider area than above
+    if (!clean0) {
+      const rc = Math.max(2, Math.round(side * 0.015));
+      let f = new Float32Array(gw * gh);
+      for (let i = 0; i < f.length; i++) f[i] = allowed[i];
+      f = blur(f, gw, gh, rc, 2);
+      for (let i = 0; i < f.length; i++) f[i] = f[i] > 0.12 ? 1 : 0;
+      f = blur(f, gw, gh, rc, 2);
+      for (let i = 0; i < f.length; i++) allowed[i] = f[i] > 0.88 ? 1 : 0;
+    }
+    yield 0.035;
+    // the biggest piece, its holes filled: the outside is what can be reached from the edge
+    const lab = new Int32Array(gw * gh), stack = new Int32Array(gw * gh);
+    let best = 0, bestN = 0, id = 0;
+    for (let i0 = 0; i0 < allowed.length; i0++) {
+      if (!allowed[i0] || lab[i0]) continue;
+      id++; let sp = 0, n = 0; stack[sp++] = i0; lab[i0] = id;
+      while (sp) {
+        const i = stack[--sp]; n++;
+        const x = i % gw;
+        if (x > 0 && allowed[i - 1] && !lab[i - 1]) { lab[i - 1] = id; stack[sp++] = i - 1; }
+        if (x < gw - 1 && allowed[i + 1] && !lab[i + 1]) { lab[i + 1] = id; stack[sp++] = i + 1; }
+        if (i >= gw && allowed[i - gw] && !lab[i - gw]) { lab[i - gw] = id; stack[sp++] = i - gw; }
+        if (i + gw < allowed.length && allowed[i + gw] && !lab[i + gw]) { lab[i + gw] = id; stack[sp++] = i + gw; }
+      }
+      if (n > bestN) { bestN = n; best = id; }
+    }
+    for (let i = 0; i < allowed.length; i++) allowed[i] = lab[i] === best && best ? 1 : 0;
+    const outside = new Uint8Array(gw * gh);
+    let sp = 0;
+    for (let i = 0; i < allowed.length; i++) { const x = i % gw, y = (i - x) / gw; if ((x === 0 || y === 0 || x === gw - 1 || y === gh - 1) && !allowed[i]) { outside[i] = 1; stack[sp++] = i; } }
+    while (sp) {
+      const i = stack[--sp], x = i % gw;
+      for (const j of [x > 0 ? i - 1 : -1, x < gw - 1 ? i + 1 : -1, i - gw, i + gw]) if (j >= 0 && j < allowed.length && !allowed[j] && !outside[j]) { outside[j] = 1; stack[sp++] = j; }
+    }
+    for (let i = 0; i < allowed.length; i++) if (!outside[i]) allowed[i] = 1;
+    yield 0.04;
+    // the convex hull, from the ends of every row of the shape (monotone chain)
+    const pts = [];
+    for (let y = 0; y < gh; y++) {
+      let x0 = -1, x1 = -1;
+      for (let x = 0; x < gw; x++) if (allowed[y * gw + x]) { if (x0 < 0) x0 = x; x1 = x; }
+      if (x0 >= 0) { pts.push([x0, y]); if (x1 !== x0) pts.push([x1 + 1, y]); }
+    }
+    if (pts.length > 2 && !clean0) {
+      pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+      const lo = [], hi = [];
+      for (const p of pts) { while (lo.length > 1 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+      for (let k = pts.length - 1; k >= 0; k--) { const p = pts[k]; while (hi.length > 1 && cross(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); }
+      const hull = lo.slice(0, -1).concat(hi.slice(0, -1));
+      // each row of the hull: the span between where its edges cross the row
+      const hl = new Float32Array(gw * gh);
+      for (let y = 0; y < gh; y++) {
+        let a = Infinity, b = -Infinity;
+        for (let k = 0; k < hull.length; k++) {
+          const p = hull[k], q = hull[(k + 1) % hull.length];
+          if ((p[1] <= y && q[1] >= y) || (q[1] <= y && p[1] >= y)) {
+            const x = p[1] === q[1] ? Math.min(p[0], q[0]) : p[0] + (q[0] - p[0]) * (y - p[1]) / (q[1] - p[1]);
+            const x2 = p[1] === q[1] ? Math.max(p[0], q[0]) : x;
+            if (x < a) a = x; if (x2 > b) b = x2;
+          }
+        }
+        for (let x = Math.max(0, Math.ceil(a)); x < Math.min(gw, b); x++) hl[y * gw + x] = 1;
+      }
+      // part of the way toward the hull: a bite fills where the shape is close on both sides. Only in the
+      // lower part of the shape, which it stands on: up top the gaps are its features (two ears, a spire).
+      let g = new Float32Array(gw * gh), cyS = 0, nS = 0;
+      for (let i = 0; i < g.length; i++) { g[i] = allowed[i]; if (allowed[i]) { cyS += (i / gw) | 0; nS++; } }
+      cyS = nS ? cyS / nS : gh / 2;
+      g = blur(g, gw, gh, Math.max(2, Math.round(side * 0.05)), 2);
+      for (let i = 0; i < g.length; i++) if (!allowed[i] && ((i / gw) | 0) > cyS) allowed[i] = 0.6 * g[i] + 0.4 * hl[i] >= 0.5 ? 1 : 0;
+    }
+    band(allowed);
+    yield 0.045;
+    const fin = new Float32Array(gw * gh);
+    for (let i = 0; i < fin.length; i++) fin[i] = allowed[i];
+    sm = blur(fin, gw, gh, clean0 ? 1 : Math.max(1, Math.round(side * 0.01)), 2);
+    let area = 0, edge = 0;
+    for (let i = 0; i < sm.length; i++) { allowed[i] = sm[i] >= 0.5 ? 1 : 0; area += allowed[i]; }
+    for (let y = 1; y < gh - 1; y++) for (let x = 1; x < gw - 1; x++) { const i = y * gw + x; if (allowed[i] && (!allowed[i - 1] || !allowed[i + 1] || !allowed[i - gw] || !allowed[i + gw])) edge++; }
+    const rg = area ? edge / (2 * Math.sqrt(Math.PI * area)) : 99;
+    if ((rg > TIDY_ROUGH && !clean0) || area < 0.06 * gw * gh || edgeShare > 0.5) {
+      // no clear shape in this photo: a plain oval over where the shape lay, inside the margin
+      fellBack = true;
+      const sx = mn ? Math.sqrt(Math.max(0, mxx / mn - (mx / mn) ** 2)) : gw / 4, sy = mn ? Math.sqrt(Math.max(0, myy / mn - (my / mn) ** 2)) : gh / 4;
+      const rx = clamp(sx * 2, gw * 0.3, gw / 2 - mg * 1.5), ry = clamp(sy * 2, gh * 0.3, gh / 2 - mg * 1.5);
+      const cx = clamp(mn ? mx / mn + 0.5 : gw / 2, mg * 1.5 + rx, gw - mg * 1.5 - rx), cy = clamp(mn ? my / mn + 0.5 : gh / 2, mg * 1.5 + ry, gh - mg * 1.5 - ry);
+      for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+        const d = Math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry), i = y * gw + x;
+        sm[i] = clamp((1.02 - d) * side * 0.5, 0, 1); allowed[i] = d <= 1 ? 1 : 0;
+      }
+    }
+  }
+  for (let i = 0; i < allowed.length; i++) if (allowed[i]) freeList.push(i);
+  const items = [];
+  if (!freeList.length) return { items, stats: { placed: 0 } };
+
+  /* where the big words belong: 1 means "a big word suits this spot" */
+  const grad = P.gradient || 'none', gk = clamp(P.gradientAmount ?? 0.8, 0, 1);
+  let score = null;
+  if (grad !== 'none') {
+    score = new Float32Array(gw * gh);
+    if (grad === 'dark' || grad === 'light') {
+      // dark: on the parts with the most ink. light: on the brightest parts of the photo, on any paper
+      const lt = grad === 'light' && !S.dark;
+      for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) { const t = clamp(S.inkAt((x + 0.5) * c / W, (y + 0.5) * c / H), 0, 1); score[y * gw + x] = lt ? 1 - t : t; }
+    } else {
+      // how far each spot is from the edge of the shape, by two sweeps over the grid
+      const far = gw + gh, d = new Int32Array(gw * gh).fill(far);
+      for (let i = 0; i < gw * gh; i++) if (!allowed[i]) d[i] = 0;
+      for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) { const i = y * gw + x; if (x) d[i] = Math.min(d[i], d[i - 1] + 1); if (y) d[i] = Math.min(d[i], d[i - gw] + 1); }
+      for (let y = gh - 1; y >= 0; y--) for (let x = gw - 1; x >= 0; x--) { const i = y * gw + x; if (x < gw - 1) d[i] = Math.min(d[i], d[i + 1] + 1); if (y < gh - 1) d[i] = Math.min(d[i], d[i + gw] + 1); }
+      let dmax = 1;
+      for (let i = 0; i < d.length; i++) if (allowed[i] && d[i] > dmax) dmax = d[i];
+      for (let i = 0; i < d.length; i++) { const t = clamp(d[i] / dmax, 0, 1); score[i] = grad === 'center' ? t : 1 - t; }
+    }
+    yield 0.06;
+  }
+
+  /* the outline of the shape, a band just inside its edge. It is found on a grid finer than the word grid,
+     from the smoothed shape, and drawn as one rectangle per run of a row, so the edge is smooth and every
+     export can carry it. */
+  // how ragged the shape is: its edge length against the edge of a circle of the same area (1 for a circle).
+  // An outline makes a calm silhouette stand out, but around a ragged shape read from a photo it only
+  // draws the noise, so there it is left off.
+  let shapeArea = 0, edgeLen = 0;
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    const i = y * gw + x;
+    if (!allowed[i]) continue;
+    shapeArea++;
+    if (x === 0 || y === 0 || x === gw - 1 || y === gh - 1 || !allowed[i - 1] || !allowed[i + 1] || !allowed[i - gw] || !allowed[i + gw]) edgeLen++;
+  }
+  const rough = shapeArea ? edgeLen / (2 * Math.sqrt(Math.PI * shapeArea)) : 0;
+  if ((P.shapeOutline || 0) > 0 && !(fromPhoto && !fellBack && rough > SHAPE_ROUGH)) {
+    const sub = gw * gh <= 1e6 ? 2 : 1, fc = c / sub, fw = gw * sub, fh = gh * sub;
+    const thick = Math.max(1, Math.round(P.shapeOutline / fc));
+    // inside test on the fine grid: the smoothed shape, read between its cells
+    const inF = new Uint8Array(fw * fh);
+    for (let y = 0; y < fh; y++) {
+      if ((y & 63) === 0) yield 0.06 + 0.01 * y / fh;
+      const gy = clamp((y + 0.5) / sub - 0.5, 0, gh - 1), y0 = Math.floor(gy), y1 = Math.min(gh - 1, y0 + 1), ay = gy - y0;
+      for (let x = 0; x < fw; x++) {
+        const gx = clamp((x + 0.5) / sub - 0.5, 0, gw - 1), x0 = Math.floor(gx), x1 = Math.min(gw - 1, x0 + 1), ax = gx - x0;
+        const v = (sm[y0 * gw + x0] * (1 - ax) + sm[y0 * gw + x1] * ax) * (1 - ay) + (sm[y1 * gw + x0] * (1 - ax) + sm[y1 * gw + x1] * ax) * ay;
+        inF[y * fw + x] = v >= 0.5 ? 1 : 0;
+      }
+    }
+    // steps to the nearest outside cell, by two sweeps (the edge of the picture counts as outside)
+    const d = new Uint16Array(fw * fh);
+    for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) {
+      const i = y * fw + x;
+      if (!inF[i]) { d[i] = 0; continue; }
+      d[i] = Math.min(x === 0 ? 1 : d[i - 1] + 1, y === 0 ? 1 : d[i - fw] + 1, 65000);
+    }
+    yield 0.075;
+    for (let y = fh - 1; y >= 0; y--) for (let x = fw - 1; x >= 0; x--) {
+      const i = y * fw + x;
+      if (!d[i]) continue;
+      d[i] = Math.min(d[i], x === fw - 1 ? 1 : d[i + 1] + 1, y === fh - 1 ? 1 : d[i + fw] + 1);
+    }
+    const col = fitHex(P.__fit, P.shapeColor || P.inkColor || '#111111');
+    for (let y = 0; y < fh; y++) {
+      let x = 0;
+      while (x < fw) {
+        if (!d[y * fw + x] || d[y * fw + x] > thick) { x++; continue; }
+        const x0 = x;
+        while (x < fw && d[y * fw + x] && d[y * fw + x] <= thick) { occ[Math.floor(y / sub) * gw + Math.floor(x / sub)] = 1; x++; }
+        items.push({ t: 'rect', x: x0 * fc, y: y * fc, w: (x - x0) * fc, h: fc + 0.25, fill: col });
+      }
+    }
+    yield 0.08;
+  }
+
+  /* one bitmap per word, size and angle, so the packing follows the real letters */
+  const rasters = new Map();
+  const rc = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(16, 16) : document.createElement('canvas');
+  const rx = rc.getContext('2d', { willReadFrequently: true });
+  const pad = P.gap ?? 1;
+  function raster(word, size, ang, wgt) {
+    const key = word + '|' + size.toFixed(1) + '|' + ang.toFixed(3) + '|' + wgt;
+    if (rasters.has(key)) return rasters.get(key);
+    const fs = size / c;
+    // measured at its size on a grid of 3 px cells, so the word gets the same bitmap at every width
+    const w0 = (fixedGrid ? measure(word, fs * 3, wgt, fam) / 3 : measure(word, size, wgt, fam) / c), h0 = fs * 1.3;
+    const ca = Math.abs(Math.cos(ang)), sa = Math.abs(Math.sin(ang));
+    const tw = Math.ceil(w0 * ca + h0 * sa) + 4, th = Math.ceil(w0 * sa + h0 * ca) + 4;
+    if (tw < 2 || th < 2 || tw > 4000 || th > 4000) { rasters.set(key, null); return null; }
+    rc.width = tw; rc.height = th;
+    rx.clearRect(0, 0, tw, th);
+    rx.save();
+    rx.translate(tw / 2, th / 2); rx.rotate(ang);
+    rx.font = fontStr(fs, wgt, fam); rx.textBaseline = 'middle'; rx.textAlign = 'center'; rx.fillStyle = '#000';
+    rx.fillText(word, 0, 0);
+    rx.restore();
+    const d = rx.getImageData(0, 0, tw, th).data;
+    let m = new Uint8Array(tw * th);
+    for (let i = 0; i < tw * th; i++) if (d[i * 4 + 3] > 40) m[i] = 1;
+    for (let p = 0; p < pad; p++) {
+      const o = new Uint8Array(tw * th);
+      for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+        if (m[y * tw + x] || (x > 0 && m[y * tw + x - 1]) || (x < tw - 1 && m[y * tw + x + 1]) || (y > 0 && m[(y - 1) * tw + x]) || (y < th - 1 && m[(y + 1) * tw + x])) o[y * tw + x] = 1;
+      }
+      m = o;
+    }
+    const cells = [];
+    for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) if (m[y * tw + x]) cells.push([x, y]);
+    const r = cells.length ? { w: tw, h: th, cells } : null;
+    rasters.set(key, r);
+    return r;
+  }
+
+  /* each word turns in place: one of the chosen angles, plus the overall turn, plus a little tilt */
+  const presets = (Array.isArray(P.rotSet) && P.rotSet.length ? P.rotSet : [0]).map(Number);
+  const globalA = P.rotAngle || 0, tilt = Math.abs(P.rotTilt || 0);
+  const angleFor = () => {
+    const base = presets[Math.floor(R() * presets.length)] + globalA + (tilt ? (R() * 2 - 1) * tilt : 0);
+    return Math.round(base / 3) * 3 * Math.PI / 180; // rounded, so words of one angle share a bitmap
+  };
+
+  // the smallest word is at least one cell (three pixels on the older grid)
+  const maxS = P.maxSize || 140, minS = Math.max(fixedGrid ? c : 3, Math.min(P.minSize || 7, (P.maxSize || 140) - 1));
+  const levels = [];
+  // on the fixed grid a size is rounded as it would be on a grid of 3 px cells, so every width gets the same sizes
+  const lvl = fixedGrid ? (s) => halfPx(s * 3 / c) * c / 3 : halfPx;
+  for (let s = maxS; s >= minS; s *= (P.step || 0.82)) levels.push(lvl(s));
+  const area = freeList.length * c * c;
+  const spill = P.spill ?? 0;
+  const t0 = Date.now(), budget = P.budget || 7000;
+  let held = null, fails = 0;
+  for (let li = 0; li < levels.length; li++) {
+    const s = levels[li];
+    const sr = levels.length > 1 ? li / (levels.length - 1) : 1;   // 0 the biggest, 1 the smallest
+    const need = score ? (1 - sr) * gk : 0;
+    // the top quarter of the list (by weight) may take the largest size; the rest join as sizes shrink
+    const pool = list.filter((q) => q.rel >= (1 - sr) * (P.bigShare ?? 0.75) - 1e-6);
+    const pick = pool.length ? pool : list;
+    const tot = pick.reduce((n, q) => n + q.rel, 0) || 1;
+    const tries = Math.min(40000, Math.round((P.density || 1) * 6 * area / (s * s * 2.2)) + 80);
+    for (let a = 0; a < tries; a++) {
+      if ((++_op & 255) === 0) { yield 0.1 + 0.9 * ((li + a / tries) / levels.length); if (Date.now() - t0 > budget) { li = levels.length; break; } }
+      // a word keeps its turn for a few tries, so long words get placed as often as short ones
+      let q = held && fails < (P.stick ?? 8) && pick.includes(held) ? held : null;
+      if (!q) { let r = R() * tot; q = pick[0]; for (const z of pick) { r -= z.rel; if (r <= 0) { q = z; break; } } fails = 0; }
+      held = q; fails++;
+      const ang = angleFor();
+      const sz = emphSize(q.e, s), wg = emphWeight(q.e, weight);
+      const rr = raster(q.w, sz, ang, wg);
+      if (!rr || rr.w >= gw || rr.h >= gh) continue;
+      let cell = -1;
+      for (let k = 0; k < 24; k++) { const t = freeList[Math.floor(R() * freeList.length)]; if (!occ[t] && (!score || score[t] >= need)) { cell = t; break; } }
+      if (cell < 0) continue;
+      const cxG = cell % gw, cyG = Math.floor(cell / gw);
+      if (R() > S.focusAt(cxG * c / W, cyG * c / H)) continue;
+      const ox = cxG - (rr.w >> 1), oy = cyG - (rr.h >> 1);
+      if (ox < 0 || oy < 0 || ox + rr.w > gw || oy + rr.h > gh) continue;
+      let ok = true, outside = 0;
+      const lim = rr.cells.length * spill;
+      for (let j = 0; j < rr.cells.length; j++) {
+        const t = (oy + rr.cells[j][1]) * gw + ox + rr.cells[j][0];
+        if (occ[t]) { ok = false; break; }
+        if (!allowed[t] && ++outside > lim) { ok = false; break; }
+      }
+      if (!ok) continue;
+      for (let j = 0; j < rr.cells.length; j++) occ[(oy + rr.cells[j][1]) * gw + ox + rr.cells[j][0]] = 1;
+      const cx = (ox + rr.w / 2) * c, cy = (oy + rr.h / 2) * c;
+      const hw = Math.max(c, rr.w * c * 0.3), hh = Math.max(c, rr.h * c * 0.3);
+      const b = S.box((cx - hw) / W, (cy - hh) / H, (cx + hw) / W, (cy + hh) / H);
+      items.push(emphItem({ t: 'text', s: q.w, x: cx, y: cy, size: sz, font: fam, weight: wg, fill: colorFor(S, P, [b.r, b.g, b.b], b.ink), align: 'center', rot: ang }, q.e));
+      held = null;
+    }
+  }
+  return { items, stats: { placed: items.length, share: +(shapeArea / (gw * gh)).toFixed(3), rough: +rough.toFixed(2), outlineOff: (P.shapeOutline || 0) > 0 && fromPhoto && !fellBack && rough > SHAPE_ROUGH, fellBack, edgeShare: +edgeShare.toFixed(2) } };
+}
+
+/* The subject of a photo that fills the frame, for a calligram: a smooth field on a coarse grid, 1 inside the
+   subject and 0 outside, with the edge at 0.5. The subject is what differs from the edge of the picture (taken as
+   the background) in tone, or is sharper and busier than it, weighted toward the middle. The shape is smoothed,
+   only its largest piece is kept and its holes are filled, so lines of text cross it without stopping. When no
+   clear subject stands out, an oval in the middle of the picture takes its place. */
+function subjectField(S) {
+  const w = S.w, h = S.h, ink = S.ink;
+  const gw = 120, gh = Math.max(8, Math.round(gw * h / w)), n = gw * gh;
+  const t = new Float32Array(n), d = new Float32Array(n), cnt = new Float32Array(n);
+  for (let y = 1; y < h - 1; y++) {
+    const gy = Math.min(gh - 1, (y * gh / h) | 0);
+    for (let x = 1, i = y * w + 1; x < w - 1; x++, i++) {
+      const g = gy * gw + Math.min(gw - 1, (x * gw / w) | 0);
+      t[g] += ink[i]; cnt[g]++;
+      d[g] += Math.min(0.3, Math.abs(ink[i + 1] - ink[i - 1]) + Math.abs(ink[i + w] - ink[i - w]));
+    }
+  }
+  for (let i = 0; i < n; i++) { const c = Math.max(1, cnt[i]); t[i] /= c; d[i] /= c; }
+  const tb = blur(t, gw, gh, 2, 2), db = blur(d, gw, gh, 3, 2);
+  // the background: the median tone and detail of a ring along the edge of the picture
+  const ringT = [], ringD = [], ring = Math.max(1, Math.round(gw * 0.06));
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    if (x < ring || y < ring || x >= gw - ring || y >= gh - ring) { ringT.push(tb[y * gw + x]); ringD.push(db[y * gw + x]); }
+  }
+  ringT.sort((a, b) => a - b); ringD.sort((a, b) => a - b);
+  const bt = ringT[ringT.length >> 1], bd = ringD[ringD.length >> 1];
+  let dHi = 1e-4;
+  for (let i = 0; i < n; i++) dHi = Math.max(dHi, db[i]);
+  const sc = new Float32Array(n);
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    const i = y * gw + x, u = (x + 0.5) / gw - 0.5, v = (y + 0.5) / gh - 0.5;
+    const tone = clamp(Math.abs(tb[i] - bt) / 0.35, 0, 1), busy = clamp((db[i] - bd) / Math.max(1e-4, dHi - bd), 0, 1);
+    sc[i] = (0.35 * tone + 0.65 * busy) * (1 - 1.2 * (u * u + v * v));
+  }
+  // the cut: the best split of the scores (Otsu), kept to between a fifth and three fifths of the picture
+  const B = new Float64Array(64);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) { lo = Math.min(lo, sc[i]); hi = Math.max(hi, sc[i]); }
+  const span = Math.max(1e-6, hi - lo);
+  for (let i = 0; i < n; i++) B[Math.min(63, ((sc[i] - lo) / span * 64) | 0)]++;
+  let all = 0, sumAll = 0;
+  for (let k = 0; k < 64; k++) { all += B[k]; sumAll += k * B[k]; }
+  let wb = 0, sb = 0, best = -1, at = 32;
+  for (let k = 0; k < 63; k++) {
+    wb += B[k]; sb += k * B[k];
+    const wf = all - wb; if (!wb || !wf) continue;
+    const dd = sb / wb - (sumAll - sb) / wf, vv = wb * wf * dd * dd;
+    if (vv > best) { best = vv; at = k; }
+  }
+  let above = 0;
+  for (let k = 63; k > at; k--) above += B[k];
+  let k = at;
+  if (above > n * 0.6) { let a = 0; for (k = 63; k > 0; k--) { a += B[k]; if (a >= n * 0.6) break; } }
+  else if (above < n * 0.2) { let a = 0; for (k = 63; k > 0; k--) { a += B[k]; if (a >= n * 0.2) break; } }
+  const cut = lo + (k + 1) / 64 * span;
+  // smooth the shape: blur the yes or no and cut again at the middle, which rounds corners and closes gaps
+  let f = new Float32Array(n);
+  for (let i = 0; i < n; i++) f[i] = sc[i] >= cut ? 1 : 0;
+  f = blur(f, gw, gh, 5, 2);
+  const m = new Uint8Array(n);
+  for (let i = 0; i < n; i++) m[i] = f[i] >= 0.5 ? 1 : 0;
+  // pieces: keep the largest, fill every hole that does not reach the edge of the picture
+  const lab = new Int32Array(n).fill(-1), stack = new Int32Array(n), sizes = [], edgeOf = [];
+  for (let i0 = 0; i0 < n; i0++) {
+    if (lab[i0] >= 0) continue;
+    const id = sizes.length, val = m[i0];
+    let sp = 0, cntp = 0, edge = false;
+    stack[sp++] = i0; lab[i0] = id;
+    while (sp) {
+      const i = stack[--sp]; cntp++;
+      const x = i % gw, y = (i - x) / gw;
+      if (x === 0 || y === 0 || x === gw - 1 || y === gh - 1) edge = true;
+      const nb = [x > 0 ? i - 1 : -1, x < gw - 1 ? i + 1 : -1, y > 0 ? i - gw : -1, y < gh - 1 ? i + gw : -1];
+      for (const j of nb) if (j >= 0 && lab[j] < 0 && m[j] === val) { lab[j] = id; stack[sp++] = j; }
+    }
+    sizes.push(val ? cntp : -cntp); edgeOf.push(edge);
+  }
+  let big = -1;
+  for (let id = 0; id < sizes.length; id++) if (sizes[id] > 0 && (big < 0 || sizes[id] > sizes[big])) big = id;
+  // how sure: the subject must be a fair share of the picture and must not run along most of its edge
+  let edgeCells = 0, edgeIn = 0;
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) if (x === 0 || y === 0 || x === gw - 1 || y === gh - 1) { edgeCells++; if (big >= 0 && lab[y * gw + x] === big) edgeIn++; }
+  const share = big >= 0 ? sizes[big] / n : 0;
+  const out = new Float32Array(n);
+  if (share < 0.12 || edgeIn > edgeCells * 0.45) {
+    // no clear subject: an oval in the middle
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      const u = ((x + 0.5) / gw - 0.5) / 0.4, v = ((y + 0.5) / gh - 0.5) / 0.46;
+      out[y * gw + x] = u * u + v * v <= 1 ? 1 : 0;
+    }
+  } else {
+    for (let i = 0; i < n; i++) out[i] = lab[i] === big || (sizes[lab[i]] < 0 && !edgeOf[lab[i]]) ? 1 : 0;
+  }
+  return { f: blur(out, gw, gh, 1, 2), gw, gh };
+}
 /* masks for calligrams: from the image, from big text, or from a shape */
 function buildMask(S, P, W, H) {
-  const src = P.maskSource || 'image';
-  const k = 4, mw = Math.ceil(W / k), mh = Math.ceil(H / k);
+  // the subject: the cutout once the background is removed, otherwise what stands out from the background
+  let src = P.maskSource || 'image';
+  if (src === 'auto') src = S && S.cut ? 'cutout' : 'subject';
+  // a cell of the mask is 4 px, or on the fixed grid of a Word cloud (cloudGrid) 4/3 of a grid cell, so the
+  // mask has the same detail at every width
+  const k = P.mode === 'cloud' && P.cloudGrid > 0 ? W / P.cloudGrid * 4 / 3 : 4, mw = Math.ceil(W / k), mh = Math.ceil(H / k);
   const m = new Uint8Array(mw * mh);
-  if (src === 'cutout') {
+  if (src === 'subject') {
+    const { f, gw, gh } = subjectField(S);
+    for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
+      // read between the coarse cells, so the edge of the shape is smooth
+      const fx = clamp((x + 0.5) / mw * gw - 0.5, 0, gw - 1), fy = clamp((y + 0.5) / mh * gh - 0.5, 0, gh - 1);
+      const x0 = fx | 0, y0 = fy | 0, x1 = Math.min(gw - 1, x0 + 1), y1 = Math.min(gh - 1, y0 + 1), ax = fx - x0, ay = fy - y0;
+      const v = (f[y0 * gw + x0] * (1 - ax) + f[y0 * gw + x1] * ax) * (1 - ay) + (f[y1 * gw + x0] * (1 - ax) + f[y1 * gw + x1] * ax) * ay;
+      m[y * mw + x] = v >= 0.5 ? 1 : 0;
+    }
+  } else if (src === 'cutout') {
     for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) m[y * mw + x] = S.keepAt((x + 0.5) / mw, (y + 0.5) / mh) > 0.5 ? 1 : 0;
-  } else if (src === 'image') {
-    const thr = P.threshold ?? 0.5;
-    const sm = blur(S.ink, S.w, S.h, Math.max(1, Math.round((P.maskSmooth ?? 3) * S.w / 640)), 2);
+  } else if (src === 'image' || src === 'detail') {
+    // maskInvert swaps the shape and the space around it (on white paper: the light parts become the shape)
+    const inv = !!P.maskInvert, rad = Math.max(1, Math.round((P.maskSmooth ?? 3) * S.w / 640));
+    let thr = P.threshold ?? 0.5, sm;
+    if (src === 'detail') {
+      // the sharp, busy parts of the photo: how much the tones change nearby, spread out over a wide area.
+      // A soft or plain background stays out, so the subject becomes the shape whatever its tone.
+      const w = S.w, h = S.h, ink = S.ink, g = new Float32Array(w * h);
+      for (let y = 1; y < h - 1; y++) for (let x = 1, i = y * w + 1; x < w - 1; x++, i++) {
+        g[i] = Math.min(0.3, Math.abs(ink[i + 1] - ink[i - 1]) + Math.abs(ink[i + w] - ink[i - w]));
+      }
+      sm = blur(g, w, h, Math.round(rad * 1.5), 2);
+      // here the threshold is the share of the picture left out: 0.5 keeps the busiest half
+      let top = 1e-6;
+      for (let i = 0; i < sm.length; i++) if (sm[i] > top) top = sm[i];
+      const hist = new Uint32Array(512);
+      for (let i = 0; i < sm.length; i++) hist[Math.min(511, (sm[i] / top * 512) | 0)]++;
+      let acc = 0, k = 0;
+      for (; k < 512; k++) { acc += hist[k]; if (acc >= thr * sm.length) break; }
+      thr = (k + 1) / 512 * top;
+    } else sm = blur(S.ink, S.w, S.h, rad, 2);
     for (let y = 0; y < mh; y++) for (let x = 0; x < mw; x++) {
       const t = sm[S.idx((x + 0.5) / mw, (y + 0.5) / mh)];
-      m[y * mw + x] = (t >= thr) ? 1 : 0;
+      m[y * mw + x] = ((t >= thr) !== inv) ? 1 : 0;
     }
   } else {
     const c = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(mw, mh) : Object.assign(document.createElement('canvas'), { width: mw, height: mh });
     const x = c.getContext('2d', { willReadFrequently: true });
     x.fillStyle = '#000';
-    if (src === 'text') {
+    if (src === 'vector') {
+      // the closed shapes of the Vector layer, each group filled even-odd so the holes of letters stay open.
+      // When none is filled yet, every closed shape counts.
+      x.setTransform(1 / k, 0, 0, 1 / k, 0, 0);
+      const all = (P.__paths || []).filter((q) => q.closed && !q.hidden && q.pts.length > 2);
+      const anyFill = all.some((q) => q.fill), groups = new Map();
+      for (const q of all) if (q.fill || !anyFill) { const g = groups.get(q.group) || []; g.push(q); groups.set(q.group, g); }
+      for (const g of groups.values()) { x.beginPath(); g.forEach((q) => { q.pts.forEach((p, i) => (i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1]))); x.closePath(); }); x.fill('evenodd'); }
+    } else if (src === 'text') {
       const lines = String(P.maskText || 'ART').split('\n').map((l) => l.trim()).filter(Boolean);
       if (!lines.length) lines.push('ART');
       // Arabic script has no black weight in its fonts; its letters also reach far above and below the line
@@ -809,7 +1881,7 @@ function buildMask(S, P, W, H) {
       const fs0 = 100;
       x.font = fontStr(fs0, wgt, fam);
       const widest = Math.max(...lines.map(l => x.measureText(l).width));
-      const fs = Math.min(fs0 * mw * 0.94 / widest, mh * 0.94 / (lines.length * lh));
+      const fit = P.maskFit || 0.94, fs = Math.min(fs0 * mw * fit / widest, mh * fit / (lines.length * lh));
       x.font = fontStr(fs, wgt, fam);
       x.textAlign = 'center'; x.textBaseline = 'middle';
       // thin calligraphic strokes get a little extra body, so letters fit inside them
@@ -844,6 +1916,8 @@ function buildMask(S, P, W, H) {
 function* modeCalligram(S, P, W, H, R) {
   let _op = 0;
   let text = String(P.text || 'calligram');
+  const emphMap = new Map();
+  if (P.emph !== false) { emphWords(text, /s+/).forEach((q) => { if (q.e && !emphMap.has(q.w)) emphMap.set(q.w, q.e); }); text = emphPlain(text); }
   // a line break in the text is a pause, like a space; an optional mark shows where a verse ends
   const mark = P.verseMark && P.verseMark !== 'none' ? P.verseMark : '';
   text = text.split(/\n+/).map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join(mark ? ' ' + mark + ' ' : ' ');
@@ -854,8 +1928,13 @@ function* modeCalligram(S, P, W, H, R) {
   const wordwise = arabic || rtl;
   const fam = famFor(text, P.font || 'serif');
   const size = (P.size || 16) * famScale(fam);
-  const lineH = size * (P.leading || 1.05) / famScale(fam) * (fam === 'nastaliq' ? 1.25 : 1);
+  let lineH = size * (P.leading || 1.05) / famScale(fam) * (fam === 'nastaliq' ? 1.25 : 1);
+  // Canvases set small text on whole pixels, so rows a fraction of a pixel apart drift and every few rows
+  // leave a white band across the shape (thumbnails, small previews). Small rows keep a whole-pixel step.
+  if (lineH < 10) lineH = Math.max(1, Math.round(lineH));
+  yield 0;
   const M = buildMask(S, P, W, H);
+  yield 0;
   const words = text.split(' ');
   let wi = 0, partial = null;
   const weight = P.weight || 500;
@@ -865,24 +1944,27 @@ function* modeCalligram(S, P, W, H, R) {
   // a word's width, with letter spacing between its letters (joined script keeps its letters together)
   const wordW = (w) => measure(w, size, weight, fam) + (wordwise ? 0 : track * Math.max(0, Array.from(w).length - 1));
   const inside = (x, y) => M.at(x, y) && M.at(x, y - size * 0.32) && M.at(x, y + size * 0.32);
-  const place = (s, x, y) => {
+  const place = (s, x, y, xt) => {
+    const e = emphMap.size ? emphMap.get(s) || emphMap.get(P.upper ? s : s) || null : null;
     if (wordwise) {
       // one item per word, colored by the average under the whole word
       const w = measure(s, size, weight, fam);
       const b = S.box(clamp(x / W, 0, 1), clamp((y - size * 0.4) / H, 0, 1), clamp((x + w) / W, 0, 1), clamp((y + size * 0.4) / H, 0, 1));
-      items.push({ t: 'text', s, x, y, size, font: fam, weight, fill: colorFor(S, P, [b.r, b.g, b.b], b.ink) });
+      items.push(emphItem({ t: 'text', s, x, y, size, font: fam, weight, fill: colorFor(S, P, [b.r, b.g, b.b], b.ink) }, e));
       return;
     }
+    // one color per word, read under the whole word, so a word never flickers between two inks
+    const tr = track + (xt || 0);
+    const ww = measure(s, size, weight, fam) + tr * Math.max(0, Array.from(s).length - 1);
+    const b = S.box(clamp(x / W, 0, 1), clamp((y - size * 0.4) / H, 0, 1), clamp((x + ww) / W, 0, 1), clamp((y + size * 0.4) / H, 0, 1));
+    const fill = colorFor(S, P, [b.r, b.g, b.b], b.ink);
     for (const ch of s) {
       const w = measure(ch, size, weight, fam);
-      if (ch !== ' ') {
-        const u = clamp((x + w / 2) / W, 0, 1), v = clamp(y / H, 0, 1);
-        items.push({ t: 'text', s: ch, x, y, size, font: fam, weight, fill: colorFor(S, P, S.rgbAt(u, v), S.inkAt(u, v)) });
-      }
-      x += w + track;
+      if (ch !== ' ') items.push(emphItem({ t: 'text', s: ch, x, y, size, font: fam, weight, fill }, e));
+      x += w + tr;
     }
   };
-  for (let y = lineH / 2; y < H; y += lineH) { if ((++_op & 1) === 0) yield (y / H);
+  for (let y = lineH < 10 ? Math.round(lineH / 2) : lineH / 2; y < H; y += lineH) { if ((++_op & 1) === 0) yield (y / H);
     const spans = [];
     let s0 = -1;
     for (let x = 0; x <= W; x += 2) {
@@ -890,9 +1972,11 @@ function* modeCalligram(S, P, W, H, R) {
       if (inn && s0 < 0) s0 = x;
       if (!inn && s0 >= 0) { spans.push([s0, x]); s0 = -1; }
     }
-    for (const [a, b] of spans) {
-      const width = b - a;
-      if (width < size * (P.minSpan || 1.5)) continue;
+    for (let si = 0; si < spans.length; si++) {
+      const [a, b] = spans[si], width = b - a;
+      // a word is split only at the end of a row, never across a gap in the shape, so the text reads on
+      const lastSpan = si === spans.length - 1;
+      if (width < size * (P.minSpan || 2.5)) continue;
       // greedy whole words; a word too long for a narrow span gets split
       const line = [];
       let used = 0;
@@ -902,25 +1986,32 @@ function* modeCalligram(S, P, W, H, R) {
         const need = (line.length ? sp : 0) + ww;
         if (used + need <= width) { line.push(word); used += need; partial = null; wi++; continue; }
         // joined script is never cut inside a word: it waits for a wider span
-        if (!wordwise && (!line.length || width - used > size * 4)) {
+        if (!wordwise && lastSpan && (!line.length || width - used > size * 4)) {
           // fill the remainder with part of the word, continue it on the next span
           const room = width - used - (line.length ? sp : 0);
           let k = 0, acc = 0;
           const chars = Array.from(word);
           while (k < chars.length && acc + measure(chars[k], size, weight, fam) + track <= room) { acc += measure(chars[k], size, weight, fam) + track; k++; }
-          if (k > 0) { line.push(chars.slice(0, k).join('')); used += (line.length > 1 ? sp : 0) + acc; partial = chars.slice(k).join('') || null; if (partial === null) wi++; }
+          // never leave a stub: a split keeps at least 3 letters on this line and 2 for the next
+          if (k > chars.length - 2) k = chars.length - 2;
+          if (k >= 3) { line.push(chars.slice(0, k).join('')); used += (line.length > 1 ? sp : 0) + acc; partial = chars.slice(k).join('') || null; if (partial === null) wi++; }
         }
         break;
       }
       if (!line.length) continue;
       const nat = line.reduce((s, w) => s + wordW(w), 0);
-      let gap = line.length > 1 ? (width - nat) / (line.length - 1) : 0;
+      // justify: part of the slack opens the letters a little, the rest goes between words
+      let slack = width - nat - sp * (line.length - 1), xt = 0;
+      const joins = wordwise ? 0 : line.reduce((n, w) => n + Math.max(0, Array.from(w).length - 1), 0);
+      if (joins > 0 && slack > 0) { xt = Math.min(slack * 0.6 / joins, size * 0.12); slack -= xt * joins; }
+      let gap = sp + (line.length > 1 ? slack / (line.length - 1) : 0);
       let x = a;
-      if (line.length === 1 || gap > size * 2.5) { gap = sp; x = a + (width - nat - sp * (line.length - 1)) / 2; }
+      if (line.length === 1 || gap > size * 1.6) { gap = Math.min(gap, sp + size * 0.5); x = a + (width - nat - xt * joins - gap * (line.length - 1)) / 2; }
+      const wW = (w) => wordW(w) + (wordwise ? 0 : xt * Math.max(0, Array.from(w).length - 1));
       for (const w of line) {
-        const ww = wordW(w);
+        const ww = wW(w);
         // right to left: the first word sits at the right end of the span
-        place(w, rtl ? a + b - x - ww : x, y);
+        place(w, rtl ? a + b - x - ww : x, y, xt);
         x += ww + gap;
       }
     }
@@ -932,8 +2023,12 @@ function* modeCalligram(S, P, W, H, R) {
 function* modeFlow(S, P, W, H, R) {
   let _op = 0;
   const fam = P.font || 'sans';
-  const F = fields(S, P.smooth || 5);
-  const dsep = P.spacing || 14, dtest = dsep * 0.55, step = Math.max(1.5, dsep * 0.3);
+  const F = yield* fieldsGen(S, P.smooth || 5);
+  // The letter size leads. With autoSpace on, the flow lines are kept that much further apart, so
+  // bigger letters mean fewer lines instead of letters growing into the line next to them.
+  const base = P.size || (P.spacing || 14) * (P.scale || 0.95);
+  const dsep = P.autoSpace === false ? (P.spacing || 14) : Math.max(2, base * (P.lineGap || 1.1));
+  const dtest = dsep * 0.55, step = Math.max(1.5, dsep * 0.3);
   const minInk = P.minInk ?? 0.18;
   const kx = S.w / W, ky = S.h / H;
   const cellS = dsep;
@@ -967,7 +2062,25 @@ function* modeFlow(S, P, W, H, R) {
     if ((++_seed & 63) === 0) yield 0.85 * _seed / seeds.length;
     if (near(sx, sy, dsep)) continue;
     const pts = [[sx, sy]];
+    // the line also keeps clear of itself, so it never winds round and round a swirl into a dark knot.
+    // Points just behind the tip (within lag steps) are its own trail and do not count.
+    const own = new Map(), lag = Math.ceil(dsep * 2.5 / step) + 2;
+    let ownDir = 1, ownN = 0;
+    const ownAdd = (x, y) => { const k = Math.floor(y / cellS) * gw + Math.floor(x / cellS), a = own.get(k); if (a) a.push(x, y, ownDir, ownN); else own.set(k, [x, y, ownDir, ownN]); ownN++; };
+    const ownNear = (x, y) => {
+      const cx = Math.floor(x / cellS), cy = Math.floor(y / cellS);
+      for (let j = cy - 1; j <= cy + 1; j++) for (let i = cx - 1; i <= cx + 1; i++) {
+        const a = own.get(j * gw + i); if (!a) continue;
+        for (let k = 0; k < a.length; k += 4) {
+          if (a[k + 2] === ownDir ? ownN - a[k + 3] < lag : a[k + 3] < lag) continue;
+          const dx = a[k] - x, dy = a[k + 1] - y; if (dx * dx + dy * dy < dtest * dtest) return true;
+        }
+      }
+      return false;
+    };
+    ownAdd(sx, sy);
     for (const dir of [1, -1]) {
+      if (dir === -1) { ownDir = -1; ownN = 1; }
       let x = sx, y = sy, pdx = 0, pdy = 0, len = 0;
       const a0 = angXY(x, y); pdx = Math.cos(a0) * dir; pdy = Math.sin(a0) * dir;
       while (len < maxLen) {
@@ -977,11 +2090,14 @@ function* modeFlow(S, P, W, H, R) {
         // blend a little with previous direction to stay smooth
         dx = dx * 0.7 + pdx * 0.3; dy = dy * 0.7 + pdy * 0.3;
         const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n;
+        // stop before a line curls tighter than its letters can follow: letters on a tight curl pile into a black knot
+        if (len > 0 && Math.acos(clamp(dx * pdx + dy * pdy, -1, 1)) > step / (base * (P.minCurl ?? 1.2))) break;
         x += dx * step; y += dy * step; len += step;
         if (x < 0 || y < 0 || x >= W || y >= H) break;
         const t = inkXY(x, y);
         if (t < minInk || !regionOK(P, t)) break;
-        if (near(x, y, dtest)) break;
+        if (near(x, y, dtest) || ownNear(x, y)) break;
+        ownAdd(x, y);
         pdx = dx; pdy = dy;
         if (dir === 1) pts.push([x, y]); else pts.unshift([x, y]);
       }
@@ -991,43 +2107,98 @@ function* modeFlow(S, P, W, H, R) {
     for (const p of pts) add(p[0], p[1]);
     lines.push(pts);
   }
-  const st = stream(P.text, { upper: P.upper, sep: P.sep ?? ' ' });
+  const st = stream(P.text, { upper: P.upper, sep: P.sep ?? ' ', emph: P.emph !== false });
   const items = [];
-  for (let li = 0; li < lines.length; li++) { placeOnPath(lines[li], st, S, P, W, H, items, dsep * (P.scale || 0.95), P.weight || 600, fam); if ((li & 15) === 0) yield 0.85 + 0.15 * li / lines.length; }
+  for (let li = 0; li < lines.length; li++) {
+    // each stretch of a line is written left to right, so no word is upside down
+    const i0 = items.length;
+    for (const run of readableRuns(lines[li])) if (run.length > 2) placeOnPath(run, st, S, P, W, H, items, base, P.weight || 600, fam);
+    // on a steep stretch a letter may lean past upright by a little: it stands sideways instead of upside down
+    for (let k = i0; k < items.length; k++) items[k].rot = clamp(items[k].rot || 0, -Math.PI / 2, Math.PI / 2);
+    if ((li & 15) === 0) yield 0.85 + 0.15 * li / lines.length;
+  }
   return { items, stats: { lines: lines.length } };
 }
 
+/* Cuts a line where it turns from heading right to heading left (or back), so every stretch can be
+   written left to right. A steep stretch keeps the way it was going, which stops near-vertical wiggles
+   from cutting a line into crumbs. */
+function readableRuns(pts) {
+  const runs = [];
+  let cur = [pts[0]], sgn = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const j = Math.max(0, i - 3), dx = pts[i][0] - pts[j][0], dy = pts[i][1] - pts[j][1];
+    const c = dx / (Math.hypot(dx, dy) || 1), sg = c > 0.26 ? 1 : c < -0.26 ? -1 : 0;
+    if (sg && sgn && sg !== sgn) { runs.push(cur); cur = [pts[i - 1]]; }
+    if (sg) sgn = sg;
+    cur.push(pts[i]);
+  }
+  runs.push(cur);
+  return runs;
+}
+
+/* Arc length along a polyline. at(d) is the point at distance d, with any extra values of the points blended. */
+function pathWalker(pts) {
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const total = cum[cum.length - 1];
+  const at = (d) => {
+    d = clamp(d, 0, total);
+    let lo = 1, hi = cum.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < d) lo = m + 1; else hi = m; }
+    const a = pts[lo - 1], b = pts[lo], t = (d - cum[lo - 1]) / ((cum[lo] - cum[lo - 1]) || 1);
+    const q = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    for (let k = 2; k < a.length; k++) q.push(a[k] + ((b[k] ?? a[k]) - a[k]) * t);
+    return q;
+  };
+  return { total, at };
+}
+/* A centered letter sits in the middle of the stretch it uses (s to s + w), not at its start, so narrow and wide
+   letters keep even gaps. It turns with the chord of that stretch, so a jagged line does not twist single letters. */
+function letterOnPath(at, total, s, w) {
+  const p0 = at(s), p1 = at(s + w), pm = at(s + w / 2);
+  let dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+  if (dx * dx + dy * dy < 1e-6) { const q = at(s - Math.max(1, w)); dx = p0[0] - q[0]; dy = p0[1] - q[1]; }
+  return { p0, pm, ang: Math.atan2(dy, dx) };
+}
 /* Write a text stream along a polyline. Points may carry [x, y, tone, baseY]. */
 function placeOnPath(pts, st, S, P, W, H, items, base, weight, fam) {
   if (pts.length < 2) return;
   if (pts[pts.length - 1][0] < pts[0][0]) pts = pts.slice().reverse();
-  const cum = [0];
-  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-  const total = cum[cum.length - 1];
-  let s = 0, seg = 1;
+  const { total, at } = pathWalker(pts);
+  let s = 0;
   while (s < total) {
-    while (seg < cum.length - 1 && cum[seg] < s) seg++;
-    const a = pts[seg - 1], b = pts[seg];
-    const t0 = (s - cum[seg - 1]) / ((cum[seg] - cum[seg - 1]) || 1);
-    const x = a[0] + (b[0] - a[0]) * t0, y = a[1] + (b[1] - a[1]) * t0;
-    const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
-    const ink = a.length > 2 ? a[2] + (b[2] - a[2]) * t0 : S.inkAt(x / W, y / H);
-    const cv = a.length > 3 ? clamp(a[3] / H, 0, 0.999) : y / H;
-    const size = P.sizeMod === false ? base : base * (0.35 + 0.65 * ink);
-    const wgt = P.weightMod === false ? weight : Math.round((200 + 700 * ink) / 100) * 100;
-    const ch = st.next();
-    const w = measure(ch, size, wgt, fam);
-    if (ch !== ' ' && ink >= (P.minInk || 0)) items.push({ t: 'text', s: ch, x, y, size, font: fam, weight: wgt, fill: colorFor(S, P, S.rgbAt(x / W, cv), ink), align: 'center', rot: ang });
-    s += w + (P.tracking ?? 0.05) * size;
+    const p0 = at(s);
+    const ink0 = p0.length > 2 ? p0[2] : S.inkAt(p0[0] / W, p0[1] / H);
+    const lo = P.sizeFloor ?? 0.35, size = halfPx(P.sizeMod === false ? base : base * (lo + (1 - lo) * ink0));
+    const wgt = P.weightMod === false ? weight : Math.round((200 + 700 * ink0) / 100) * 100;
+    const ch = st.next(), e = st.e;
+    const size2 = emphSize(e, size), wgt2 = emphWeight(e, wgt);
+    const w = measure(ch, size2, wgt2, fam);
+    const { pm, ang } = letterOnPath(at, total, s, w);
+    const x = pm[0], y = pm[1];
+    const ink = pm.length > 2 ? pm[2] : S.inkAt(x / W, y / H);
+    const cv = pm.length > 3 ? clamp(pm[3] / H, 0, 0.999) : y / H;
+    if (ch !== ' ' && ink >= (P.minInk || 0)) items.push(emphItem({ t: 'text', s: ch, x, y, size: size2, font: fam, weight: wgt2, fill: colorFor(S, P, S.rgbAt(x / W, cv), ink), align: 'center', rot: ang }, e));
+    s += w + (P.tracking ?? 0.05) * size2;
   }
 }
 
+/* Tone contrast for the line styles: an S curve around the middle gray, so the darks carry the picture and
+   light areas open up. Black and white stay where they are. pop runs from 0 (off) to 0.5 (twice as steep in the
+   middle) and on to 1, where the curve is applied a second time. */
+function popTone(t, pop) {
+  const s = (v, k) => clamp(v + 2 * k * (v - 0.5) * (1 - Math.abs(2 * v - 1)), 0, 1);
+  const k = clamp(pop, 0, 1);
+  return k > 0.5 ? s(s(t, 0.5), k - 0.5) : s(t, k);
+}
 /* 8. Spiral (one sentence on an Archimedean spiral) or Rings (concentric circles) */
 /* The reach of a spiral or rings layer: center, and the start and end radius in pixels. Shared with the on-canvas handles. */
 function spiralReach(P, W, H) {
   const cx = (P.cx ?? 0.5) * W, cy = (P.cy ?? 0.5) * H;
-  const maxR = Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
-  // r0 and r1 are fractions of the distance to the farthest corner: 0 is the center, 1 reaches every corner
+  // r0 and r1 are fractions of the distance to the farthest corner: 0 is the center, 1 reaches every corner.
+  // As a round disc they are fractions of half the short side, so the whole disc stays inside the picture.
+  const maxR = P.disc ? Math.min(W, H) * 0.48 : Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
   const r0 = clamp(P.r0 || 0, 0, 1) * maxR, r1 = Math.max(r0 + 1, clamp(P.r1 ?? 1, 0.02, 1) * maxR);
   return { cx, cy, r0, r1, maxR };
 }
@@ -1038,8 +2209,8 @@ function* modeSpiral(S, P, W, H, R) {
   // Urdu and Arabic go word by word, so their letters stay joined
   const wordwise = RTL.test(text);
   const fam = famFor(text, P.font || 'sans');
-  const st = stream(text, { upper: P.upper, sep: P.sep ?? ' ' });
-  const words = wordwise ? text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean) : null;
+  const st = stream(text, { upper: P.upper, sep: P.sep ?? ' ', emph: P.emph !== false });
+  const words = wordwise ? (P.emph !== false ? emphWords(text, /\s+/) : text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).map((w) => ({ w, e: null }))) : null;
   let wi = 0;
   const weight = P.weight || 700;
   const items = [];
@@ -1050,25 +2221,47 @@ function* modeSpiral(S, P, W, H, R) {
   // glyph angle: the text's reading direction runs along the travel (against it for right to left text)
   const rotFor = (phi) => phi + (turn > 0 ? Math.PI / 2 : -Math.PI / 2) + (wordwise ? Math.PI : 0);
   const track = (P.tracking ?? 0.04) * p;
-  const lo = Math.max(p * 1.2, r0);
+  const core = (P.calmCenter ?? 0) * p;
+  // with a calm center the text starts right at the middle in tiny letters, so there is no empty hole
+  const lo = Math.max(p * (core ? 0.5 : 1.2), r0);
+  // the tone under a letter is the mean over its own square, so fur and grain do not make neighbors jump in size
+  const hb = p * 0.5;
+  const inkAround = (x, y) => Math.max(0, S.box((x - hb) / W, (y - hb) / H, (x + hb) / W, (y + hb) / H).ink);
+  const pop = P.pop || 0;
+  const toneAt = pop > 0 ? (x, y) => popTone(inkAround(x, y), pop) : inkAround;
+  // letters come in runs along the path; where light areas or the edge cut a run down to a scrap of a few
+  // letters, the scrap goes, so the turns end cleanly instead of in torn slivers (shortRuns 0 keeps every letter;
+  // Urdu and Arabic count whole words, about four letters each)
+  const minRun = Math.ceil((P.shortRuns ?? 0) / (wordwise ? 4 : 1));
+  let run = [];
+  const endRun = () => { if (run.length >= minRun) for (const it of run) items.push(it); run = []; };
   // places one letter (or word) at radius r, angle phi; returns the arc length used
   const put = (r, phi) => {
-    const s = wordwise ? words[wi++ % words.length] : st.next();
+    const pick = wordwise ? words[wi++ % words.length] : null;
+    const s = wordwise ? pick.w : st.next();
+    const e = wordwise ? pick.e : st.e;
     const x0 = cx + r * Math.cos(phi), y0 = cy + r * Math.sin(phi);
     const in0 = x0 >= 0 && y0 >= 0 && x0 < W && y0 < H;
-    const ink0 = in0 ? S.inkAt(x0 / W, y0 / H) : 0;
-    const size = p * (ms + (1 - ms) * ink0) * (P.scale || 1.15) * famScale(fam);
-    const wgt = P.weightMod === false ? weight : Math.round((200 + 700 * ink0) / 100) * 100;
+    const ink0 = in0 ? toneAt(x0, y0) : 0;
+    // a letter darkens its patch of the ring by its area, so the height follows the square root of the tone, roughly; mid tones then read as mid tones
+    // the innermost turns are smaller and a little lighter, but still follow the photo's tone, so the middle
+    // reads as part of the picture instead of a target
+    const near = core ? smoothstep(lo, lo + core, r) : 1;
+    const size = emphSize(e, halfPx(p * (ms + (1 - ms) * Math.pow(ink0, P.toneCurve ?? 0.7) * (0.4 + 0.6 * near)) * (P.scale || 1.15) * famScale(fam)));
+    const wgt = emphWeight(e, P.weightMod === false ? weight : Math.round((200 + 700 * ink0) / 100) * 100);
     const w = measure(s, Math.max(size, 2), wgt, fam);
     const adv = Math.max(w, p * 0.15) + track + (wordwise ? measure(' ', Math.max(size, 2), wgt, fam) : 0);
     // the letter sits in the middle of the arc it uses
-    const mid = phi + turn * (wordwise ? w / 2 : 0) / Math.max(r, 1);
+    const mid = phi + turn * (w / 2) / Math.max(r, 1);
     const x = cx + r * Math.cos(mid), y = cy + r * Math.sin(mid);
     const inside = x >= 0 && y >= 0 && x < W && y < H;
-    const ink = inside ? S.inkAt(x / W, y / H) : 0;
+    const ink = inside ? toneAt(x, y) : 0;
+    const calm = core ? 0.75 + 0.25 * near : 1;
     if (inside && s !== ' ' && ink > (P.minInk ?? 0.03) && regionOK(P, ink)) {
-      items.push({ t: 'text', s, x, y, size, font: fam, weight: wgt, fill: colorFor(S, P, S.rgbAt(x / W, y / H), ink), align: 'center', rot: rotFor(mid) });
-    }
+      const it = { t: 'text', s, x, y, size, font: fam, weight: wgt, fill: colorFor(S, P, S.rgbAt(x / W, y / H), ink), align: 'center', rot: rotFor(mid) };
+      if (calm < 1) it.a = calm;
+      run.push(emphItem(it, e));
+    } else if (s !== ' ') endRun();
     return adv;
   };
   const a0 = (P.a0 ?? -90) * Math.PI / 180;
@@ -1082,11 +2275,12 @@ function* modeSpiral(S, P, W, H, R) {
       const end = phi + turn * Math.PI * 2;
       let guard = 0;
       while ((turn > 0 ? phi < end : phi > end) && guard++ < 20000) phi += turn * put(r, phi) / r;
+      endRun();
     });
     yield 1;
   } else {
     // r = p * th / 2pi. From the center th grows, from the outside it shrinks.
-    const thLo = Math.max(3 * Math.PI, 2 * Math.PI * lo / p), thHi = 2 * Math.PI * r1 / p;
+    const thLo = Math.max(core ? Math.PI : 3 * Math.PI, 2 * Math.PI * lo / p), thHi = 2 * Math.PI * r1 / p;
     // the screen angle is s * th + phase, chosen so the text starts at the start angle a0
     const s = fromOut ? -turn : turn;
     let th = fromOut ? thHi : thLo;
@@ -1100,6 +2294,7 @@ function* modeSpiral(S, P, W, H, R) {
       th += (fromOut ? -1 : 1) * used / Math.max(r, 1);
     }
   }
+  endRun();
   return { items };
 }
 
@@ -1110,8 +2305,10 @@ function* modeRelief(S, P, W, H, R) {
   const sp = P.spacing || 14, amp = (P.amp ?? 2.5) * sp, step = 3;
   const nx = Math.ceil(W / step) + 1;
   const horizon = new Float32Array(nx).fill(Infinity);
-  const st = stream(P.text, { upper: P.upper, sep: P.sep ?? ' ' });
-  const base = sp * (P.scale || 0.9), weight = P.weight || 600;
+  const st = stream(P.text, { upper: P.upper, sep: P.sep ?? ' ', emph: P.emph !== false });
+  const base = sp * (P.scale || 0.9), weight = P.weight || 600, pop = P.pop || 0;
+  // the tone curve: below 1 the mid tones get more ink, so a light face still reads on light paper
+  const tg = P.toneGamma ?? 1;
   const rowsY = [];
   for (let y0 = sp * 0.6; y0 < H + amp * 0.5; y0 += sp) rowsY.push(y0);
   const segs = [];
@@ -1119,16 +2316,26 @@ function* modeRelief(S, P, W, H, R) {
     yield 0.6 * (1 - k / rowsY.length);
     const y0 = rowsY[k], vv = clamp(y0 / H, 0, 0.999);
     const ys = new Float32Array(nx), ts = new Float32Array(nx);
+    // the band a row stands for, a letter wide: grain and fur no longer make the line (and its letters) shake
+    const hx = sp * 0.6, v0 = clamp((y0 - sp * 0.5) / H, 0, 1), v1 = clamp((y0 + sp * 0.5) / H, 0, 1);
     for (let i = 0; i < nx; i++) {
       const x = Math.min(W - 0.5, i * step);
-      const t = (S.inkAt(Math.max(0, x - 2 * step) / W, vv) + 2 * S.inkAt(x / W, vv) + S.inkAt(Math.min(W - 1, x + 2 * step) / W, vv)) / 4;
-      ts[i] = t; ys[i] = y0 - amp * t;
+      ts[i] = S.box(Math.max(0, x - hx) / W, v0, Math.min(W, x + hx) / W, v1).ink;
+      if (tg !== 1) ts[i] = Math.pow(Math.max(0, ts[i]), tg);
+      if (pop > 0) ts[i] = popTone(ts[i], pop);
+    }
+    // a second, wider pass on the height only: letters turn with the line, so it has to bend gently
+    const rad = Math.max(1, Math.round(sp * 0.5 / step));
+    for (let i = 0; i < nx; i++) {
+      let a = 0, c = 0;
+      for (let k = Math.max(0, i - rad); k <= Math.min(nx - 1, i + rad); k++) { a += ts[k]; c++; }
+      ys[i] = y0 - amp * a / c;
     }
     let cur = [];
     const flush = () => { if (cur.length > 3) segs.push(cur); cur = []; };
     for (let i = 0; i < nx; i++) {
       const x = Math.min(W - 0.5, i * step), y = ys[i];
-      const vis = (P.occlude === false || y < horizon[i] - base * 0.55) && y > base * 0.5 && y < H - base * 0.3 && regionOK(P, ts[i]);
+      const vis = (P.occlude === false || y < horizon[i] - base * 0.8) && y > base * 0.5 && y < H - base * 0.3 && regionOK(P, ts[i]);
       if (vis) cur.push([x, y, ts[i], y0]); else flush();
     }
     flush();
@@ -1167,11 +2374,17 @@ function* modeTypewriter(S, P, W, H, R) {
   const size = cellW / (measure('M', 100, 400, fam) / 100);
   const lineH = size * (P.leading || 1.1);
   const rows = Math.max(1, Math.round(H / lineH));
-  const list = twTable(fam);
-  const F = (P.edges || 0) > 0 ? fields(S, 2) : null;
+  // strikes: the most characters typed on one spot. Fewer keeps the darks from turning into solid blocks.
+  const strikes = P.strikes || 5;
+  let list = twTable(fam);
+  if (strikes < 5) { list = list.filter((e) => e.g.length <= strikes); const top = list[list.length - 1].t || 1; list = list.map((e) => ({ g: e.g, t: e.t / top })); }
+  const F = (P.edges || 0) > 0 ? yield* fieldsGen(S, 2) : null;
   const work = new Float32Array(cols * rows), tone = new Float32Array(cols * rows);
   const curve = P.curve ?? 1.6;
-  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) tone[y * cols + x] = work[y * cols + x] = Math.pow(S.box(x / cols, y / rows, (x + 1) / cols, (y + 1) / rows).ink, curve);
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) tone[y * cols + x] = Math.pow(Math.max(0, S.box(x / cols, y / rows, (x + 1) / cols, (y + 1) / rows).ink), curve);
+  // local contrast and the paper knee, as in ASCII: features stand out and flat light areas stay clean
+  shapeTone(tone, cols, rows, P);
+  work.set(tone);
   const items = [], wob = P.wobble ?? 1;
   for (let y = 0; y < rows; y++) {
     yield y / rows;
@@ -1254,7 +2467,7 @@ function* traceGen(src, opts) {
     let L = 0; for (let i = 1; i < p.pts.length; i++) L += Math.hypot(p.pts[i][0] - p.pts[i - 1][0], p.pts[i][1] - p.pts[i - 1][1]);
     const avgR = p.pts.reduce((a, q) => a + q[2], 0) / p.pts.length;
     // short dead-end branches are thinning noise
-    return L >= minLen && !(p.spur && L < avgR * 3.5);
+    return L >= minLen && !(p.spur && L < avgR * (o.spurK ?? 3.5));
   });
   yield { stage: 'Smoothing lines', p: 0.92 };
   const eps = o.simplify ?? 0.8;
@@ -1469,43 +2682,72 @@ function* modePaths(S, P, W, H, R) {
   const weight = P.weight || 700;
   const paths = P.__paths || [];
   const items = [];
-  const mkStream = (t) => stream(t || P.text, { upper: P.upper, sep: P.sep ?? ' · ' });
+  const mkStream = (t) => stream(t || P.text, { upper: P.upper, sep: P.sep ?? ' · ', emph: P.emph !== false });
   let shared = mkStream(P.text);
   const fill = P.fill ?? 0.85;
-  for (let pi = 0; pi < paths.length; pi++) {
-    if ((pi & 7) === 0) yield pi / paths.length;
+  // Where lines meet or run close, letters of one line would print over another's. A coarse grid remembers where
+  // letters already stand; a line that reaches a taken spot slides on without using up its text, so words stay whole.
+  // A line never blocks itself: its own spots are added when it is finished.
+  const avoid = P.avoid !== false;
+  // cells about a third of the smallest letter, but never more than about 4 million of them on a big export
+  const cs = Math.max(1, (P.sizeFrom === 'fixed' ? (P.size || 14) : (P.minSize ?? 3)) * 0.3, Math.sqrt(W * H / 4e6));
+  const gw = Math.ceil(W / cs) + 1, gh = Math.ceil(H / cs) + 1;
+  const taken = avoid ? new Uint8Array(gw * gh) : null;
+  const disc = (x, y, r, set) => {
+    const c0 = Math.max(0, Math.floor((x - r) / cs)), c1 = Math.min(gw - 1, Math.floor((x + r) / cs));
+    const r0 = Math.max(0, Math.floor((y - r) / cs)), r1 = Math.min(gh - 1, Math.floor((y + r) / cs));
+    for (let gy = r0; gy <= r1; gy++) for (let gx = c0; gx <= c1; gx++) {
+      const dx = (gx + 0.5) * cs - x, dy = (gy + 0.5) * cs - y;
+      if (dx * dx + dy * dy > r * r) continue;
+      if (set) taken[gy * gw + gx] = 1; else if (taken[gy * gw + gx]) return true;
+    }
+    return false;
+  };
+  // long lines first, so the main strokes keep their words and short side branches give way
+  const order = paths.map((q, i) => i);
+  if (avoid) {
+    const len = paths.map((q) => { let L = 0; for (let i = 1; i < q.pts.length; i++) L += Math.abs(q.pts[i][0] - q.pts[i - 1][0]) + Math.abs(q.pts[i][1] - q.pts[i - 1][1]); return L; });
+    order.sort((a, b) => len[b] - len[a]);
+  }
+  for (let oi = 0; oi < order.length; oi++) {
+    const pi = order[oi];
+    if ((oi & 7) === 0) yield oi / paths.length;
+    const mine = [];
     let pts = paths[pi].pts;
     if (pts.length < 2) continue;
     if (pts[pts.length - 1][0] < pts[0][0] && P.readable !== false) pts = pts.slice().reverse();
-    const st = paths[pi].text ? mkStream(paths[pi].text) : (P.restart ? mkStream(P.text) : shared);
+    const st = paths[pi].text ? mkStream(mirrorText(paths[pi].text, P.mirror, P.emph !== false)) : (P.restart ? mkStream(P.text) : shared);
     const radii = pts.map((q) => q[2] ?? 2).sort((a, b) => a - b);
     const rCap = radii[radii.length >> 1] * 1.35;
-    const cum = [0];
-    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-    const total = cum[cum.length - 1];
-    let s = 0, seg = 1, guard = 0;
+    const { total, at } = pathWalker(pts);
+    let s = 0, guard = 0;
     while (s < total && guard++ < 20000) {
-      while (seg < cum.length - 1 && cum[seg] < s) seg++;
-      const a = pts[seg - 1], b = pts[seg];
-      const t0 = (s - cum[seg - 1]) / ((cum[seg] - cum[seg - 1]) || 1);
-      const x = a[0] + (b[0] - a[0]) * t0, y = a[1] + (b[1] - a[1]) * t0;
-      const rr = Math.min(rCap, (a[2] ?? 2) + ((b[2] ?? 2) - (a[2] ?? 2)) * t0);
+      const p0 = at(s);
+      const rr = Math.min(rCap, p0[2] ?? 2);
       let size = P.sizeFrom === 'fixed' ? (P.size || 14) : rr * 2.5 * fill;
       size = Math.round(clamp(size, P.minSize ?? 3, P.maxSize ?? 400) * 2) / 2;
-      const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
-      const ch = st.next();
-      const w = measure(ch, size, weight, fam);
+      if (avoid) {
+        const q = at(s + size * 0.25);
+        if (disc(q[0], q[1], size * 0.3, false)) { s += size * 0.3; continue; }
+      }
+      const ch = st.next(), e = st.e;
+      const size2 = emphSize(e, size), wgt2 = emphWeight(e, weight);
+      const w = measure(ch, size2, wgt2, fam);
+      const { pm, ang } = letterOnPath(at, total, s, Math.max(w, size2 * 0.2));
+      const x = pm[0], y = pm[1];
       if (ch !== ' ' && x >= 0 && y >= 0 && x < W && y < H) {
         const u = clamp(x / W, 0, 0.999), v = clamp(y / H, 0, 0.999);
-        items.push({ t: 'text', s: ch, x, y, size, font: fam, weight, fill: colorFor(S, P, S.rgbAt(u, v), 1), align: 'center', rot: ang });
+        items.push(emphItem({ t: 'text', s: ch, x, y, size: size2, font: fam, weight: wgt2, fill: colorFor(S, P, S.rgbAt(u, v), 1), align: 'center', rot: ang }, e));
+        if (avoid) mine.push(x, y, size2 * 0.38);
       }
-      s += Math.max(w, size * 0.2) + (P.tracking ?? 0.06) * size;
+      s += Math.max(w, size2 * 0.2) + (P.tracking ?? 0.06) * size2;
     }
+    for (let k = 0; k < mine.length; k += 3) disc(mine[k], mine[k + 1], mine[k + 2], true);
   }
   return { items, stats: { lines: paths.length } };
 }
 
-const MODES = { paths: modePaths, grid: modeGrid, unicode: modeUnicode, rows: modeFlowRows, halftone: modeHalftone, mosaic: modeMosaic, calligram: modeCalligram, flow: modeFlow, spiral: modeSpiral, relief: modeRelief, typewriter: modeTypewriter };
+const MODES = { paths: modePaths, grid: modeGrid, unicode: modeUnicode, rows: modeFlowRows, halftone: modeHalftone, mosaic: modeMosaic, cloud: modeCloud, calligram: modeCalligram, flow: modeFlow, spiral: modeSpiral, relief: modeRelief, typewriter: modeTypewriter };
 function inkDriven(L) {
   if (PLUGINS[L.mode]) return !!PLUGINS[L.mode].inkDriven;
   if (L.mode === 'paths') return false;
@@ -1555,6 +2797,22 @@ function cmykProof(r, g, b) {
   const dim = 0.97;
   return [clamp(R * dim + 0.015, 0, 1), clamp(G * dim + 0.015, 0, 1), clamp(B * dim + 0.015, 0, 1)];
 }
+const modelMaps = new Map();
+/* one mapper for each color model, kept, so drawing the sheet of Cut out does not build a new one each time */
+function modelMap(model) {
+  if (!model || model === 'rgb') return null;
+  if (!modelMaps.has(model)) modelMaps.set(model, mapColorModel(model));
+  return modelMaps.get(model);
+}
+/* one color, 0..1 sRGB, in an output color model, as [r, g, b] in 0..1. For pictures filled into the letters. */
+function modelRGB(model, r, g, b) {
+  const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  if (model === 'gray') return [l, l, l];
+  if (model === 'bw') { const q = l >= 0.5 ? 1 : 0; return [q, q, q]; }
+  if (model === 'ansi') return ANSI16_RGB[nearestPal([r, g, b], ANSI16_RGB)];
+  if (model === 'cmyk') return cmykProof(r, g, b);
+  return [r, g, b];
+}
 function mapColorModel(model) {
   if (!model || model === 'rgb') return null;
   const cache = new Map();
@@ -1562,13 +2820,7 @@ function mapColorModel(model) {
     let v = cache.get(c);
     if (v) return v;
     const [r, g, b, a] = parseColor(c);
-    let o;
-    const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    if (model === 'gray') o = [l, l, l];
-    else if (model === 'bw') { const q = l >= 0.5 ? 1 : 0; o = [q, q, q]; }
-    else if (model === 'ansi') o = ANSI16_RGB[nearestPal([r, g, b], ANSI16_RGB)];
-    else if (model === 'cmyk') o = cmykProof(r, g, b);
-    else o = [r, g, b];
+    const o = modelRGB(model, r, g, b);
     v = fmtColor(o[0], o[1], o[2], model === 'bw' ? (a >= 0.5 ? 1 : 0) : a);
     cache.set(c, v);
     return v;
@@ -1603,8 +2855,8 @@ function quantizeItems(items, k, R) {
   return pal.sort((a, b) => { const la = parseHex(a), lb = parseHex(b); return (la[0] + la[1] + la[2]) - (lb[0] + lb[1] + lb[2]); });
 }
 
-const STAGES = { grid: 'Choosing characters', unicode: 'Placing dots', rows: 'Setting text', halftone: 'Sizing glyphs', mosaic: 'Packing words', calligram: 'Pouring text into the shape', flow: 'Tracing flow lines', spiral: 'Winding the spiral', relief: 'Lifting the rows', typewriter: 'Typing', paths: 'Writing along the lines' };
-const PX_KEYS = ['size', 'spacing', 'maxSize', 'minSize'];
+const STAGES = { grid: 'Choosing characters', unicode: 'Placing dots', rows: 'Setting text', halftone: 'Sizing letters', mosaic: 'Packing words', cloud: 'Filling the shape with words', calligram: 'Pouring text into the shape', flow: 'Tracing flow lines', spiral: 'Winding the spiral', relief: 'Lifting the rows', typewriter: 'Typing', paths: 'Writing along the lines' };
+const PX_KEYS = ['size', 'spacing', 'maxSize', 'minSize', 'shapeOutline'];
 const BOX_MODES = ['grid', 'unicode', 'halftone', 'mosaic', 'typewriter'];
 /* =============== PLUGINS ===============
    A plugin adds a text-art style. It is a plain object handed to Sungfluence.plugin({...}).
@@ -1688,20 +2940,36 @@ function removePlugin(id) {
 const pluginList = () => Object.keys(PLUGINS).map((key) => ({ key, def: PLUGINS[key] }));
 const onPlugin = (f) => { pluginListeners.push(f); };
 
-/* scene = { width, scale, paper, transparent, margin, colorModel, layers: [{mode, opacity, ...params}] }
+/* scene = { width, scale, paper, transparent, margin, colorModel, paperClass, ground, layers: [{mode, opacity, ...params}] }
+   paperClass ('light' | 'gray' | 'dark') and ground (the paper or T-shirt color) decide how colors fit the paper.
    scale draws a smaller proxy of the same design: every pixel-sized setting shrinks with it. */
 function* renderGen(src, scene) {
   const k = scene.scale || 1;
   const W = Math.round((scene.width || 1600) * k);
   const H = Math.round(W * src.h / src.w);
-  const out = { W, H, paper: scene.paper || '#ffffff', transparent: !!scene.transparent, layers: [], colorModel: scene.colorModel || 'rgb' };
+  const out = { W, H, paper: scene.paper || '#ffffff', transparent: !!scene.transparent, layers: [], colorModel: scene.colorModel || 'rgb', flipX: !!scene.flipX, flipY: !!scene.flipY,
+    paperClass: PAPER_CLASSES.includes(scene.paperClass) ? scene.paperClass : null, ground: scene.ground || scene.paper || '#ffffff' };
   const layers = scene.layers.filter((L) => !L.hidden);
   for (let li = 0; li < layers.length; li++) {
     const L = layers[li];
     const P = Object.assign({}, scene.global || {}, L, { paper: scene.paper });
+    // colors that fit the paper: the app says which kind of paper the art is printed on
+    P.__fit = fitSetup(P.colorFit, scene.paperClass, scene.ground || scene.paper || '#ffffff');
+    // mirrored writing: the style reads the text in its mirrored order and lays the art out from that
+    if (P.mirror === 'word' || P.mirror === 'line') { P.text = mirrorText(P.text, P.mirror, P.emph !== false); P.words = mirrorWords(P.words, P.mirror, P.emph !== false); }
     // coarse > 1 draws fewer, larger letters: used for small thumbnails, where full density only costs time
-    const coarse = scene.coarse || 1;
-    if (k * coarse !== 1) { for (const key of PX_KEYS) if (typeof P[key] === 'number') P[key] *= k * coarse; }
+    // A Word cloud on the fixed grid (cloudGrid) is drawn in full: its grid does not grow with the size, so a
+    // thumbnail costs no more than the preview, and it shows the same words in the same shape.
+    const coarse = L.mode === 'cloud' && P.cloudGrid > 0 ? 1 : (scene.coarse || 1);
+    // Text size: one multiplier that enlarges every letter of the layer evenly, in every style
+    const ts = clamp(+P.textScale || 1, 0.2, 5);
+    // pxW: the artboard width the layer's pixel sizes were set for. Such a layer grows with the artboard,
+    // so it looks the same at any width. Without pxW (older projects, sizes set by hand) pixels are pixels.
+    const ab = P.pxW > 0 ? (scene.width || 1600) / P.pxW : 1;
+    if (k * coarse * ts * ab !== 1) { for (const key of PX_KEYS) if (typeof P[key] === 'number') P[key] *= k * coarse * ts * ab; }
+    if (ts !== 1 && typeof P.cols === 'number') P.cols = Math.max(4, Math.round(P.cols / ts));
+    // Line text takes its letter height from the width of each line
+    if (ts !== 1 && L.mode === 'paths' && typeof P.fill === 'number') P.fill *= ts;
     if (coarse !== 1 && typeof P.cols === 'number') P.cols = Math.max(8, Math.round(P.cols / coarse));
     if (P.mode === 'mosaic') P.cell = Math.max(2, Math.round(3 * Math.min(1, k)));
     P.__scale = k;
@@ -1712,9 +2980,11 @@ function* renderGen(src, scene) {
     P.__inkDriven = inkDriven(P);
     P.__perChar = shapeRegion || (fOn && aff !== 'density') || (P.jitter || 0) > 0 || (P.effect && P.effect !== 'none');
     if (shapeRegion) {
-      const m = buildMask(null, { maskSource: P.regionShape || 'text', maskText: P.regionText || 'TYPE', maskFont: P.font }, W, H);
+      // the shape word keeps a margin from the edges of the artboard, so its first and last letters show whole
+      const m = buildMask(null, { maskSource: P.regionShape || 'text', maskText: P.regionText || 'TYPE', maskFont: P.font, maskFit: 0.86 }, W, H);
       const inside = P.region === 'inside';
       P.__shapeAt = (u, v) => m.at(u * W, v * H) === inside;
+      P.__shapeFloor = 0.6;
     }
     const stage = STAGES[L.mode] || 'Working';
     if (!MODES[L.mode]) { yield { stage, p: li / layers.length }; continue; }
@@ -1724,7 +2994,7 @@ function* renderGen(src, scene) {
     while (!(sst = sg.next()).done) yield { stage: 'Reading the photo', p: li / layers.length };
     const S = sst.value;
     // area sums are built in slices here; styles and photo color averaging read them
-    if (BOX_MODES.includes(L.mode) || PLUGINS[L.mode] || P.color === 'image' || ['calligram', 'rows'].includes(L.mode)) { const bg = S.boxReady(); while (!bg.next().done) yield { stage: 'Reading the photo', p: li / layers.length }; }
+    if (BOX_MODES.includes(L.mode) || PLUGINS[L.mode] || P.color === 'image' || ['calligram', 'rows', 'spiral', 'relief'].includes(L.mode)) { const bg = S.boxReady(); while (!bg.next().done) yield { stage: 'Reading the photo', p: li / layers.length }; }
     const R = rng(P.seed || 7);
     yield { stage, p: li / layers.length };
     const gen = MODES[L.mode](S, P, W, H, R);
@@ -1741,6 +3011,23 @@ function* renderGen(src, scene) {
     res.id = L.id;
     res.effect = P.effect || 'none';
     res.effectColor = P.effectColor || (P.effect === 'riso' ? '#e4572e' : (isDark(scene.paper || '#fff') ? '#000000' : 'rgba(0,0,0,0.28)'));
+    // Shadow: one even tone made from the paper, a darker see-through copy of each letter, or one color of its
+    // own. Riso offset keeps its ink.
+    res.shadowFrom = ['color', 'paper'].includes(P.shadowFrom) ? P.shadowFrom : 'letters';
+    res.shadowColor = P.shadowColor || P.effectColor || '#1b1b1b';
+    res.shadowAlpha = clamp(P.shadowAlpha ?? 0.35, 0, 1);
+    res.shadowDark = isDark(scene.ground || scene.paper || '#fff');
+    { const pg = parseHex(scene.ground || scene.paper || '#fff'), t = 0.72, to = res.shadowDark ? 1 : 0;
+      res.shadowPaper = toHex(pg[0] + (to - pg[0]) * t, pg[1] + (to - pg[1]) * t, pg[2] + (to - pg[2]) * t); }
+    res.risoTone = P.risoTone !== false;
+    // drawn on a shape: the app keeps the picture in the letters off the paper's tone, so the shape reads
+    res.shapeRegion = shapeRegion;
+    // Outline: letters under 10 px (on a 1600 px artboard) are too small to show one, so they stay solid
+    res.outlineMin = 10 * k * (scene.width || 1600) / 1600;
+    // Letter fill: what the letters are filled with. The drawing reads it; the layout does not.
+    for (const key of FILL_KEYS) res[key] = P[key];
+    // the fitting of this layer, kept for the sheet of Cut out, which is chosen when the letters are drawn
+    Object.defineProperty(res, '__fit', { value: P.__fit, enumerable: false, writable: true, configurable: true });
     out.layers.push(res);
   }
   // margin around the artwork
@@ -1758,6 +3045,7 @@ function* renderGen(src, scene) {
     for (const L of out.layers) {
       for (const it of L.items) { if (!it.fillOriginal) it.fillOriginal = it.fill; it.fill = map(it.fill); }
       L.effectColor = map(L.effectColor);
+      L.shadowColor = map(L.shadowColor); L.shadowPaper = map(L.shadowPaper);
     }
   }
   return out;
@@ -1765,6 +3053,249 @@ function* renderGen(src, scene) {
 
 function render(src, scene) { const g = renderGen(src, scene); let r; while (!(r = g.next()).done); return r.value; }
 
+
+/* ---------------- turning the text ----------------
+   Every style hands back the same list of pieces, so one step here can turn them all: a letter, a word
+   or a whole line, whatever that style writes. Each piece turns where it stands, so nothing moves away.
+   Word cloud is left alone, because it has to know each angle while it packs the shape. */
+const turnWanted = (P) => P.turn && P.turn !== 'none' && P.mode !== 'cloud' &&
+  (P.turn === 'flow' || (P.turnAngle || 0) !== 0 || (P.turnTilt || 0) > 0 || (Array.isArray(P.turnSet) ? P.turnSet : [0]).some((a) => a % 360 !== 0));
+/* A line becomes single letters, so each one can turn on its own. Arabic script is never broken up:
+   its letters join, and apart they would be the wrong shapes. */
+function splitPieces(it, P) {
+  const chars = Array.from(it.s || '');
+  if (chars.length < 2 || ARABIC.test(it.s)) return [Object.assign({}, it, { mono: undefined })];
+  const out = [];
+  if (it.mono) {
+    for (let i = 0; i < chars.length; i++) {
+      if (chars[i] === ' ' || chars[i] === '⠀') continue;
+      out.push(Object.assign({}, it, { s: chars[i], x: it.x + i * it.mono + it.mono / 2, align: 'center', mono: undefined }));
+    }
+    return out;
+  }
+  const fam = it.font || P.font || 'sans', wgt = it.weight || P.weight || 400;
+  const total = measure(it.s, it.size, wgt, fam);
+  let cur = it.align === 'center' ? it.x - total / 2 : it.x;
+  for (const ch of chars) {
+    const w = measure(ch, it.size, wgt, fam);
+    if (ch.trim()) out.push(Object.assign({}, it, { s: ch, x: cur + w / 2, align: 'center', mono: undefined }));
+    cur += w;
+  }
+  return out.length ? out : [Object.assign({}, it, { mono: undefined })];
+}
+/* ---------- mirroring the writing ----------
+   Different from flipping the whole layer: the picture keeps its shape and only the writing is turned
+   around. It happens in two steps, so the art is made again from the mirrored writing:
+   1. Before the style lays anything out, the reading order of the text is turned around: nothing for
+      Each letter, the letters of every word for Each word, the whole line for Each line. Urdu and Arabic
+      words stay whole, because their letters join.
+   2. After the layout, every glyph is turned around where it stands (mir), so each letter keeps the size,
+      weight and color the style chose for that very spot of the photo. Canvas, SVG and PDF all draw it. */
+const MIRROR_LEVELS = ['letter', 'word', 'line'];
+const mirrorWanted = (P) => MIRROR_LEVELS.includes(P.mirror);
+const itemWidth = (it, P) => measure(it.s, it.size, it.weight || P.weight || 400, it.font || P.font || 'sans');
+/* Where a piece turns around: its own middle. */
+function mirCenter(it, P) {
+  if (it.mono) return it.x + Array.from(it.s || '').length * it.mono / 2;
+  return it.align === 'center' ? it.x : it.x + itemWidth(it, P) / 2;
+}
+/* The units the reading order is made of: one letter with its accents, or a whole word of joined script */
+const JOINS = /[\p{M}\u200c\u200d]/u;
+function mirUnits(pairs) {
+  const out = [];
+  for (const q of pairs) {
+    const last = out[out.length - 1];
+    if (last && (JOINS.test(q[0]) || (ARABIC.test(q[0]) && last.arabic))) { last.p.push(q); continue; }
+    out.push({ p: [q], arabic: ARABIC.test(q[0]), space: /\s/.test(q[0]) });
+  }
+  return out;
+}
+/* One line of [letter, mark] pairs in the mirrored reading order */
+function mirOrder(pairs, level) {
+  const units = mirUnits(pairs);
+  if (level === 'line') return units.reverse().flatMap((u) => u.p);
+  const out = [];
+  let word = [];
+  const flush = () => { for (let i = word.length - 1; i >= 0; i--) out.push(...word[i].p); word = []; };
+  for (const u of units) { if (u.space) { flush(); out.push(...u.p); } else word.push(u); }
+  flush();
+  return out;
+}
+/* Writes letters with their marks back as text, so the styles read the mirrored text with its marks */
+const MARK_TOKENS = [['b', '**'], ['u', '__'], ['big', '^'], ['small', '~'], ['i', '*']];
+function markText(pairs) {
+  const q = pairs.length > 0 && pairs.every((p) => p[1] && p[1].q);
+  let s = q ? '> ' : '', on = {}, k = 0;
+  const flags = (e) => { const f = {}; for (const [n] of MARK_TOKENS) f[n] = !!(e && e[n]); return f; };
+  const toggle = (want) => { for (const [n, tok] of MARK_TOKENS) if (!!on[n] !== want[n]) s += tok; on = want; };
+  while (k < pairs.length) {
+    const e = pairs[k][1];
+    let j = k;
+    while (j < pairs.length && pairs[j][1] === e) j++;
+    toggle(flags(e));
+    const run = pairs.slice(k, j).map((p) => p[0]);
+    if (e && e.c && !run.some((c) => c === ']' || c === '\n')) s += '[' + run.join('') + ']{' + e.c + '}';
+    else s += run.map((c) => '*_^~[#>\\'.includes(c) ? '\\' + c : c).join('');
+    k = j;
+  }
+  toggle(flags(null));
+  return s;
+}
+/* The text in mirrored reading order, line by line. Typed marks (bold, colors and the rest) stay on their letters. */
+function mirrorText(text, level, emph) {
+  if (text == null || text === '' || (level !== 'word' && level !== 'line')) return text;
+  const src = String(text);
+  if (!emph) return src.split('\n').map((l) => mirOrder(Array.from(l).map((c) => [c, null]), level).map((p) => p[0]).join('')).join('\n');
+  const { plain, marks } = parseEmph(src);
+  const all = Array.from(plain).map((c, i) => [c, marks ? marks[i] || null : null]);
+  const lines = [[]];
+  for (const p of all) { if (p[0] === '\n') lines.push([]); else lines[lines.length - 1].push(p); }
+  return lines.map((l) => markText(mirOrder(l, level))).join('\n');
+}
+/* A list of words (one per line or between commas, maybe with ": 5" after it): each one in mirrored order */
+function mirrorWords(words, level, emph) {
+  if (words == null || words === '' || (level !== 'word' && level !== 'line')) return words;
+  return String(words).split(/(\n|,)/).map((w) => {
+    if (w === '\n' || w === ',' || !w.trim()) return w;
+    const m = /^(\s*)(.+?)(\s*[:：]\s*\d+(?:\.\d+)?)?(\s*)$/.exec(w);
+    return m ? m[1] + mirrorText(m[2], level, emph) + (m[3] || '') + m[4] : w;
+  }).join('');
+}
+/* Step 2: every glyph turned around where it stands. Nothing moves, so the picture keeps its shape. */
+function mirrorItems(items, P) {
+  for (const q of items) if (q.t === 'text' && q.s) markMirror(q, P);
+  return items;
+}
+/* One piece mirrored where it stands. */
+function markMirror(q, P) {
+  q.mirX = mirCenter(q, P);
+  if (!q.mono) { q.x = q.mirX; q.align = 'center'; }
+  q.mir = 1;
+  return q;
+}
+/* What is written inside the turned-around frame of a mirrored piece: its letters in the opposite order, so that
+   after the turn each letter stands where it was laid out, turned around on the spot. Joined script stays whole. */
+function mirDraw(s) {
+  const u = mirUnits(Array.from(String(s || '')).map((c) => [c, null]));
+  return u.length < 2 ? String(s || '') : u.reverse().map((x) => x.p.map((p) => p[0]).join('')).join('');
+}
+
+/* Turns one piece about its own middle. A piece anchored at its left edge is moved to its middle first,
+   so it turns on the spot instead of swinging around its first letter. */
+function turnPiece(it, a, P) {
+  if (it.align !== 'center') {
+    it.x += measure(it.s, it.size, it.weight || P.weight || 400, it.font || P.font || 'sans') / 2;
+    it.align = 'center';
+  }
+  it.rot = a;
+  return it;
+}
+/* The direction of the edges in the picture, worked out on a small grid: enough to point a letter,
+   and small enough not to hold up the window. */
+function* turnField(S) {
+  const fw = Math.max(16, Math.min(192, S.w)), fh = Math.max(16, Math.round(fw * S.h / S.w));
+  const L = new Float32Array(fw * fh);
+  for (let y = 0; y < fh; y++) { for (let x = 0; x < fw; x++) L[y * fw + x] = S.ink[S.idx((x + 0.5) / fw, (y + 0.5) / fh)]; if ((y & 63) === 0) yield 0; }
+  const n = fw * fh, gx = new Float32Array(n), gy = new Float32Array(n);
+  for (let y = 1; y < fh - 1; y++) for (let x = 1; x < fw - 1; x++) {
+    const i = y * fw + x;
+    gx[i] = (L[i - fw + 1] + 2 * L[i + 1] + L[i + fw + 1]) - (L[i - fw - 1] + 2 * L[i - 1] + L[i + fw - 1]);
+    gy[i] = (L[i + fw - 1] + 2 * L[i + fw] + L[i + fw + 1]) - (L[i - fw - 1] + 2 * L[i - fw] + L[i - fw + 1]);
+  }
+  const jxx = new Float32Array(n), jxy = new Float32Array(n), jyy = new Float32Array(n);
+  for (let i = 0; i < n; i++) { jxx[i] = gx[i] * gx[i]; jxy[i] = gx[i] * gy[i]; jyy[i] = gy[i] * gy[i]; }
+  yield 0;
+  const Sxx = blur(jxx, fw, fh, 2, 2), Sxy = blur(jxy, fw, fh, 2, 2), Syy = blur(jyy, fw, fh, 2, 2);
+  const ang = new Float32Array(n);
+  for (let i = 0; i < n; i++) ang[i] = 0.5 * Math.atan2(2 * Sxy[i], Sxx[i] - Syy[i]) + Math.PI / 2;
+  return { at(u, v) { const x = Math.min(fw - 1, Math.max(0, Math.floor(u * fw))), y = Math.min(fh - 1, Math.max(0, Math.floor(v * fh))); return ang[y * fw + x]; } };
+}
+function* turnItems(src, S, P, W, H, R) {
+  const presets = (Array.isArray(P.turnSet) && P.turnSet.length ? P.turnSet : [0]).map(Number);
+  const g = (P.turnAngle || 0) * Math.PI / 180, tilt = Math.abs(P.turnTilt || 0) * Math.PI / 180;
+  const F = P.turn === 'flow' ? yield* turnField(S) : null;
+  const split = !!P.turnSplit;
+  const out = [], words = [];
+  let _n = 0;
+  for (const it of src) {
+    if ((++_n & 2047) === 0) yield 0.6 * _n / src.length;
+    // letters a style has turned already, making room for them in their row (Text portrait)
+    if (it.t !== 'text' || it.turned) { out.push(it); continue; }
+    // a row of fixed-width characters has to come apart before any of it can turn
+    const pieces = (split || it.mono) ? splitPieces(it, P) : [it];
+    for (const q of pieces) {
+      const u = clamp(q.x / W, 0, 0.9999), v = clamp(q.y / H, 0, 0.9999);
+      const extra = g + (tilt ? (R() * 2 - 1) * tilt : 0);
+      const own = q.rot || 0, w = itemWidth(q, P), h = q.size * 0.72;
+      // along the picture: follow the edges there. Otherwise add to whatever angle the style chose.
+      const a = F ? F.at(u, v) + extra : own + presets[Math.floor(R() * presets.length)] * Math.PI / 180 + extra;
+      if (Array.from(q.s).length < 2) {
+        // a single letter keeps to its own place: turned, it is made just small enough to fit the room the
+        // style gave it, so turned letters do not run into their neighbors
+        const d = a - own, cs = Math.abs(Math.cos(d)), sn = Math.abs(Math.sin(d));
+        // (with a little air around it, so a turned letter does not touch the next one)
+        const fit = Math.min(1, w / (w * cs + h * sn || 1), h / (w * sn + h * cs || 1));
+        turnPiece(q, a, P);
+        if (fit < 0.999) q.size *= Math.max(0.45, fit * (0.8 + 0.2 * cs));
+        out.push(q);
+      } else {
+        // a word or a line is turned only where it has room; see roomyTurns
+        turnPiece(q, own, P);
+        q.rot = a;
+        words.push({ q, w, h, own, alt: F ? [] : presets.map((p) => own + p * Math.PI / 180 + extra) });
+        out.push(q);
+      }
+    }
+  }
+  if (words.length) { const drop = yield* roomyTurns(words); if (drop.size) return out.filter((q) => !drop.has(q)); }
+  return out;
+}
+/* Words and lines turned where they stand would run into each other. The biggest go first; each one takes
+   the first angle that has room: the one it drew, the other angles ticked, then the style's own. Where
+   none has room it tries again a little smaller; a piece with no room even then is left out, so the words
+   never pile up. */
+function* roomyTurns(words) {
+  const drop = new Set();
+  words.sort((a, b) => b.w * b.h - a.w * a.h);
+  const sz = words.map((o) => o.h).sort((a, b) => a - b), G = Math.max(4, 2 * sz[sz.length >> 1]);
+  const grid = new Map(), kept = [];
+  // a box: center, the direction it points, and half its length and height (a little inside the letters)
+  const boxOf = (o, a, k) => ({ x: o.q.x, y: o.q.y, c: Math.cos(a), s: Math.sin(a), hw: o.w * 0.47 * k, hh: o.h * 0.47 * k });
+  const span = (b) => { const ex = Math.abs(b.c) * b.hw + Math.abs(b.s) * b.hh, ey = Math.abs(b.s) * b.hw + Math.abs(b.c) * b.hh; return [Math.floor((b.x - ex) / G), Math.floor((b.y - ey) / G), Math.floor((b.x + ex) / G), Math.floor((b.y + ey) / G)]; };
+  const proj = (b, ax, ay) => Math.abs(b.c * ax + b.s * ay) * b.hw + Math.abs(-b.s * ax + b.c * ay) * b.hh;
+  const hits = (a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    for (const [ax, ay] of [[a.c, a.s], [-a.s, a.c], [b.c, b.s], [-b.s, b.c]]) if (Math.abs(dx * ax + dy * ay) >= proj(a, ax, ay) + proj(b, ax, ay)) return false;
+    return true;
+  };
+  const free = (b) => {
+    const [x0, y0, x1, y1] = span(b);
+    for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) { const l = grid.get(gx + ',' + gy); if (l) for (const k of l) if (hits(b, kept[k])) return false; }
+    return true;
+  };
+  const add = (b) => { const id = kept.push(b) - 1, [x0, y0, x1, y1] = span(b); for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) { const key = gx + ',' + gy; const l = grid.get(key); if (l) l.push(id); else grid.set(key, [id]); } };
+  let n = 0;
+  for (const o of words) {
+    if ((++n & 255) === 0) yield 0.6 + 0.4 * n / words.length;
+    const tries = [o.q.rot, ...o.alt.filter((a) => Math.abs(a - o.q.rot) > 1e-6), o.own];
+    let ok = false;
+    for (const k of [1, 0.8, 0.64]) {
+      for (const a of (k === 1 ? tries : tries.slice(0, -1))) { const b = boxOf(o, a, k); if (free(b)) { o.q.rot = a; o.q.size *= k; add(b); ok = true; break; } }
+      if (ok) break;
+    }
+    if (!ok) drop.add(o.q);
+  }
+  return drop;
+}
+
+/* An even threshold pattern (interleaved gradient noise) over a grid about one letter wide: neighbors get
+   thresholds far apart, so letters dropped by it are spread out evenly. 0 to 1. */
+function fadeOrder(x, y, size) {
+  const s = Math.max(1, size * 0.6), gx = Math.floor(x / s), gy = Math.floor(y / s);
+  const f = 0.06711056 * gx + 0.00583715 * gy;
+  const t = 52.9829189 * (f - Math.floor(f));
+  return t - Math.floor(t);
+}
 function* post(res, S, P, W, H, R) {
   const fOn = P.focus && P.focus !== 'none';
   const aff = P.focusAffect || 'density';
@@ -1776,7 +3307,7 @@ function* post(res, S, P, W, H, R) {
   // photo colors averaged under each letter read truer than one pixel; grid styles already average their cells
   const avg = P.color === 'image' && P.colorAvg !== false && !BOX_MODES.includes(P.mode);
   const italic = !!P.italic;
-  const items = [];
+  const items = [], wordFade = new Map(), ownFade = !!P.letterFill && P.letterFill !== 'ink' && P.letterFill !== 'cut';
   let _n = 0;
   for (const it of res.items) {
     if ((++_n & 16383) === 0) yield _n / res.items.length;
@@ -1787,12 +3318,26 @@ function* post(res, S, P, W, H, R) {
     if (S.keepAt(u, v) < 0.5) continue;
     if (P.__shapeAt && P.mode !== 'mosaic' && !P.__shapeAt(u, v)) continue;
     const w = fOn ? focusWeight(P, u, v, W / H) : 1;
-    if (dropDensity && R() > w) continue;
-    if (fadeColor) { it.a = (it.a ?? 1) * w; if (it.a < 0.03) continue; }
+    // thinning by an even, ordered pattern instead of chance: the letters thin out evenly toward the faded
+    // part, with no clumps and crumbs. With Both, the color fades first and only the faintest letters thin out.
+    // Letters set one by one in words (Text portrait) thin out a whole word at a time, by the fade at the
+    // word's first letter, so no word loses a letter from its middle.
+    let wk = w, ord = 0;
+    if (it.wd != null && w < 1) {
+      wk = wordFade.get(it.wd);
+      if (wk === undefined) { wk = w; wordFade.set(it.wd, w); }
+      ord = (it.wd * 0.6180339887) % 1;
+    } else if (dropDensity && w < 1) ord = fadeOrder(cx, cy, it.t === 'rect' ? Math.max(it.w, it.h) : it.size);
+    if (dropDensity && wk < 1 && ord > (fadeColor ? wk * 3 : wk)) continue;
+    // with the color fading, what is fainter than 8% is left out, so the fade ends in clean paper
+    if (fadeColor) { if (wk < 0.08) continue; it.a = (it.a ?? 1) * w; if (it.wd == null && it.a < 0.08) continue; }
     if (alpha < 1 || alphaTone > 0) {
       it.a = (it.a ?? 1) * alpha * (1 - alphaTone + alphaTone * clamp(S.inkAt(u, v) * 1.15, 0, 1));
       if (it.a < 0.02) continue;
     }
+    // letters that show the photo: a letter colored by a mark keeps its color over the photo, and follows the
+    // tones of the picture by its opacity, so the marks do not speckle the light parts
+    if (it.own && ownFade) it.a = (it.a ?? 1) * clamp(0.12 + 1.1 * S.inkAt(u, v), 0.12, 1);
     if (avg && it.t === 'text' && !it.own) {
       const len = Array.from(it.s).length;
       const hw = Math.max(1, it.size * 0.3 * Math.min(len, 12)), hh = it.size * 0.42;
@@ -1811,7 +3356,18 @@ function* post(res, S, P, W, H, R) {
     }
     items.push(it);
   }
-  res.items = items;
+  // a piece marked __like this__ gets a thin bar under it, so every export carries the line
+  const lines2 = [];
+  for (const it of items) {
+    if (!it.e || !it.e.u || it.t !== 'text' || it.rot) continue;
+    const w = measure(it.s, it.size, it.weight || P.weight || 400, it.font || P.font || 'sans');
+    // styles that set one letter at a time need the bars to meet, or the line comes out dashed
+    const pad = Array.from(it.s).length === 1 ? w * 0.26 : 0;
+    lines2.push({ t: 'rect', x: (it.align === 'center' ? it.x - w / 2 : it.x) - pad / 2, y: it.y + it.size * 0.42, w: w + pad, h: Math.max(0.6, it.size * 0.055), fill: it.fill, a: it.a });
+  }
+  if (lines2.length) items.push(...lines2);
+  const laid = turnWanted(P) ? yield* turnItems(items, S, P, W, H, R) : items;
+  res.items = mirrorWanted(P) ? mirrorItems(laid, P) : laid;
   if ((P.limitColors || 0) >= 2) {
     res.palette = quantizeItems(items, Math.round(P.limitColors), R);
     // the user can swap any of the found inks for a color of their own
@@ -1826,12 +3382,145 @@ function* post(res, S, P, W, H, R) {
 }
 
 /* ---------- drawing ---------- */
+/* Letter fill. 'ink' draws the letters in their own colors. 'photo' and 'soft' fill them with the photo,
+   'cut' makes them holes in a sheet with the photo behind. The picture comes from opts.fillImage(layer),
+   which the app supplies; without it (thumbnails, text exports) the letters are drawn in ink. */
+const FILL_KEYS = ['letterFill', 'fillShow', 'fillSoft', 'fillSheet', 'fillCutSoft', 'fillPop', 'fillSheetSee'];
+const fillOn = (L) => !!L && !!L.letterFill && L.letterFill !== 'ink';
+const fillSoftOn = (L) => L.letterFill === 'soft' || (L.letterFill === 'cut' && !!L.fillCutSoft);
+/* the sheet of Cut out: the chosen color, or a dark ink that stands apart from the paper (a light one on dark paper) */
+const fillSheetOf = (L, out) => {
+  if (L.fillSheet) return L.fillSheet;
+  const ground = out.ground || out.paperOriginal || out.paper || '#ffffff', cls = out.paperClass || paperClassOf(ground);
+  if (cls === 'dark') return '#f2efe6';
+  // gray paper: whichever of the two stands further from it
+  if (cls === 'gray') return contrastRatio('#f2efe6', ground) > contrastRatio('#161616', ground) ? '#f2efe6' : '#161616';
+  return '#161616';
+};
+/* the sheet as it is drawn: a chosen color exactly as chosen, the default one fitted to the paper like the
+   letters; then in the output color model */
+function sheetColorOf(L, out) {
+  const c = L.fillSheet ? L.fillSheet : fitHex(L.__fit, fillSheetOf(L, out)), map = modelMap(out.colorModel);
+  return map ? map(c) : c;
+}
+function plainCanvas(w, h) {
+  if (typeof document !== 'undefined') { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; }
+  return new OffscreenCanvas(Math.max(1, w), Math.max(1, h));
+}
+/* The sheet of Cut out when the photo shows in it (See through the sheet): the photo, softened and grayed,
+   in a deep tone (the light tones stay light, the rest darkens a lot; for a light sheet the other way around),
+   then mixed with the sheet color. So the letters, which show the photo itself, stand out from the sheet
+   everywhere, and where the photo is as light as the paper the sheet stays close to the paper. Made once per
+   picture and setting, at a modest size: it is soft, so drawn large it loses nothing. */
+const sheetCache = new WeakMap();
+const lightInk = (c) => { const q = parseColor(c); return 0.2126 * q[0] + 0.7152 * q[1] + 0.0722 * q[2] >= 0.45; };
+function sheetPicture(img, L, out) {
+  const see = clamp(+L.fillSheetSee || 0, 0, 1), col = sheetColorOf(L, out);
+  const lift = lightInk(col);
+  const key = see.toFixed(3) + '|' + col + '|' + lift + '|' + (out.paper || '');
+  let m = sheetCache.get(img);
+  if (!m) { m = new Map(); sheetCache.set(img, m); }
+  if (m.has(key)) return m.get(key);
+  const iw = img.width, ih = img.height, k = Math.min(1, 900 / Math.max(iw, ih, 1));
+  const w = Math.max(1, Math.round(iw * k)), h = Math.max(1, Math.round(ih * k));
+  const a = plainCanvas(w, h), ax = a.getContext('2d'), b = plainCanvas(w, h), bx = b.getContext('2d');
+  // a removed background counts as paper
+  ax.fillStyle = out.paperOriginal || out.paper || '#ffffff'; ax.fillRect(0, 0, w, h);
+  if (typeof ax.filter === 'string') ax.filter = 'grayscale(0.6) blur(' + (Math.max(w, h) * 0.004).toFixed(2) + 'px)';
+  ax.imageSmoothingQuality = 'high'; ax.drawImage(img, 0, 0, w, h); ax.filter = 'none';
+  // the tone curve: the picture multiplied by itself (a light sheet: screened with itself)
+  bx.drawImage(a, 0, 0);
+  bx.globalCompositeOperation = lift ? 'screen' : 'multiply';
+  bx.drawImage(a, 0, 0);
+  bx.globalCompositeOperation = 'source-over';
+  if (see < 1) { bx.globalAlpha = 1 - see; bx.fillStyle = col; bx.fillRect(0, 0, w, h); bx.globalAlpha = 1; }
+  if (m.size >= 4) m.delete(m.keys().next().value);
+  m.set(key, b);
+  return b;
+}
+/* the sheet around the picture (in a margin): the sheet color mixed with the paper the same way */
+function sheetEdgeOf(L, out) {
+  const see = clamp(+L.fillSheetSee || 0, 0, 1), s = parseColor(sheetColorOf(L, out)), p = parseColor(out.paper || '#ffffff');
+  return toHex(s[0] + (p[0] - s[0]) * see, s[1] + (p[1] - s[1]) * see, s[2] + (p[2] - s[2]) * see);
+}
+/* The letters of one layer are drawn as a mask (dc), then filled with the picture and laid onto ctx */
+function fillFinish(ctx, dc, out, L, img) {
+  const m = out.margin || 0, tmp = dc.canvas, T = ctx.getTransform();
+  const show = clamp(L.fillShow ?? 1, 0, 1), op = L.opacity ?? 1;
+  let sheet = null, lift = '';
+  if (L.letterFill === 'cut') {
+    sheet = plainCanvas(tmp.width, tmp.height);
+    const sx = sheet.getContext('2d', { willReadFrequently: true });
+    sx.setTransform(T);
+    // a see-through sheet: the photo shows in it in a deep tone, so the whole picture reads
+    const see = clamp(+L.fillSheetSee || 0, 0, 1);
+    if (see > 0) {
+      sx.fillStyle = sheetEdgeOf(L, out); sx.fillRect(0, 0, out.W, out.H);
+      sx.imageSmoothingQuality = 'high'; sx.drawImage(sheetPicture(img, L, out), m, m, out.W - 2 * m, out.H - 2 * m);
+      // the photo in the holes a little brighter (darker on a light sheet), so the letters stand out more
+      lift = lightInk(sheetColorOf(L, out)) ? 'brightness(0.9)' : 'brightness(1.12)';
+    } else { sx.fillStyle = sheetColorOf(L, out); sx.fillRect(0, 0, out.W, out.H); }
+    sx.setTransform(1, 0, 0, 1, 0, 0); sx.globalCompositeOperation = 'destination-out'; sx.drawImage(tmp, 0, 0);
+  }
+  dc.save();
+  dc.setTransform(T); dc.globalAlpha = 1; dc.globalCompositeOperation = 'source-in';
+  dc.imageSmoothingQuality = 'high';
+  if (lift && typeof dc.filter === 'string') dc.filter = lift;
+  dc.drawImage(img, m, m, out.W - 2 * m, out.H - 2 * m);
+  dc.restore();
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = L.blend || 'source-over';
+  if (show > 0) { ctx.globalAlpha = op * show; ctx.drawImage(tmp, 0, 0); }
+  if (sheet) { ctx.globalAlpha = op; ctx.drawImage(sheet, 0, 0); }
+  ctx.restore();
+}
+/* The copy drawn under the letters by Shadow and Riso offset: its color, opacity (times the letter's own) and
+   offset for one piece. Riso offset is a second ink, printed a little out of register. Shadow is one even
+   tone made from the paper (a deep tone of it on light paper, a light glow of it on dark paper, where a dark
+   shadow would not show), a darker see-through copy of each letter, or one color chosen for it. */
+const SHADOW_DARKEN = 0.6;
+function underOf(L, it) {
+  const c = parseColor(it.fill);
+  if (L.effect === 'riso') {
+    // the second ink follows the tone of each letter: strong under dark letters, faint under pale ones
+    if (!L.risoTone) return { fill: L.effectColor, a: 0.9, off: 0.12 * it.size };
+    const y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2], t = L.shadowDark ? y : 1 - y;
+    return { fill: L.effectColor, a: 0.85 * clamp(1.1 * t, 0.08, 1), off: 0.12 * it.size };
+  }
+  if (L.shadowFrom === 'paper') return { fill: L.shadowPaper, a: L.shadowAlpha ?? 1, off: 0.11 * it.size };
+  let fill = L.shadowColor;
+  if (L.shadowFrom !== 'color') {
+    const k = L.shadowDark ? 0 : 1 - SHADOW_DARKEN;
+    fill = toHex(c[0] * k, c[1] * k, c[2] * k);
+  }
+  return { fill, a: L.shadowAlpha ?? 1, off: 0.08 * it.size };
+}
+/* Outline: the stroke follows the letter's size and weight, so bold letters keep more ink than thin ones and
+   the tones of the picture still read. Letters too small to show an outline stay solid. */
+const outlineWidth = (it) => it.size * (0.022 + 0.04 * clamp(((it.weight || 400) - 100) / 800, 0, 1));
+const outlineOn = (L, it) => L.effect === 'outline' && it.size >= (L.outlineMin || 0);
 function drawItem(ctx, it, dx, dy, fill, outline) {
   if (it.t === 'rect') { ctx.fillStyle = fill; ctx.fillRect(it.x + dx, it.y + dy, it.w, it.h); return; }
   ctx.font = fontStr(it.size, it.weight, it.font, it.italic);
   ctx.textAlign = it.align === 'center' ? 'center' : 'left';
-  if (outline) { ctx.strokeStyle = fill; ctx.lineWidth = Math.max(0.5, it.size * 0.045); } else ctx.fillStyle = fill;
+  if (outline) { ctx.strokeStyle = fill; ctx.lineWidth = Math.max(0.35, outlineWidth(it)); } else ctx.fillStyle = fill;
   const put = (s, x, y) => outline ? ctx.strokeText(s, x, y) : ctx.fillText(s, x, y);
+  // mirrored in place: turn the page around this piece's own middle, then write each letter where it was laid out
+  if (it.mir) {
+    const cx = it.mirX ?? it.x;
+    ctx.save();
+    ctx.translate(cx + dx, it.y + dy);
+    if (it.rot) ctx.rotate(it.rot);
+    ctx.scale(-1, 1);
+    if (it.mono) {
+      ctx.textAlign = 'center';
+      const chars = Array.from(it.s);
+      for (let i = 0; i < chars.length; i++) if (chars[i] !== ' ' && chars[i] !== '\u2800') put(chars[i], cx - (it.x + i * it.mono + it.mono / 2), 0);
+    } else { ctx.textAlign = 'center'; put(mirDraw(it.s), 0, 0); }
+    ctx.restore();
+    return;
+  }
   if (it.mono) {
     const chars = Array.from(it.s);
     for (let i = 0; i < chars.length; i++) if (chars[i] !== ' ' && chars[i] !== '⠀') put(chars[i], it.x + dx + i * it.mono, it.y + dy);
@@ -1844,27 +3533,65 @@ function* drawGen(ctx, out, scale, opts) {
   scale = scale || 1;
   opts = opts || {};
   ctx.save();
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.clearRect(0, 0, out.W, out.H);
+  // opts.view draws only the part of the picture the window is showing, at the resolution of the
+  // screen. The letters are already worked out, so this is a redraw, not a second layout.
+  const view = opts.view;
+  if (view) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, view.cw, view.ch);
+    ctx.setTransform(scale, 0, 0, scale, -view.x * scale, -view.y * scale);
+  } else {
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.clearRect(0, 0, out.W, out.H);
+  }
+  const vx0 = view ? view.x : 0, vx1 = view ? view.x + view.cw / scale : out.W;
+  const vy0 = view ? view.y : 0, vy1 = view ? view.y + view.ch / scale : out.H;
+  const outside = (it) => {
+    if (!view) return false;
+    const r = (it.t === 'rect' ? Math.max(it.w, it.h) : it.size * 2) + 4;
+    const x = out.flipX ? out.W - it.x : it.x, y = out.flipY ? out.H - it.y : it.y;
+    return x + r < vx0 || x - r > vx1 || y + r < vy0 || y - r > vy1;
+  };
+  // a flipped layer is a true mirror: the letters come out reversed, which is what an iron-on transfer needs
+  if (out.flipX || out.flipY) ctx.transform(out.flipX ? -1 : 1, 0, 0, out.flipY ? -1 : 1, out.flipX ? out.W : 0, out.flipY ? out.H : 0);
   if ((!out.transparent || opts.forcePaper) && !opts.noPaper) { ctx.fillStyle = out.paper; ctx.fillRect(0, 0, out.W, out.H); }
   ctx.textBaseline = 'middle';
   for (const L of out.layers) {
     ctx.globalCompositeOperation = L.blend;
-    const passes = L.effect === 'shadow' || L.effect === 'riso' ? ['under', 'main'] : ['main'];
+    // a filled layer draws its letters on a canvas of their own first, as a mask for the picture
+    // the app may hand back a generator when the picture still has to be made, so that work is sliced too
+    let img = fillOn(L) && opts.fillImage ? opts.fillImage(L) : null;
+    if (img && typeof img.next === 'function') img = yield* img;
+    let dc = ctx;
+    if (img) {
+      dc = plainCanvas(ctx.canvas.width, ctx.canvas.height).getContext('2d', { willReadFrequently: true });
+      dc.setTransform(ctx.getTransform()); dc.textBaseline = 'middle';
+    }
+    const passes = L.effect === 'shadow' || L.effect === 'riso' ? ['under', 'main'] : ['main'], own = [];
     for (const pass of passes) {
       let lastA = -1, done = 0, t0 = now();
+      const x = pass === 'main' ? dc : ctx, mo = x === ctx ? L.opacity : 1;
       for (const it of L.items) {
         // letters in many sizes and weights draw slowly, so pause by time, not by count
         if ((++done & 15) === 0 && now() - t0 > 10) { yield { stage: 'Drawing', p: done / L.items.length }; t0 = now(); }
-        const a = L.opacity * (it.a ?? 1) * (pass === 'under' && L.effect === 'riso' ? 0.9 : 1);
-        if (a !== lastA) { ctx.globalAlpha = a; lastA = a; }
+        if (outside(it)) continue;
         if (pass === 'under') {
           if (it.t === 'rect') continue;
-          const off = (L.effect === 'riso' ? 0.12 : 0.08) * it.size;
-          drawItem(ctx, it, off, off, L.effectColor, false);
-        } else drawItem(ctx, it, 0, 0, it.fill, L.effect === 'outline');
+          const u = underOf(L, it), a = mo * (it.a ?? 1) * u.a;
+          if (a !== lastA) { x.globalAlpha = a; lastA = a; }
+          drawItem(x, it, u.off, u.off, u.fill, false);
+        } else {
+          // a letter given a color of its own by a mark keeps that color over the photo (not in Cut out)
+          if (img && it.own && L.letterFill !== 'cut') { own.push(it); continue; }
+          const a = mo * (it.a ?? 1);
+          if (a !== lastA) { x.globalAlpha = a; lastA = a; }
+          drawItem(x, it, 0, 0, it.fill, outlineOn(L, it));
+        }
       }
     }
+    if (img) fillFinish(ctx, dc, out, L, img);
+    for (const it of own) { ctx.globalAlpha = (L.opacity ?? 1) * (it.a ?? 1); drawItem(ctx, it, 0, 0, it.fill, outlineOn(L, it)); }
+    ctx.globalAlpha = 1;
   }
   ctx.restore();
 }
@@ -1872,23 +3599,37 @@ function* drawGen(ctx, out, scale, opts) {
 function draw(ctx, out, scale, opts) { const g = drawGen(ctx, out, scale, opts); while (!g.next().done); }
 
 function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function toSVG(out, fontsCss) {
+function toSVG(out, fontsCss, opts) {
   const f = (n) => Math.round(n * 100) / 100;
   const parts = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${out.W}" height="${out.H}" viewBox="0 0 ${out.W} ${out.H}">`);
   if (fontsCss) parts.push(`<style>${fontsCss}</style>`);
   if (!out.transparent) parts.push(`<rect id="paper" width="100%" height="100%" fill="${out.paper}"/>`);
+  // the whole artwork mirrored in one group, so the file stays small and the letters are reversed too
+  const flipG = out.flipX || out.flipY;
+  if (flipG) parts.push(`<g id="flip" transform="translate(${out.flipX ? out.W : 0} ${out.flipY ? out.H : 0}) scale(${out.flipX ? -1 : 1} ${out.flipY ? -1 : 1})">`);
   const paint = (fill, outline, it) => {
     const c = parseColor(fill);
     const col = toHex(c[0], c[1], c[2]);
     const a = c[3] * (it.a ?? 1);
     const op = a < 1 ? (outline ? ` stroke-opacity="${+a.toFixed(3)}"` : ` fill-opacity="${+a.toFixed(3)}"`) : '';
-    return outline ? `fill="none" stroke="${col}" stroke-width="${f(Math.max(0.5, it.size * 0.045))}"${op}` : `fill="${col}"${op}`;
+    return outline ? `fill="none" stroke="${col}" stroke-width="${f(Math.max(0.35, outlineWidth(it)))}"${op}` : `fill="${col}"${op}`;
   };
   const textEl = (it, dx, dy, fill, outline) => {
     if (it.t === 'rect') return `<rect x="${f(it.x + dx)}" y="${f(it.y + dy)}" width="${f(it.w)}" height="${f(it.h)}" ${paint(fill, false, it)}/>`;
     const fam = (FONTS[it.font] || it.font).replace(/"/g, "'");
     const x = it.x + dx, y = it.y + dy;
+    // a piece mirrored where it stands: one group that turns around its own middle
+    if (it.mir) {
+      const cx = (it.mirX ?? it.x) + dx;
+      const tr = `translate(${f(cx)} ${f(y)})${it.rot ? ` rotate(${f(it.rot * 180 / Math.PI)})` : ''} scale(-1 1)`;
+      const common = `font-family="${fam}" font-size="${f(it.size)}" font-weight="${it.weight}"${it.italic ? ' font-style="italic"' : ''} ${paint(fill, outline, it)} text-anchor="middle"`;
+      if (it.mono) {
+        const inner = Array.from(it.s).map((ch, i) => (ch === ' ' || ch === '\u2800') ? '' : `<text x="${f((it.mirX ?? it.x) - (it.x + i * it.mono + it.mono / 2))}" y="0" ${common}>${esc(ch)}</text>`).join('');
+        return `<g transform="${tr}">${inner}</g>`;
+      }
+      return `<g transform="${tr}"><text x="0" y="0" ${common}>${esc(mirDraw(it.s))}</text></g>`;
+    }
     if (it.mono) {
       const xs = Array.from(it.s).map((_, i) => f(x + i * it.mono)).join(' ');
       return `<text x="${xs}" y="${f(y)}" font-family="${fam}" font-size="${f(it.size)}" font-weight="${it.weight}"${it.italic ? ' font-style="italic"' : ''} ${paint(fill, outline, it)} xml:space="preserve">${esc(it.s)}</text>`;
@@ -1897,16 +3638,53 @@ function toSVG(out, fontsCss) {
     const rot = it.rot ? ` transform="rotate(${f(it.rot * 180 / Math.PI)} ${f(x)} ${f(y)})"` : '';
     return `<text x="${f(x)}" y="${f(y)}" font-family="${fam}" font-size="${f(it.size)}" font-weight="${it.weight}"${it.italic ? ' font-style="italic"' : ''} ${paint(fill, outline, it)}${anchor}${rot}>${esc(it.s)}</text>`;
   };
+  // inside a clipPath or a mask a group may not hold the letters, so a piece mirrored in place carries its own transform
+  const bare = (e) => { const g = /^<g transform="([^"]*)">([\s\S]*)<\/g>$/.exec(e); return g ? g[2].replace(/<text /g, `<text transform="${g[1]}" `) : e; };
   out.layers.forEach((L, li) => {
+    // a filled layer: the photo clipped to the letters, and for Cut out a sheet with the letters as holes
+    const href = fillOn(L) && opts && opts.fillHref ? opts.fillHref(L) : null;
+    if (href) {
+      const id = `fill-${li + 1}`, m = out.margin || 0, show = clamp(L.fillShow ?? 1, 0, 1);
+      // masks, not a clip path: they keep each letter's own opacity and the Outline effect, as the canvas does
+      // a letter given a color of its own by a mark keeps that color over the photo (not in Cut out)
+      const ownOf = (it) => it.own && L.letterFill !== 'cut';
+      const lit = L.items.filter((it) => !ownOf(it)).map((it) => bare(textEl(it, 0, 0, '#ffffff', outlineOn(L, it)))).join('\n');
+      const holes = L.items.map((it) => bare(textEl(it, 0, 0, '#000000', outlineOn(L, it)))).join('\n');
+      const box = `maskUnits="userSpaceOnUse" x="0" y="0" width="${out.W}" height="${out.H}"`;
+      if (L.effect === 'shadow' || L.effect === 'riso') {
+        parts.push(`<g id="layer-${li + 1}-${L.mode}-${L.effect}" opacity="${L.opacity}" dominant-baseline="central">`);
+        for (const it of L.items) if (it.t !== 'rect') { const u = underOf(L, it); parts.push(textEl(Object.assign({}, it, { a: (it.a ?? 1) * u.a }), u.off, u.off, u.fill, false)); }
+        parts.push('</g>');
+      }
+      parts.push(`<mask id="${id}-letters" ${box}><g dominant-baseline="central">`, lit, '</g></mask>');
+      parts.push(`<g id="layer-${li + 1}-${L.mode}-${L.letterFill}" opacity="${L.opacity ?? 1}">`);
+      if (show > 0) parts.push(`<g mask="url(#${id}-letters)" opacity="${+show.toFixed(3)}"><image x="${m}" y="${m}" width="${out.W - 2 * m}" height="${out.H - 2 * m}" preserveAspectRatio="none" href="${href}"/></g>`);
+      if (L.letterFill === 'cut') {
+        parts.push(`<mask id="${id}-holes" ${box}><rect width="${out.W}" height="${out.H}" fill="#ffffff"/><g dominant-baseline="central">`, holes, '</g></mask>');
+        const see = clamp(+L.fillSheetSee || 0, 0, 1), sh = see > 0 && opts.sheetHref ? opts.sheetHref(L, out) : null;
+        parts.push(`<g mask="url(#${id}-holes)">`);
+        // the sheet with the photo in a deep tone (see sheetPicture); without one, the photo under a see-through sheet
+        if (sh) parts.push(`<rect width="${out.W}" height="${out.H}" fill="${sheetEdgeOf(L, out)}"/>`, `<image x="${m}" y="${m}" width="${out.W - 2 * m}" height="${out.H - 2 * m}" preserveAspectRatio="none" href="${sh}"/>`);
+        else {
+          if (see > 0) parts.push(`<image x="${m}" y="${m}" width="${out.W - 2 * m}" height="${out.H - 2 * m}" preserveAspectRatio="none" href="${href}"/>`);
+          parts.push(`<rect width="${out.W}" height="${out.H}" fill="${sheetColorOf(L, out)}"${see > 0 ? ` fill-opacity="${+(1 - see).toFixed(3)}"` : ''}/>`);
+        }
+        parts.push('</g>');
+      }
+      if (L.items.some(ownOf)) parts.push('<g dominant-baseline="central">', L.items.filter(ownOf).map((it) => textEl(it, 0, 0, it.fill, outlineOn(L, it))).join('\n'), '</g>');
+      parts.push('</g>');
+      return;
+    }
     if (L.effect === 'shadow' || L.effect === 'riso') {
-      parts.push(`<g id="layer-${li + 1}-${L.mode}-${L.effect}" opacity="${L.opacity * (L.effect === 'riso' ? 0.9 : 1)}" dominant-baseline="central">`);
-      for (const it of L.items) if (it.t !== 'rect') { const off = (L.effect === 'riso' ? 0.12 : 0.08) * it.size; parts.push(textEl(it, off, off, L.effectColor, false)); }
+      parts.push(`<g id="layer-${li + 1}-${L.mode}-${L.effect}" opacity="${L.opacity}" dominant-baseline="central">`);
+      for (const it of L.items) if (it.t !== 'rect') { const u = underOf(L, it); parts.push(textEl(Object.assign({}, it, { a: (it.a ?? 1) * u.a }), u.off, u.off, u.fill, false)); }
       parts.push('</g>');
     }
     parts.push(`<g id="layer-${li + 1}-${L.mode}" opacity="${L.opacity}" dominant-baseline="central">`);
-    for (const it of L.items) parts.push(textEl(it, 0, 0, it.fill, L.effect === 'outline'));
+    for (const it of L.items) parts.push(textEl(it, 0, 0, it.fill, outlineOn(L, it)));
     parts.push('</g>');
   });
+  if (flipG) parts.push('</g>');
   parts.push('</svg>');
   return parts.join('\n');
 }
@@ -2045,7 +3823,9 @@ function textGrid(out, cols, opt) {
   const aspect = opt.aspect || 2;
   const rows = Math.max(1, Math.round(cols * out.H / out.W / aspect));
   const kind = opt.chars || 'ramp';
-  const paper = parseColor(out.paper);
+  // parseColor gives 0 to 1; the grid hands the paper on as 0 to 255, which is what hexOf and the
+  // exports expect. Before this the paper always read as black, so a light paper came out inverted.
+  const paper = parseColor(out.paper).slice(0, 3).map((v) => v * 255);
   const pl = (0.2126 * paper[0] + 0.7152 * paper[1] + 0.0722 * paper[2]) / 255;
   const mk = (w, h) => (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
   const gw = cols * 2, gh = rows * 4;
@@ -2176,5 +3956,7 @@ function gridSVG(G, color) {
 }
 
 function resetCaches() { mcache.clear(); covCache.clear(); twCache = null; }
-global.Sungfluence = global.SungFluence = { plugin: registerPlugin, removePlugin, plugins: pluginList, onPlugin, PLUGIN_API, renderGen, drawGen, traceGen, traceLines, borderFlood, wand, toImageData, blur, STAGES, prepare, treat, render, draw, toSVG, toText, toANSI, textGrid, gridLines, gridANSI, gridHTML, gridSVG, CHAR_SETS, rgbToCmyk, parseColor, FONTS, measure, fields, resetCaches, focusWeight, focusDist, spiralReach, famFor, ARABIC };
+global.Sungfluence = global.SungFluence = { paperClassOf, lightnessOf, contrastRatio, fitColor, FILL_KEYS, fillOn, fillSoftOn, fillSheetOf, sheetColorOf, modelRGB, plugin: registerPlugin, removePlugin, plugins: pluginList, onPlugin, PLUGIN_API, renderGen, drawGen, traceGen, traceLines, borderFlood, wand, toImageData, blur, STAGES, prepare, treat, prepareGen, treatGen, render, draw, toSVG, toText, toANSI, PALETTES, PALETTE_NAMES, paletteColors, paletteAt, textGrid, gridLines, gridANSI, gridHTML, gridSVG, CHAR_SETS, rgbToCmyk, parseColor, FONTS, measure, mirDraw, mirrorText, fields, resetCaches, focusWeight, focusDist, spiralReach, famFor, ARABIC };
+global.Sungfluence.sheetPicture = sheetPicture; global.Sungfluence.sheetEdgeOf = sheetEdgeOf;
+global.Sungfluence.underOf = underOf; global.Sungfluence.outlineOn = outlineOn; global.Sungfluence.outlineWidth = outlineWidth;
 })(typeof window !== 'undefined' ? window : globalThis);

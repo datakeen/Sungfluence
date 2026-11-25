@@ -34,7 +34,8 @@ command('edit.undo', 'Undo', () => undo(), { keys: ['mod+z'], enabled: () => his
 command('edit.redo', 'Redo', () => redo(), { keys: ['mod+shift+z', 'mod+y'], enabled: () => future.length > 0 });
 command('edit.copy', 'Copy shapes', () => copyObjects(), { keys: ['mod+c'], enabled: hasSel });
 command('edit.paste', 'Paste shapes', () => pasteObjects(), { hint: 'mod+v', enabled: () => !!(objClipboard && objClipboard.length) });
-command('edit.duplicate', 'Duplicate', () => duplicateSelection(), { keys: ['mod+j'] });
+// with no shape selected it duplicates the text art layer, so it needs one of the two
+command('edit.duplicate', 'Duplicate', () => duplicateSelection(), { keys: ['mod+j'], enabled: () => hasSel() || doc.text.applied });
 command('edit.delete', 'Delete', () => deleteSelection(), { hint: 'delete', enabled: () => hasSel() || !!ui.selPath });
 command('edit.selectAll', 'Select all shapes', () => selectAllObjects(), { keys: ['mod+a'], enabled: () => doc.objects.length > 0 });
 command('edit.deselect', 'Deselect', () => deselectAll(), { keys: ['mod+d'] });
@@ -42,6 +43,14 @@ command('edit.deselect', 'Deselect', () => deselectAll(), { keys: ['mod+d'] });
   .forEach(([h, t]) => command('edit.align.' + h, t, () => alignObjects(h), { enabled: hasSel }));
 [['front', 'Bring to front'], ['forward', 'Bring forward'], ['backward', 'Send backward'], ['back', 'Send to back']]
   .forEach(([h, t]) => command('edit.arrange.' + h, t, () => arrangeObjects(h), { enabled: hasSel }));
+// Object: text to lines, groups, distort, fills and text effects (03f-vector.js)
+command('vector.toOutlines', 'Convert text to outlines', () => convertTextToPaths('outline'), { keys: ['mod+shift+o'], enabled: () => hasTextSel() });
+command('vector.toCenterlines', 'Convert text to centerlines', () => convertTextToPaths('centerline'), { enabled: () => hasTextSel() });
+command('vector.group', 'Group', () => groupSelection(), { keys: ['mod+g'], enabled: () => groupable() });
+command('vector.ungroup', 'Ungroup', () => ungroupSelection(), { keys: ['mod+shift+g'], enabled: () => selGroupId() != null });
+command('vector.fillAll', 'Fill every closed shape', () => fillAll(), { enabled: () => doc.lines.paths.some((p) => p.closed) });
+command('vector.wordsInShapes', 'Fill the shapes with words', () => wordsInShapes(), { enabled: () => hasImg() && doc.lines.paths.some((p) => p.closed && !p.hidden) });
+command('vector.alongLines', 'Write text along the lines', () => useLines(), { enabled: () => hasImg() && doc.lines.paths.length > 0 });
 // Image
 command('image.crop', 'Crop', () => setTool('crop'), { enabled: hasImg });
 command('image.cropApply', 'Apply crop', () => cropApply(), { enabled: () => !!ui.cropDraft });
@@ -50,11 +59,19 @@ command('image.rotateLeft', 'Rotate left', () => rotateImage(-1), { enabled: has
 command('image.rotateRight', 'Rotate right', () => rotateImage(1), { enabled: hasImg });
 command('image.flipH', 'Flip across', () => flipImage('x'), { enabled: hasImg });
 command('image.flipV', 'Flip up and down', () => flipImage('y'), { enabled: hasImg });
+command('lines.flipH', 'Flip all shapes across', () => flipVectorLayer('x'), { enabled: () => !!doc.lines.paths.length || doc.objects.some((o) => o.layer !== 'photo') });
+command('lines.flipV', 'Flip all shapes up and down', () => flipVectorLayer('y'), { enabled: () => !!doc.lines.paths.length || doc.objects.some((o) => o.layer !== 'photo') });
+command('type.flipH', 'Mirror the text art across', () => flipTextArt('x'), { checked: () => !!doc.text.flipX, enabled: hasImg });
+command('type.flipV', 'Mirror the text art up and down', () => flipTextArt('y'), { checked: () => !!doc.text.flipY, enabled: hasImg });
+MIRROR_WRITING.forEach(([v, t]) => command('type.mirror.' + v, 'Mirror the writing: ' + t, () => setMirrorWriting(v), { checked: () => (curLayer().mirror || 'none') === v, enabled: hasImg }));
 command('image.canvas', 'Canvas size…', () => openCanvasSize(), { enabled: hasImg });
 command('image.removeBg', 'Remove background', () => removeBackground(), { enabled: hasImg });
 command('image.removeSel', 'Remove the selected area', () => selRemove(), { enabled: () => hasSelection });
 command('image.keepSel', 'Keep only the selected area', () => selKeepOnly(), { enabled: () => hasSelection });
 command('image.invertSel', 'Invert the selection', () => selInvert(), { enabled: () => hasSelection });
+command('image.silhouette', 'Make a silhouette from the photo', () => { commitHistory(); doc.photo.silhouette = doc.photo.silhouette > 0 ? 0 : 0.4; photoChanged('source'); buildPanel(); toast(doc.photo.silhouette ? 'Silhouette on. Change it under Shape in the Word cloud or Calligram settings.' : 'Silhouette off', { label: 'Undo', fn: undo }); }, { enabled: hasImg, checked: () => !!origImg && doc.photo.silhouette > 0 });
+command('image.autoTone', 'Auto tone', () => autoToneNow(), { enabled: hasImg });
+command('image.resetEffects', 'Reset every effect on the photo', () => resetPhoto(), { enabled: () => hasImg() && photoTouched() });
 command('image.restoreAll', 'Bring everything back', () => clearRemoval(), { enabled: () => hasRemoval });
 command('image.trace', 'Trace lines from the photo', () => { ui.tab = 'lines'; buildTabs(); buildPanel(); traceNow(); }, { enabled: hasImg });
 // Layer
@@ -67,7 +84,15 @@ command('layer.up', 'Move the current layer up', () => moveLayerTo(curStackId(),
 command('layer.down', 'Move the current layer down', () => moveLayerTo(curStackId(), doc.order.indexOf(curStackId()) + 1), { enabled: () => doc.order.indexOf(curStackId()) < doc.order.length - 1 });
 // Text art
 command('type.apply', 'Apply text art', () => applyTextArt(), { enabled: () => hasImg() && !doc.text.applied });
+command('type.toolbox', 'Type toolbox…', () => openTypeBox(null), { keys: ['mod+shift+t'], typing: true });
+TYPE_TABS.forEach(([k, name]) => command('type.toolbox.' + k, 'Type toolbox: ' + name, () => openTypeBox(null, k)));
+command('type.shuffle', 'Shuffle: lay the text out again', () => { if (!doc.text.applied) applyTextArt(); else shuffleLayer(); }, { keys: ['r'], enabled: hasImg });
+command('type.wall', 'Every style…', () => { if (!doc.text.applied) applyTextArt(); ui.tab = 'text'; buildTabs(); buildPanel(); openWall(); }, { keys: ['shift+e'], enabled: hasImg });
 command('type.variations', 'Variations…', () => { if (!doc.text.applied) applyTextArt(); ui.tab = 'text'; buildTabs(); buildPanel(); showVariations(); }, { enabled: hasImg });
+// Paper: what the art is printed on, so the letter colors fit it
+command('paper.settings', 'Paper and background…', () => openPaperSettings(), { enabled: hasImg });
+command('paper.transparent', 'Transparent background', () => setTransparent(!doc.out.transparent), { checked: () => !!doc.out.transparent, enabled: hasImg });
+PRINTED_ON.forEach(([v, t]) => command('paper.printedOn.' + v, 'Printed on: ' + t, () => setPrintedOn(v), { checked: () => (doc.out.printedOn || 'auto') === v, enabled: hasImg }));
 // View
 [['photo', 'Photo view', '1'], ['mix', 'Mix view', '2'], ['text', 'Text view', '3']].forEach(([v, t, k]) => command('view.' + v, t, () => showView(v), { keys: [k], checked: () => ui.view === v, enabled: hasImg }));
 command('view.compare', 'Compare with a divider', () => toggleSplit(), { keys: ['/'], checked: () => !!ui.compare.on, enabled: hasImg });
@@ -77,12 +102,20 @@ command('view.fit', 'Fit to window', () => zoomTo('fit'), { keys: ['mod+0'], typ
 command('view.actual', 'Actual size', () => zoomTo(1), { keys: ['mod+1'], typing: true });
 command('view.zoomSel', 'Zoom to selection', () => zoomToSelection(), { keys: ['mod+2'], typing: true });
 QUALITY.forEach(([v, t]) => command('view.quality.' + v, t + ' preview', () => setQuality(v), { checked: () => ui.quality === v }));
+TRANSP_SHOW.forEach(([v, t]) => command('view.transp.' + v, 'Show transparency as ' + t.toLowerCase(), () => setTranspShow(v), { checked: () => transpShow() === v }));
 command('view.grid', 'Show grid', () => { prefs.grid.show = !prefs.grid.show; savePrefs(); drawOverlay(); }, { keys: ["mod+'"], checked: () => !!prefs.grid.show });
+// rulers and guides (03g-rulers.js)
+command('view.rulers', 'Show rulers', () => toggleRulers(), { keys: ['mod+r'], checked: () => !!prefs.rulers });
+RULER_UNITS.forEach(([u, t]) => command('view.rulerUnit.' + u, 'Ruler units: ' + t, () => setRulerUnit(u), { checked: () => prefs.rulerUnit === u }));
+command('view.newGuide', 'New guide…', () => newGuide(), { enabled: () => hasImg() && !isMock() });
+command('view.guides', 'Show guides', () => toggleGuides(), { checked: () => !!prefs.guides.show });
+command('view.lockGuides', 'Lock guides', () => lockGuides(), { checked: () => !!prefs.guides.lock, enabled: () => !!prefs.guides.show });
+command('view.clearGuides', 'Clear guides', () => clearGuides(), { enabled: () => doc.guides.length > 0 });
 command('snap.on', 'Snapping', () => setSnap('on'), { keys: ['mod+;'], checked: () => !!prefs.snap.on });
 SNAP_KINDS.forEach(([k, t]) => command('snap.' + k, t, () => setSnap(k), { checked: () => !!prefs.snap[k], enabled: () => !!prefs.snap.on }));
 command('snap.gridSize', 'Grid size…', () => openSettings());
 // Tools (palette and keys; the rail on the left shows them too)
-[['hand', 'h'], ['zoom', 'z'], ['crop', 'c'], ['wand', 'w'], ['lasso', 'l'], ['brush', 'b'], ['liquify', 'y'], ['select', 'v'], ['shape', 'u'], ['text', 't'], ['pen', 'p'], ['pencil', 'n'], ['direct', 'a']]
+[['hand', 'h'], ['zoom', 'z'], ['crop', 'c'], ['wand', 'w'], ['lasso', 'l'], ['brush', 'b'], ['liquify', 'y'], ['select', 'v'], ['shape', 'u'], ['text', 't'], ['pen', 'p'], ['pencil', 'n'], ['direct', 'a'], ['distort', 'shift+d']]
   .forEach(([id, k]) => { const t = TOOLS.find((x) => x.id === id); command('tool.' + id, 'Tool: ' + (t ? t.name.split(/[:.]/)[0] : id), () => setTool(id), { keys: [k], checked: () => ui.tool === id }); });
 // Plugins
 command('plugins.manage', 'Plugins…', () => openPlugins());
@@ -128,16 +161,22 @@ function menuSpec() {
       item('edit.selectAll'), item('edit.deselect'), SEP,
       { label: 'Line up', items: ['left', 'center', 'right', SEP, 'top', 'middle', 'bottom'].map((h) => (h === SEP ? SEP : item('edit.align.' + h))) },
       { label: 'Arrange', items: ['front', 'forward', 'backward', 'back'].map((h) => item('edit.arrange.' + h)) }] },
+    { label: 'Object', items: [item('vector.toOutlines'), item('vector.toCenterlines'), SEP, item('vector.group'), item('vector.ungroup'), SEP,
+      Object.assign(item('tool.distort'), { label: 'Distort…' }), item('vector.fillAll'), SEP, item('vector.wordsInShapes'), item('vector.alongLines')] },
     { label: 'Image', items: [item('image.crop'), item('image.cropApply'), item('image.cropReset'), SEP, item('image.rotateLeft'), item('image.rotateRight'), item('image.flipH'), item('image.flipV'), item('image.canvas'), SEP,
-      item('image.removeBg'), item('image.removeSel'), item('image.keepSel'), item('image.invertSel'), item('image.restoreAll'), SEP, item('image.trace')] },
+      item('image.removeBg'), item('image.removeSel'), item('image.keepSel'), item('image.invertSel'), item('image.restoreAll'), SEP, item('image.trace'), item('image.silhouette'), item('image.autoTone'), item('image.resetEffects')] },
     { label: 'Layer', items: [{ head: 'Show' }, item('layer.show.text'), item('layer.show.lines'), item('layer.show.photo'), SEP, item('layer.up'), item('layer.down'), SEP,
-      item('layer.lock'), item('layer.addText'), item('layer.dupText')] },
-    { label: 'Text art', items: [item('type.apply'), item('type.variations'), SEP, { label: 'Style', items: styles }, { label: 'Recipes', items: RECIPES.map((r, i) => Object.assign(item('recipe.' + i), { label: r.name })) }] },
+      item('layer.lock'), item('layer.addText'), item('layer.dupText'), SEP, item('lines.flipH'), item('lines.flipV'), item('type.flipH'), item('type.flipV')] },
+    { label: 'Text art', items: [item('type.apply'), item('type.shuffle'), item('type.variations'), item('type.wall'), SEP, item('type.flipH'), item('type.flipV'), { label: 'Mirror the writing', items: MIRROR_WRITING.map(([v]) => item('type.mirror.' + v)) }, SEP, item('paper.settings'), item('paper.transparent'), { label: 'Printed on', items: PRINTED_ON.map(([v]) => item('paper.printedOn.' + v)) }, SEP,
+      // one entry: the whole window first, with its shortcut, then each tab
+      { label: 'Type toolbox', items: [Object.assign(item('type.toolbox'), { label: 'Open Type toolbox…' }), SEP].concat(TYPE_TABS.map(([k, name]) => Object.assign(item('type.toolbox.' + k), { label: name }))) }, SEP, { label: 'Style', items: styles }, { label: 'Recipes', items: RECIPES.map((r, i) => Object.assign(item('recipe.' + i), { label: r.name })) }] },
     { label: 'Effects', items: [{ label: 'Extra effects', items: extras.length ? extras : [{ head: 'None yet' }] }, SEP, item('plugins.manage'), item('plugins.load'), item('plugins.template')] },
     { label: 'Export', items: exportsList },
     { label: 'View', items: [item('view.photo'), item('view.mix'), item('view.text'), item('view.compare'), SEP, item('view.zoomIn'), item('view.zoomOut'), item('view.fit'), item('view.actual'), item('view.zoomSel'), SEP,
-      { label: 'Preview', items: QUALITY.map(([v]) => item('view.quality.' + v)) }, SEP, item('view.grid'),
-      { label: 'Snapping', items: [item('snap.on'), SEP].concat(SNAP_KINDS.map(([k]) => item('snap.' + k)), [SEP, item('snap.gridSize')]) }] },
+      { label: 'Preview', items: QUALITY.map(([v]) => item('view.quality.' + v)) },
+      { label: 'Show transparency as', items: TRANSP_SHOW.map(([v, t]) => Object.assign(item('view.transp.' + v), { label: t })) }, SEP,
+      item('view.rulers'), { label: 'Ruler units', items: RULER_UNITS.map(([u, t]) => Object.assign(item('view.rulerUnit.' + u), { label: t })) }, item('view.newGuide'), item('view.guides'), item('view.lockGuides'), item('view.clearGuides'), SEP, item('view.grid'),
+      { label: 'Snapping', items: snapMenuItems().concat([SEP, item('snap.gridSize')]) }] },
     { label: 'Help', items: [item('help.help'), item('help.tutorial'), item('help.shortcuts'), item('help.palette'), SEP, item('help.feedback'), item('help.source'), SEP, item('help.about')] }
   ];
 }
@@ -306,7 +345,10 @@ function openPalette() {
     if (!shown.length) list.appendChild(el('div', 'note', 'Nothing found.'));
   };
   const mark = () => list.querySelectorAll('.pi-row').forEach((b, i) => { b.setAttribute('aria-selected', String(i === active)); if (i === active) b.scrollIntoView({ block: 'nearest' }); });
-  const go = (i) => { const x = shown[i]; if (!x) return; if (x.c.enabled && !x.c.enabled()) { toast('Not available right now.'); return; } close(); runCommand(x.c.id); };
+  const go = (i) => { const x = shown[i]; if (!x) return; if (x.c.enabled && !x.c.enabled()) { toast('Not available right now.'); return; } close();
+    // a window left open behind the palette would hide what the command does
+    if (!$('dlgScrim').hidden) closeDialog();
+    runCommand(x.c.id); };
   inp.oninput = () => { active = 0; render(); };
   inp.onkeydown = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(shown.length - 1, active + 1); mark(); }

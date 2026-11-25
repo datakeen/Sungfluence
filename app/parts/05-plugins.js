@@ -115,10 +115,12 @@ function removeUserPlugin(id) {
 }
 function usePluginStyle(key) {
   if (!MODES[key]) return;
+  // a style that writes along lines asks for lines first, as it does once text art is applied
+  if (!doc.text.applied && (MODES[key].lines || MODES[key].usesLines) && !doc.lines.paths.length) { askForLines(key); return; }
   revealSoon();
   if (!doc.text.applied) {
-    doc.text.layers = [newLayer(key)]; doc.text.sel = 0; doc.text.source = 'photo'; doc.text.applied = true;
-    ui.tab = 'text'; buildTabs(); buildPanel(); setView('text'); scheduleText(0); queueHistory();
+    // the first look of Apply text art, in the style that was picked
+    applyTextArt(key);
     return;
   }
   ui.tab = 'text'; buildTabs();

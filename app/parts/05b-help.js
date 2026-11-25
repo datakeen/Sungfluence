@@ -9,7 +9,7 @@ function openHelp(page, anchor) {
     d.classList.add('help-dlg');
     const box = el('div', 'help-wrap');
     const nav = el('nav', 'help-nav'); nav.setAttribute('aria-label', 'Help topics');
-    const search = el('input'); search.type = 'search'; search.placeholder = 'Search help'; search.setAttribute('aria-label', 'Search help');
+    const search = el('input', 'field'); search.type = 'search'; search.placeholder = 'Search help'; search.setAttribute('aria-label', 'Search help');
     const list = el('div', 'help-list');
     const content = el('article', 'help-content'); content.tabIndex = -1;
     nav.append(search, list);
@@ -57,6 +57,12 @@ function openHelp(page, anchor) {
 /* A first visit gets one gentle pointer to the tutorial, never again after that */
 function welcomeOnce() {
   if (prefs.welcomed) return;
+  // the card that offers the first look comes first; the hint follows once it is answered
+  const cta = document.getElementById('cta');
+  if (cta && !cta.hidden) { ui.welcomeLater = true; return; }
+  ui.welcomeLater = false;
+  // a toast that offers a next step, such as the Word cloud after a first look in another style, is not replaced
+  if (toastBusy()) { setTimeout(welcomeOnce, 1500); return; }
   prefs.welcomed = true; savePrefs();
   toast('New to SungFluence? The getting started guide takes five minutes.', { label: 'Open it', fn: () => openHelp('getting-started') });
 }

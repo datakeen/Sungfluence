@@ -20,7 +20,7 @@ const check = (name, ok, info) => { console.log((ok ? 'ok   ' : 'FAIL ') + name 
   p.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
   await p.goto(require('url').pathToFileURL(path.resolve(__dirname, '../src/index.html')).href); await p.waitForTimeout(2000);
   const S = (f, a) => p.evaluate(f, a);
-  check('app is named SungFluence', (await p.title()) === 'SungFluence', await p.title());
+  check('app is named SungFluence, with its version', /^SungFluence \d+\.\d+\.\d+$/.test(await p.title()), await p.title());
   check('both spellings of the plugin name work', await S(() => window.SungFluence === window.Sungfluence));
 
   await p.setInputFiles('#fileInput', __dirname + '/images/portrait.jpg'); await p.waitForTimeout(1200);

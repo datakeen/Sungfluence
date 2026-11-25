@@ -1,12 +1,12 @@
-# SungFluence
+![SungFluence: turn your photos into text art. Free, offline and open source.](docs/images/banner.jpg)
 
-<img src="app/icon.svg" alt="SungFluence icon: a light S and a gold F on deep ink" width="96" align="right">
+# SungFluence
 
 A small design studio that turns pictures into art made only of letters and characters.
 
 SungFluence is a free, open-source desktop app for Windows, macOS and Linux. It also runs in a browser and can be installed from there. Everything happens on your own computer. Photos are never uploaded.
 
-**[Download the latest version](https://github.com/datakeen/Sungfluence/releases/latest)** · **[Try it in your browser](https://datakeen.github.io/Sungfluence/)** · [Help and tutorial](docs/help/index.md)
+**[Website](https://datakeen.github.io/Sungfluence/)** · **[Download the latest version](https://github.com/datakeen/Sungfluence/releases/latest)** (also on [SourceForge](https://sourceforge.net/projects/sungfluence/files/)) · **[Try it in your browser](https://datakeen.github.io/Sungfluence/try/)** · [Help and tutorial](docs/help/index.md)
 
 ## How it started
 
@@ -18,7 +18,7 @@ In Urdu, *sungam* (سنگم) is the point where two rivers meet and flow on as o
 
 The name is close to my heart. I love the science of water, and in my working hours I teach and research rivers and water. A name about two rivers meeting felt right.
 
-![SungFluence main window](docs/screenshot.jpg)
+![SungFluence main window: a portrait drawn as a Word cloud, with its settings](docs/screenshot.jpg)
 
 ## What it does
 
@@ -36,6 +36,7 @@ Zoom is smooth: the wheel and a trackpad pinch zoom in proportion to how far you
 
 | Style | What it makes |
 | --- | --- |
+| Word cloud | The signature style. Your words packed inside the shape of your photo, in its own colors. Apply text art starts here. |
 | Line text | Text along the center of drawn or traced lines. Letters follow the line width. |
 | Text portrait | Your own text in rows, colored by the photo. |
 | Word mosaic | Words packed into the picture, large in calm areas and small in detailed ones. |
@@ -72,6 +73,18 @@ One **Export window** (Ctrl E) lists every format, with its options, the layers 
 - **Snapping** while you draw and edit vectors: to ends, corners, middles, centers, crossings, extensions, perpendicular and tangent points, text baselines, edges in the photo, 15° angles and a grid. Hold Alt to place a point freely.
 - **Help inside the app:** press F1 for a getting started tutorial and a reference for every panel and style. It works offline.
 - **Plugins** add extra effects: the **Plugins** button at the top, or the **Effects** menu. See [docs/PLUGINS.md](docs/PLUGINS.md) to write your own.
+- **Word and Excel exports**: the art as real text in a `.docx`, a spreadsheet whose colored cells are the picture, another whose colored characters are the picture, and a color by number sheet with its key. Written by SungFluence itself, with no Office needed.
+- **Mirror the writing** by letter, by word or by line, without moving the picture.
+- **Mirror the text art**, a true mirror with the letters reversed, for iron-on T-shirt transfers. Every export carries it. The Vector layer can be flipped as a whole too.
+- **Ready words and phrases** for water resources, hydraulics and rivers, flora, fauna, and each of the 17 United Nations Sustainable Development Goals, next to the general sets.
+- **Every style** (Shift E): your own picture drawn in every style at once, on one wall. Click a tile to use it. Extra effects from plugins are on the wall too.
+- **Sharing helpers**: a preview of a bio or post, the count the way that place counts it, line breaks that survive a paste, and cutting to the limit at a space.
+- **Symbols found by drawing**: sketch a shape and SungFluence shows the symbols that look like it. Place them on the canvas as stickers.
+- **Ready sets of colours** that run across the tones of the photo, word weights, filler words left out, and a Shuffle button for a new arrangement.
+- **Marks in the text**: type `**bold**`, `*italic*`, `__a line under__`, `^big^`, `~small~` or `[word]{#c0392b}` and the words come out that way in the artwork. Ctrl B and Ctrl I put the marks in for you.
+- **Turn the text** in any style: each letter, word or line at the angles you pick, with a random tilt, or pointed along the edges of the picture.
+- **Word cloud**: your words packed inside a silhouette, biggest first, turned to the angles you choose, with an outline around the shape. One click turns a photo into a clean silhouette first.
+- **Type toolbox** (Shift Ctrl T): 31 Unicode styles for any text, symbol sets with a real search, kaomoji faces and a face builder, decorations and dividers that mirror for Urdu and Arabic, and keyword expansions such as (shrug). It also says what the styled text will do to a character count, a screen reader and a computer with missing characters.
 - **Liquify** the photo with a brush: push, bloat, pucker, twirl and restore.
 - **Compare** two looks with a divider that runs up and down, across or at any angle, also on the Paper and T-shirt previews.
 - **Smooth motion:** quiet transitions, and letters that fly in when text art appears. Settings can calm it or turn it off.
@@ -80,7 +93,7 @@ One **Export window** (Ctrl E) lists every format, with its options, the layers 
 
 ## Download and install
 
-Get the installers from the **[latest release](https://github.com/datakeen/Sungfluence/releases/latest)**. Or skip installing and **[use it in your browser](https://datakeen.github.io/Sungfluence/)**; in Chrome or Edge you can then choose **Install** in the address bar to keep it as an app.
+Get the installers from the **[latest release](https://github.com/datakeen/Sungfluence/releases/latest)**. They are also on [SourceForge](https://sourceforge.net/projects/sungfluence/files/), and the [website](https://datakeen.github.io/Sungfluence/) shows what each style makes. Or skip installing and **[use it in your browser](https://datakeen.github.io/Sungfluence/try/)**; in Chrome or Edge you can then choose **Install** in the address bar to keep it as an app.
 
 | System | File | How to install |
 | --- | --- | --- |
@@ -161,11 +174,12 @@ scripts/docs.js           writes the style reference and the shortcut list from 
 scripts/help-shots.js     takes the tutorial screenshots
 scripts/icons.js          draws build/icon.png and src/icons/*.png from app/icon.svg
 src/                      generated app: desktop, web and double-click
+site/                     the website (scripts/site.js builds it with the web app into pages/ for GitHub Pages)
 main.js                   desktop window and its menu bar (Electron)
 preload.js                the small bridge that gives the desktop app its menus
 tests/                    browser tests with Playwright, and tests/images
 docs/                     help pages (docs/help), the plugin guide, the build guide, the release checklist, wiki pages
-.github/workflows/        installer builds and the web deploy
+.github/workflows/        installer builds, and the website and web app deploy
 ```
 
 ## How the engine works

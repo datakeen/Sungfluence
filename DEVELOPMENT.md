@@ -23,13 +23,14 @@ The name is written **SungFluence** (capital F) wherever people read it: window 
 | `app/parts/03b-objects.js` | Shapes, text and images on the Photo or Vector layer; select, scale, rotate; step and repeat; object SVG |
 | `app/parts/03c-studio.js` | Crop tool, rotate, flip, canvas size (baked with undo through `imgStore`), compare divider, new artboard, settings, about, on-canvas guides for fade shapes and spirals |
 | `app/parts/03d-snap.js` | Snapping (`snapAt`, `snapMove`), its hint and the grid on the overlay. Kinds and defaults in `SNAP_KINDS` and `prefs.snap` |
+| `app/parts/03f-vector.js` | Vector paths: fills and gradients (`paintOf`, `gradGeom`, `pathUnits`, `unitSVG`), groups (`ui.selPaths`, `groupSelection`), text to outlines and centerlines (`convertTextToPaths`), the Distort tool (`distortPaths`), the Fill and Text effect parts of the Vector panel |
 | `app/parts/04-ui.js` | Inspector panels, controls, recipes, thumbnails, variations, library |
 | `app/parts/05-plugins.js` | Plugin loading, plugin controls, the Plugins window |
 | `app/parts/05b-help.js` | The Help window (F1): shows the pages that the build bundles from `docs/help` into `HELP` (`src/help.js`), and the one-time welcome hint |
 | `app/parts/05c-commands.js` | `COMMANDS`: every action with its label, keys, enabled and checked state. Builds the menu bar in the page (web), sends the same menus to the desktop app (`syncMenus`), the command palette (Ctrl K) and `runShortcut`. Add new actions here, not as loose key handlers. |
 | `app/parts/06-io.js` | Undo, autosave, projects, export, the optional AI helpers, shortcuts, boot |
 | `app/plugins/` | Built-in plugins; their styles show under Extra effects. `sungfluence-plugin-template.js` is the starter for plugin authors: it is offered as a download, not loaded as a style. |
-| `app/samples/` | Sample images. `01-cat.jpg` becomes the sample "cat". The cat must stay: it is the first picture people see. |
+| `app/samples/` | Sample images. `01-cat.jpg` becomes the sample "cat". `02-coffee.jpg` must stay: it is the first picture people see. The tests also use the cat. |
 | `app/icon.svg` | The app icon. `npm run icons` draws `build/icon.png` and `src/icons/*.png` from it. The build copies it to `src/icons/icon.svg`. |
 | `main.js`, `preload.js` | The desktop window. `preload.js` shares only `sungfluenceDesktop.setMenu(spec)`; `main.js` turns that menu description into the native menu bar. |
 
@@ -61,7 +62,7 @@ Arabic script joins its letters, so styles must never draw it one letter at a ti
 
 ## Rules that keep the app good
 
-- **No freezing.** Target: no main-thread task over about 200 ms on a mid-range laptop (Intel i5, 8th generation). Heavy work is a generator (`function*`) that yields progress. The app runs generators in 8 to 14 ms slices (`runJob` in `02-core.js`, `sliceThumbs` in `04-ui.js`). Never add a synchronous loop over a full-size image. Known exception: switching preview quality rebuilds the photo view in one step (about 0.3 s).
+- **No freezing.** Target: no main-thread task over about 220 ms on a mid-range laptop (Intel i5, 8th generation). Aim for that first and optimize the work until it fits. Where it genuinely cannot, 310 ms is the limit, and the reason belongs in a comment next to the check. The style wall is allowed 400 ms, because it draws a tile for every style at once. Filling a shape and turning a large grid currently sit at 260 ms. Heavy work is a generator (`function*`) that yields progress. The app runs generators in 8 to 14 ms slices (`runJob` in `02-core.js`, `sliceThumbs` in `04-ui.js`). Never add a synchronous loop over a full-size image. Photo changes rebuild the photo in short steps through `rebuildPhotoSoon`; code that needs the new `src` right after a photo change waits with `whenSrcReady`.
 - **Proxy previews.** Previews render at a smaller scale (`scene.scale`), exports at full size. Pixel settings named `size`, `spacing`, `minSize` and `maxSize` scale by themselves. A preview must look like its export.
 - **One drawing list.** Every style returns items `{t: 'text' | 'rect', ...}`. Canvas, SVG, PDF, CMYK and text exports all read the same list.
 - **Plugin API is public.** Do not change `Sungfluence.plugin` or the `api` object in `docs/PLUGINS.md` without raising `PLUGIN_API` and keeping old plugins working.

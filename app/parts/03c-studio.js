@@ -45,13 +45,13 @@ function cropStart() {
   ui.cropDraft = Object.assign({}, doc.photo.crop || FULL());
   const rv = cropRatioValue(doc.photo.ratio);
   if (rv && !doc.photo.crop) ui.cropDraft = ratioBox(rv, 0.5, 0.5);
-  rebuildBase(); rebuildPhotoView(); compose(); buildOptbar();
+  rebuildPhotoSoon(true); buildOptbar();
   if (ui.tab === 'photo') buildPanel();
 }
 function cropCancel() {
   if (!ui.cropDraft) return;
   ui.cropDraft = null;
-  rebuildBase(); rebuildPhotoView(); compose();
+  rebuildPhotoSoon(true);
   if (ui.tab === 'photo') buildPanel();
 }
 function cropApply() {
@@ -149,6 +149,12 @@ function storeImage() {
   imgStore.set(imgVer, { img: origImg, url: doc.imageURL });
   if (imgStore.size > 12) imgStore.delete(imgStore.keys().next().value);
 }
+/* the photo as a data URL, for saving. A turned or resized photo may still be written in the background; then it is written here. */
+function imageURLNow() {
+  const st = imgStore.get(imgVer);
+  if (!doc.imageURL && st && st.pending) { st.url = doc.imageURL = st.pending.c.toDataURL(st.pending.type, 0.92); st.pending = null; }
+  return doc.imageURL;
+}
 function restoreImage(ver) {
   if (ver === imgVer || !imgStore.has(ver)) return false;
   const s = imgStore.get(ver);
@@ -171,7 +177,8 @@ function bakeImage(M, nw, nh, opt) {
     const [x0, y0] = P(n.x, n.y), [ix0, iy0] = V(n.ix || 0, n.iy || 0), [ox0, oy0] = V(n.ox || 0, n.oy || 0);
     Object.assign(n, { x: x0, y: y0, ix: ix0, iy: iy0, ox: ox0, oy: oy0 }); if (n.w) n.w *= ck;
   }));
-  doc.lines.paths.forEach((p) => { p.width *= ck; if (p.sw) p.sw *= ck; });
+  doc.lines.paths.forEach((p) => { p.width *= ck; if (p.sw) p.sw *= ck; turnFill(p, opt.rot || 0, opt.flip); });
+  moveGuides(P);
   doc.objects.forEach((o) => {
     const [cx, cy] = P(o.x + o.w / 2, o.y + o.h / 2);
     o.w *= ck; o.h *= ck; if (o.size) o.size *= ck; if (o.sw) o.sw *= ck;
@@ -191,7 +198,9 @@ function bakeImage(M, nw, nh, opt) {
   const oldRem = hasRemoval ? remCanvas : null, oldIw = iw, oldIh = ih;
   origImg = c; iw = c.width; ih = c.height;
   const hasAlpha = opt.bg === 'transparent' || hasRemoval;
-  doc.imageURL = hasAlpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.92);
+  // the file of the new photo is written in the background (see imageURLNow), so turning a big photo stays quick
+  const type = hasAlpha ? 'image/png' : 'image/jpeg';
+  doc.imageURL = null;
   photoSrcCache = null;
   setupMasks();
   // old image pixels -> new mask pixels, with q old image pixels per source pixel
@@ -204,10 +213,17 @@ function bakeImage(M, nw, nh, opt) {
   }
   if (oldRem) { setT(oldIw / oldRem.width); rx.drawImage(oldRem, 0, 0); rx.setTransform(1, 0, 0, 1, 0, 0); hasRemoval = true; }
   storeImage(); snapshotMask();
+  const st = imgStore.get(imgVer), ver = imgVer;
+  st.pending = { c, type };
+  c.toBlob((bl) => {
+    if (!bl || !st.pending) return;
+    const fr = new FileReader();
+    fr.onload = () => { if (!st.pending) return; st.url = fr.result; st.pending = null; if (imgVer === ver) doc.imageURL = fr.result; };
+    fr.readAsDataURL(bl);
+  }, type, 0.92);
   objVer++; vecVer++;
-  rebuildBase(); rebuildPhotoView(); buildAll(); compose();
-  if (doc.text.applied && !doc.text.locked) scheduleText(0);
-  queueHistory(); thumbsSoon(); statusIdle();
+  rebuildPhotoSoon(true); buildAll();
+  queueHistory(); statusIdle();
 }
 function rotateImage(dir) {
   const M = dir > 0 ? [0, 1, -1, 0, ih, 0] : [0, -1, 1, 0, 0, iw];
@@ -237,11 +253,11 @@ const COMPARE_KINDS = [['original', 'Original photo'], ['photo', 'Edited photo']
 function compareCanvas(kind, g, S) {
   const c = mk(g.TW, g.TH), x = c.getContext('2d');
   if (kind === 'original') {
-    x.fillStyle = '#808080'; x.fillRect(0, 0, g.TW, g.TH);
+    x.fillStyle = '#ffffff'; x.fillRect(0, 0, g.TW, g.TH);
     const cr = cropRect(); x.drawImage(origImg, cr.x * iw, cr.y * ih, cr.w * iw, cr.h * ih, g.m, g.m, g.W, g.H);
     return c;
   }
-  const ground = doc.out.transparent ? 'checker' : 'paper';
+  const ground = doc.out.transparent ? clearGround() : 'paper';
   if (kind === 'current') composeTo(x, g, S, { mixFade: ui.view === 'mix', ground });
   else composeTo(x, g, Object.assign({}, S, { text: S.text || textCanvas }), { only: kind.split('+'), ground });
   return c;
@@ -405,6 +421,7 @@ function createArtboard(st) {
     doc.out.width = clamp(w, 200, 12000);
     if (st.unit !== 'px' && st.unit !== 'cells') doc.out.dpi = st.dpi;
     if (st.bg !== 'transparent') doc.out.paper = st.bg; else doc.out.transparent = true;
+    doc.out.printedOn = 'auto';
     rebuildPhotoView(); compose(); buildAll(); buildSamples(); statusIdle(); queueHistory();
     setTool('text');
     toast('Blank artboard, ' + w + ' × ' + h + ' px. Add text, shapes or lines, or place an image.');
@@ -436,22 +453,30 @@ function openSettings() {
     sn.appendChild(el('span', 'note', 'Choose what to snap to under View → Snapping, or with the small arrow next to Snap. Hold Alt to place something freely.'));
     const s2 = sec(body, 'Look');
     s2.appendChild(makeControl(prefs, Object.assign(S('theme', 'Theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]), { idp: 'pf-', rebuild: () => { applyTheme(); openSettings(); } }), () => savePrefs()));
+    s2.appendChild(makeControl(prefs, Object.assign(S('transpShow', 'Show transparency as', TRANSP_SHOW), { idp: 'pf-', rebuild: () => { setTranspShow(prefs.transpShow); openSettings(); } }), () => savePrefs()));
+    s2.appendChild(el('span', 'note', 'How clear areas look on screen. Exported files stay clear.'));
     const sm = sec(body, 'Motion');
     sm.appendChild(makeControl(prefs, Object.assign(S('motion', 'Animations', [['full', 'Full'], ['calm', 'Calm'], ['off', 'Off']]), { idp: 'pf-', rebuild: () => { applyMotion(); openSettings(); } }), () => savePrefs()));
     sm.appendChild(makeControl(prefs, Object.assign(S('reveal', 'When text art appears', [['fly', 'Letters fly in'], ['fade', 'Fade in'], ['none', 'At once']]), { idp: 'pf-', rebuild: () => openSettings() }), () => savePrefs()));
     sm.appendChild(el('span', 'note', 'If your computer is set to reduce motion, SungFluence keeps still whatever you choose here.'));
+    const sp = sec(body, 'Photos');
+    sp.appendChild(makeControl(prefs, T('autoPhoto', 'Set the tones of new photos for text art', { idp: 'pf-' }), () => savePrefs()));
+    sp.appendChild(el('span', 'note', 'A new photo gets its black point, white point, midtones and sharpening set for text art. Reset every effect in the Photo panel gives the plain photo back.'));
     const s3 = sec(body, 'This computer');
-    s3.appendChild(makeControl(doc.out, T('gentle', 'Gentle on this computer', { idp: 'pf-' }), () => {}));
+    s3.appendChild(makeControl(prefs, T('gentle', 'Gentle on this computer', { idp: 'pf-' }), () => { doc.out.gentle = !!prefs.gentle; savePrefs(); }));
+    s3.appendChild(el('span', 'note', 'Works in shorter bursts with longer rests, so other apps stay fast. Results take a little longer.'));
     s3.appendChild(el('span', 'note', 'Settings are saved on this computer only.'));
   });
 }
 $('settingsBtn').onclick = openSettings;
+// Gentle on this computer is a setting of the computer, not of the picture, so it is kept with the other settings
+doc.out.gentle = !!prefs.gentle;
 
 /* ---------------- about and license ---------------- */
 function openAbout() {
-  openDialog('About SungFluence', (body) => {
-    const v = window.SUNGFLUENCE_VERSION || '';
-    body.append(el('p', null, 'SungFluence ' + v + '. A small design studio that turns images into art made of letters.'),
+  const v = window.SUNGFLUENCE_VERSION || '';
+  openDialog('About SungFluence ' + v, (body) => {
+    body.append(el('p', null, 'SungFluence version ' + v + '. A small design studio that turns images into art made of letters.'),
       el('p', 'note', 'Free and open source software. Made by Ahmed Bilal. Copyright (C) 2026 Ahmed Bilal and contributors.'),
       el('p', 'note', 'This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.'));
     const links = el('div', 'row2');
@@ -471,7 +496,7 @@ function guideLayer() {
   if (ui.tab !== 'text' || !doc.text.applied || doc.out.mock !== 'artboard' || ui.cropDraft || !textShown() || ui.compare.on) return null;
   const L = curLayer();
   if (!L || L.hidden || !activeLayers().includes(L)) return null;
-  const fade = L.focus && L.focus !== 'none' && ui.open.focus;
+  const fade = L.focus && L.focus !== 'none' && ui.open.shape;
   const spiral = L.mode === 'spiral';
   return fade || spiral ? { L, fade, spiral } : null;
 }

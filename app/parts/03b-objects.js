@@ -147,7 +147,53 @@ function duplicateObjects() {
   doc.objects.push(...copies); ui.selObjs = copies.map((o) => o.id);
   objChanged({ final: true, list: copies });
 }
+/* Alt-drag copies the selected lines, each group into a new group, and selects the copies */
+function copyPathsForDrag(paths) {
+  const gmap = new Map();
+  const copies = paths.map((q) => { const c = clone(q); c.id = uid++; c.traced = false; if (q.group != null) { if (!gmap.has(q.group)) gmap.set(q.group, uid++); c.group = gmap.get(q.group); } return c; });
+  doc.lines.paths.push(...copies); setPathSel(copies.map((q) => q.id));
+  return copies;
+}
 function flipObjects(axis) { const sel = selectedObjs(); sel.forEach((o) => { if (axis === 'x') o.flipX = !o.flipX; else o.flipY = !o.flipY; }); objChanged({ final: true }); }
+/* Everything on the Vector layer at once: the lines and the shapes, text and pictures that sit on it.
+   The mirror runs down, or across, the middle of what you see, so the drawing stays in the frame. */
+function flipVectorLayer(axis) {
+  const objs = doc.objects.filter((o) => o.layer !== 'photo');
+  const paths = doc.lines.paths;
+  if (!objs.length && !paths.length) { toast('There is nothing on the Vector layer yet. Draw or trace some lines first.'); return; }
+  const cr = cropRect();
+  const cx = (cr.x + cr.w / 2) * iw, cy = (cr.y + cr.h / 2) * ih;
+  const X = (v) => 2 * cx - v, Y = (v) => 2 * cy - v;
+  paths.forEach((p) => (p.nodes || []).forEach((n) => {
+    if (axis === 'x') { n.x = X(n.x); if (n.ox !== undefined) n.ox = -n.ox; if (n.ix !== undefined) n.ix = -n.ix; }
+    else { n.y = Y(n.y); if (n.oy !== undefined) n.oy = -n.oy; if (n.iy !== undefined) n.iy = -n.iy; }
+  }));
+  paths.forEach((p) => turnFill(p, 0, axis));
+  objs.forEach((o) => {
+    if (axis === 'x') { o.x = X(o.x + o.w); o.flipX = !o.flipX; } else { o.y = Y(o.y + o.h); o.flipY = !o.flipY; }
+    if (o.rot) o.rot = -o.rot;
+  });
+  objVer++; vecVer++;
+  linesChanged(); compose(); drawOverlay(); buildPanel();
+  toast('Vector layer flipped ' + (axis === 'x' ? 'across' : 'up and down'), { label: 'Undo', fn: undo });
+}
+/* The finished text art, mirrored. The letters come out reversed as well, which is what an iron-on
+   T-shirt transfer needs. It is a property of the layer, so every export carries it. */
+function flipTextArt(axis) {
+  // before there is text art, the menu item makes it first, as Shuffle and Variations do
+  if (!doc.text.applied) { if (!src) return; applyTextArt(); }
+  if (axis === 'x') doc.text.flipX = !doc.text.flipX; else doc.text.flipY = !doc.text.flipY;
+  const on = axis === 'x' ? doc.text.flipX : doc.text.flipY;
+  compose(); queueHistory(); scheduleText(0); buildPanel();
+  toast('Text art ' + (on ? 'mirrored ' : 'back the right way round, ') + (axis === 'x' ? 'across' : 'up and down'), { label: 'Undo', fn: undo });
+}
+/* The writing of the selected text art layer, mirrored and laid out again (see mirrorText in the engine) */
+function setMirrorWriting(v) {
+  if (!doc.text.applied && src && v !== 'none') applyTextArt();
+  const L = curLayer(); if (!L || (L.mirror || 'none') === v) return;
+  L.mirror = v;
+  queueHistory(); scheduleText(0); buildPanel();
+}
 function arrangeObjects(how) {
   const sel = selectedObjs(); if (!sel.length) return;
   const rest = doc.objects.filter((o) => !sel.includes(o));
@@ -179,10 +225,12 @@ function alignObjects(how) {
   objChanged({ final: true });
 }
 function nudgeObjects(dx, dy) {
-  const sel = selectedObjs();
-  if (!sel.length) return false;
+  const sel = selectedObjs(), paths = ui.tool === 'select' ? selectedPaths() : [];
+  if (!sel.length && !paths.length) return false;
   sel.forEach((o) => { o.x += dx; o.y += dy; });
-  objChanged({}); clearTimeout(nudgeObjects.t); nudgeObjects.t = setTimeout(() => objChanged({ final: true }), 350);
+  if (paths.length) { paths.forEach((q) => q.nodes.forEach((n) => { n.x += dx; n.y += dy; })); vecVer++; }
+  if (sel.length) objChanged({}); else compose();
+  clearTimeout(nudgeObjects.t); nudgeObjects.t = setTimeout(() => { if (paths.length) linesChanged(); if (sel.length) objChanged({ final: true }); }, 350);
   return true;
 }
 function zoomToSelection() {
@@ -206,21 +254,49 @@ function selectDown(p, ix, iy, e) {
       drag = { kind: 'objScale', o, hx: h.hx, hy: h.hy, o0: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size, sw: o.sw } }; return;
     }
   }
+  // the box around selected lines and groups scales and turns them
+  const pb = pathSelBox();
+  if (pb) {
+    for (const h of handlesOf(pb, g, p.k)) {
+      if (Math.hypot(h.ax - p.ax, h.ay - p.ay) > tol) continue;
+      const paths = selectedPaths();
+      drag = { kind: h.rot ? 'objPathsRotate' : 'objPathsScale', paths, base: nodesOf(paths), b0: pb, hx: h.hx, hy: h.hy, a0: Math.atan2(iy - (pb.y + pb.h / 2), ix - (pb.x + pb.w / 2)) };
+      return;
+    }
+  }
   const hit = hitObject(ix, iy, 4 / p.k / imgScale(g));
   if (hit) {
+    // dragging a shape that is already part of a selection keeps the selected lines too; a new pick clears them
+    const keepPaths = !e.shiftKey && ui.selObjs.includes(hit.id);
     if (e.shiftKey) ui.selObjs = ui.selObjs.includes(hit.id) ? ui.selObjs.filter((id) => id !== hit.id) : ui.selObjs.concat(hit.id);
     else if (!ui.selObjs.includes(hit.id)) ui.selObjs = [hit.id];
-    ui.selPath = null;
-    let moving = selectedObjs();
+    if (!keepPaths) ui.selPath = null;
+    let moving = selectedObjs(), paths = selectedPaths(), copied = false;
     if (e.altKey && moving.length) {
       const copies = moving.map((o) => cloneObj(o, 0, 0));
       doc.objects.push(...copies); ui.selObjs = copies.map((o) => o.id); moving = copies;
+      if (paths.length) { paths = copyPathsForDrag(paths); copied = true; }
     }
-    drag = { kind: 'objMove', start: [ix, iy], last: [ix, iy], objs: moving, orig: moving.map((o) => [o.x, o.y]) };
+    drag = { kind: 'objMove', start: [ix, iy], last: [ix, iy], objs: moving, orig: moving.map((o) => [o.x, o.y]), paths, base: nodesOf(paths), pbox: paths.length ? pathsBounds(paths) : null, copied };
   } else {
-    const path = nearestPath(p, 7);
-    if (path) { ui.selObjs = []; ui.selPath = path.id; ui.selNode = null; drag = { kind: 'path', path, last: [ix, iy] }; }
-    else { if (!e.shiftKey) ui.selObjs = []; ui.selPath = null; drag = { kind: 'marquee', a: [ix, iy], b: [ix, iy] }; }
+    const path = doc.lines.visible ? hitPath(p) : null;
+    if (path) {
+      // a click picks the whole group, unless you went into the group with a double-click
+      if (ui.inGroup != null && path.group !== ui.inGroup) ui.inGroup = null;
+      const ids = ui.inGroup != null ? [path.id] : expandGroups([path]);
+      const cur = selectedPathIds();
+      if (e.shiftKey) setPathSel(cur.includes(path.id) ? cur.filter((id) => !ids.includes(id)) : cur.concat(ids.filter((id) => !cur.includes(id))));
+      else if (!cur.includes(path.id)) { setPathSel(ids); ui.selObjs = []; }
+      let paths = selectedPaths(), copied = false;
+      if (e.altKey && paths.length) {
+        paths = copyPathsForDrag(paths); copied = true;
+        // shapes selected with the lines are copied too, so the whole selection is copied whichever part is grabbed
+        const objs0 = selectedObjs();
+        if (objs0.length) { const cs = objs0.map((o) => cloneObj(o, 0, 0)); doc.objects.push(...cs); ui.selObjs = cs.map((o) => o.id); }
+      }
+      const objs = selectedObjs();
+      drag = { kind: 'objMove', start: [ix, iy], last: [ix, iy], objs, orig: objs.map((o) => [o.x, o.y]), paths, base: nodesOf(paths), pbox: pathsBounds(paths), copied };
+    } else { if (!e.shiftKey) { ui.selObjs = []; setPathSel([]); ui.inGroup = null; } drag = { kind: 'marquee', a: [ix, iy], b: [ix, iy] }; }
   }
   drawOverlay(); buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel();
 }
@@ -233,18 +309,57 @@ function objDragMove(ix, iy, e, p) {
     if (e.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; }
     // snap the moved box: measure from where the shapes started
     d.objs.forEach((o, i) => { o.x = d.orig[i][0]; o.y = d.orig[i][1]; });
-    [dx, dy] = snapMove(d.objs, dx, dy, e, p);
+    if (d.paths && d.paths.length) {
+      // lines and groups snap like a shape: the box around everything that moves, and the two ends of a single open line.
+      // The moving lines are left out of the snap targets, so the selection never snaps to where it was.
+      const pb = d.pbox || pathsBounds(d.paths);
+      let box = pb;
+      if (d.objs.length) {
+        const ob = objBounds(d.objs), x0 = Math.min(pb.x, ob.x), y0 = Math.min(pb.y, ob.y);
+        box = { x: x0, y: y0, w: Math.max(pb.x + pb.w, ob.x + ob.w) - x0, h: Math.max(pb.y + pb.h, ob.y + ob.h) - y0 };
+      }
+      const one = d.paths.length === 1 && !d.paths[0].closed ? d.base[0] : null;
+      const keys = one ? [[one[0].x, one[0].y], [one[one.length - 1].x, one[one.length - 1].y]] : [];
+      [dx, dy] = snapMove(d.objs.length ? d.objs : null, dx, dy, e, p, { box, keys, skipPath: new Set(d.paths) });
+    } else if (d.objs.length) [dx, dy] = snapMove(d.objs, dx, dy, e, p);
     d.objs.forEach((o, i) => { o.x = d.orig[i][0] + dx; o.y = d.orig[i][1] + dy; });
+    if (d.paths && d.paths.length) { mapPathsFrom(d.paths, d.base, (x, y) => [x + dx, y + dy]); vecVer++; }
     d.moved = true;
-    objChanged({ list: d.objs });
+    if (d.objs.length) objChanged({ list: d.objs }); else compose();
+  } else if (d.kind === 'objPathsRotate') {
+    const b = d.b0, cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    let deg = (Math.atan2(iy - cy, ix - cx) - d.a0) * 180 / Math.PI;
+    deg = ((deg % 360) + 540) % 360 - 180;
+    // the same rule as one shape: Shift keeps 15 degree steps; with snapping on, the turn clicks into a step within 2 degrees
+    const q = Math.round(deg / 15) * 15, stepped = e.shiftKey || (!e.altKey && prefs.snap.on && prefs.snap.angle && Math.abs(deg - q) <= 2);
+    if (stepped) deg = q === -180 ? 180 : q;
+    const a = deg * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a);
+    mapPathsFrom(d.paths, d.base, (x, y) => [cx + (x - cx) * c - (y - cy) * sn, cy + (x - cx) * sn + (y - cy) * c]);
+    // gradient fills turn with their shapes, from how they were when the drag started
+    if (!d.fill0) d.fill0 = d.paths.map((r) => (r.fill && typeof r.fill === 'object' ? clone(r.fill) : null));
+    d.paths.forEach((r, i) => { if (d.fill0[i]) { r.fill = clone(d.fill0[i]); turnFill(r, deg); } });
+    ui.snapHint = stepped ? { x: cx, y: cy, kind: 'angle', deg, label: 'turned ' + deg + '°' } : null;
+    d.moved = true; vecVer++; compose();
+  } else if (d.kind === 'objPathsScale') {
+    const b = d.b0;
+    const ax = d.hx > 0 ? b.x : d.hx < 0 ? b.x + b.w : b.x + b.w / 2, ay = d.hy > 0 ? b.y : d.hy < 0 ? b.y + b.h : b.y + b.h / 2;
+    let sx = d.hx ? Math.max(0.02, (ix - ax) * d.hx / b.w) : 1, sy = d.hy ? Math.max(0.02, (iy - ay) * d.hy / b.h) : 1;
+    // corners keep the proportions; Shift lets them go
+    if (d.hx && d.hy && !e.shiftKey) { const s2 = Math.max(sx, sy); sx = s2; sy = s2; }
+    mapPathsFrom(d.paths, d.base, (x, y) => [ax + (x - ax) * sx, ay + (y - ay) * sy]);
+    d.moved = true; vecVer++; compose();
   } else if (d.kind === 'objRotate') {
     const o = d.o, a = Math.atan2(iy - (o.y + o.h / 2), ix - (o.x + o.w / 2));
     let r = d.r0 + (a - d.a0) * 180 / Math.PI;
-    if (e.shiftKey) r = Math.round(r / 15) * 15;
+    // Shift keeps 15 degree steps; with snapping on, the turn also clicks into a step when it comes within 2 degrees
+    const q = Math.round(r / 15) * 15, stepped = e.shiftKey || (!e.altKey && prefs.snap.on && prefs.snap.angle && Math.abs(r - q) <= 2);
+    if (stepped) r = q;
     o.rot = ((r % 360) + 540) % 360 - 180;
+    ui.snapHint = stepped ? { x: o.x + o.w / 2, y: o.y + o.h / 2, kind: 'angle', deg: o.rot, label: 'turned ' + o.rot + '°' } : null;
     objChanged({ list: [o] });
   } else if (d.kind === 'objScale') {
     const o = d.o, o0 = d.o0;
+    [ix, iy] = snapAt(ix, iy, { e, p, skipObjs: new Set([o.id]) });
     const tmp = Object.assign({}, o, { x: o0.x, y: o0.y, w: o0.w, h: o0.h });
     const [lx, ly] = toLocal(tmp, ix, iy);
     let nw = d.hx ? Math.max(2, d.hx * lx + o0.w / 2) : o0.w, nh = d.hy ? Math.max(2, d.hy * ly + o0.h / 2) : o0.h;
@@ -264,19 +379,32 @@ function objDragEnd(d) {
     if (x1 - x0 > 2 && y1 - y0 > 2) {
       const hits = doc.objects.filter((o) => !o.hidden && layerOf(o.layer).visible && o.x + o.w / 2 >= x0 && o.x + o.w / 2 <= x1 && o.y + o.h / 2 >= y0 && o.y + o.h / 2 <= y1).map((o) => o.id);
       ui.selObjs = [...new Set(ui.selObjs.concat(hits))];
+      // lines and groups whose middle is inside the box
+      if (doc.lines.visible) {
+        const units = pathUnits(doc.lines.paths).concat(doc.lines.paths.filter((q) => !q.hidden && !q.stroke && !pathFillShown(q) && q.group == null).map((q) => [q]));
+        const inBox = units.filter((u) => { const b = pathsBounds(u); return b.x + b.w / 2 >= x0 && b.x + b.w / 2 <= x1 && b.y + b.h / 2 >= y0 && b.y + b.h / 2 <= y1; });
+        const ids = expandGroups([].concat(...inBox));
+        if (ids.length) setPathSel([...new Set(selectedPathIds().concat(ids))]);
+      }
     }
     drawOverlay(); buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel();
     return;
   }
   if (d.kind === 'shapeDraw') { shapeEnd(d); return; }
+  if (d.paths && d.paths.length) {
+    // an Alt-click copy counts as a change even when the pointer did not move
+    if (d.moved || d.copied) linesChanged();
+    if (!d.objs || !d.objs.length) { buildOptbar(); if (['photo', 'lines'].includes(ui.tab)) buildPanel(); return; }
+  }
   objChanged({ final: true, list: d.objs || [d.o] });
 }
 function hoverCursor(p) {
   let cur = '';
   if (ui.tool === 'select') {
     const sel = selectedObjs();
-    if (sel.length === 1) { const h = handlesOf(sel[0], artGeom(), p.k).find((q) => Math.hypot(q.ax - p.ax, q.ay - p.ay) < 9 / p.k); if (h) cur = h.rot ? 'grab' : (h.hx * h.hy > 0 ? 'nwse-resize' : h.hx * h.hy < 0 ? 'nesw-resize' : h.hx ? 'ew-resize' : 'ns-resize'); }
-    if (!cur) { const [ix, iy] = toImg(p); if (hitObject(ix, iy)) cur = 'move'; }
+    const box = sel.length === 1 ? sel[0] : pathSelBox();
+    if (box) { const h = handlesOf(box, artGeom(), p.k).find((q) => Math.hypot(q.ax - p.ax, q.ay - p.ay) < 9 / p.k); if (h) cur = h.rot ? 'grab' : (h.hx * h.hy > 0 ? 'nwse-resize' : h.hx * h.hy < 0 ? 'nesw-resize' : h.hx ? 'ew-resize' : 'ns-resize'); }
+    if (!cur) { const [ix, iy] = toImg(p); if (hitObject(ix, iy) || (doc.lines.visible && hitPath(p))) cur = 'move'; }
   } else if (ui.tool === 'crop') cur = cropCursor(p);
   wrap.style.cursor = cur;
 }
@@ -295,10 +423,10 @@ function shapeDown(ix, iy, e) {
 }
 function shapeDrag(ix, iy, e, p) {
   const d = drag;
-  if (!e.shiftKey) [ix, iy] = snapAt(ix, iy, { e, p, anchor: d.line ? d.start : null, skipPath: d.line || null, skipObjs: d.o ? new Set([d.o.id]) : null });
+  // a line with Shift keeps 15 degree steps, like the pen (snapAt does it); a shape with Shift stays square instead
+  if (d.line || !e.shiftKey) [ix, iy] = snapAt(ix, iy, { e, p, anchor: d.line ? d.start : null, skipPath: d.line || null, skipObjs: d.o ? new Set([d.o.id]) : null });
   let dx = ix - d.start[0], dy = iy - d.start[1];
   if (d.line) {
-    if (e.shiftKey) { const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI / 4, L = Math.hypot(dx, dy); dx = Math.cos(a) * L; dy = Math.sin(a) * L; }
     Object.assign(d.line.nodes[1], { x: d.start[0] + dx, y: d.start[1] + dy });
     vecVer++; compose(); return;
   }
@@ -409,15 +537,7 @@ function stepRepeat() {
   objChanged({ final: true, list: objs.concat(made) });
   toast('Made ' + (made.length || madePaths.length) + ' copies', { label: 'Undo', fn: undo });
 }
-/* bulge or pinch the lines themselves, around the center of the selection or the artboard */
-function warpLines(amount) {
-  const sel = findPath(ui.selPath), list = sel ? [sel] : doc.lines.paths;
-  if (!list.length) { toast('There are no lines to bend yet.'); return; }
-  const cr = cropRect(), cx = (cr.x + cr.w / 2) * iw, cy = (cr.y + cr.h / 2) * ih, R = Math.min(cr.w * iw, cr.h * ih) * 0.6;
-  const f = (x, y) => { const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy) / R; if (d >= 1) return [x, y]; const k = 1 + amount * (1 - d) * (1 - d); return [cx + dx * k, cy + dy * k]; };
-  list.forEach((p) => p.nodes.forEach((n) => { const [x, y] = f(n.x, n.y), [ax, ay] = f(n.x + (n.ox || 0), n.y + (n.oy || 0)), [bx, by] = f(n.x + (n.ix || 0), n.y + (n.iy || 0)); n.x = x; n.y = y; n.ox = ax - x; n.oy = ay - y; n.ix = bx - x; n.iy = by - y; }));
-  linesChanged();
-}
+/* warpLines, the Bend lines buttons, is in 03f-vector.js now, as a bulge of the Distort tool */
 /* the photo under the selection becomes an image object you can move, copy and repeat */
 function selectionToObject() {
   if (!hasSelection) { toast('Select part of the photo first.'); return; }
@@ -455,19 +575,29 @@ function placeImageFile(file) {
 }
 const placeInput = el('input'); placeInput.type = 'file'; placeInput.accept = 'image/*'; placeInput.hidden = true; document.body.appendChild(placeInput);
 placeInput.onchange = () => { placeImageFile(placeInput.files[0]); placeInput.value = ''; };
-function quickAdd(type) {
+function quickAdd(type, over) {
   const cr = cropRect(), bw = cr.w * iw, bh = cr.h * ih, s = Math.min(bw, bh) / 4;
-  const o = newObject(type, type === 'text' ? {} : { w: s, h: s });
+  const o = newObject(type, Object.assign(type === 'text' ? {} : { w: s, h: s }, over || {}));
   o.x = cr.x * iw + (bw - o.w) / 2; o.y = cr.y * ih + (bh - o.h) / 2;
-  addObject(o, type === 'text');
+  addObject(o, type === 'text' && !over);
   if (ui.tool !== 'select' && type !== 'text') setTool('select');
 }
 
 /* ---------------- overlay ---------------- */
 function objectOverlay(g, k) {
   const parts = [], sel = selectedObjs(), col = '#0a84ff';
-  if (!sel.length && !(drag && drag.kind === 'marquee')) return '';
   const objTool = ['select', 'shape', 'text'].includes(ui.tool);
+  // selected lines and groups: a box with handles, for the Select tool. Dotted inside a group.
+  const pb = ui.tool === 'select' && !textEdit ? pathSelBox() : null;
+  if (pb) {
+    const pts = [[pb.x, pb.y], [pb.x + pb.w, pb.y], [pb.x + pb.w, pb.y + pb.h], [pb.x, pb.y + pb.h]].map(([a, b]) => img2art(a, b, g));
+    parts.push('<path d="M' + pts.map((q) => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join('L') + 'Z" fill="none" stroke="' + col + '" stroke-width="1.3" vector-effect="non-scaling-stroke"' + (ui.inGroup != null ? ' stroke-dasharray="2 3"' : '') + '/>');
+    const s = 8 / k, hs = handlesOf(pb, g, k), top = hs.find((h) => h.hx === 0 && h.hy === -1), rh = hs.find((h) => h.rot);
+    parts.push('<line x1="' + top.ax + '" y1="' + top.ay + '" x2="' + rh.ax + '" y2="' + rh.ay + '" stroke="' + col + '" stroke-width="1" vector-effect="non-scaling-stroke"/>');
+    hs.forEach((h) => parts.push(h.rot ? '<circle cx="' + h.ax + '" cy="' + h.ay + '" r="' + (s * 0.6) + '" fill="#fff" stroke="' + col + '" stroke-width="1.3" vector-effect="non-scaling-stroke"/>'
+      : '<rect x="' + (h.ax - s / 2) + '" y="' + (h.ay - s / 2) + '" width="' + s + '" height="' + s + '" fill="#fff" stroke="' + col + '" stroke-width="1.3" vector-effect="non-scaling-stroke"/>'));
+  }
+  if (!sel.length && !(drag && drag.kind === 'marquee')) return parts.join('');
   sel.forEach((o) => {
     const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => img2art(...fromLocal(o, a * o.w / 2, b * o.h / 2), g));
     parts.push('<path d="M' + pts.map((q) => q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join('L') + 'Z" fill="none" stroke="' + col + '" stroke-width="1.3" vector-effect="non-scaling-stroke"' + (o.layer === 'photo' ? ' stroke-dasharray="5 3"' : '') + '/>');
@@ -515,6 +645,6 @@ function pathSVG(p) {
 /* the group of objects of one layer, mapped onto an artboard of geometry g */
 function objectsSVGGroup(g, layer) {
   const M = imgTransform(g).map(nf);
-  const body = (layer === 'lines' ? doc.lines.paths.filter((p) => p.stroke && !p.hidden).map(pathSVG) : []).concat(doc.objects.filter((o) => (o.layer === 'photo') === (layer === 'photo') && !o.hidden).map(objectSVG)).join('\n');
+  const body = (layer === 'lines' ? pathUnits(doc.lines.paths).map(unitSVG).filter(Boolean) : []).concat(doc.objects.filter((o) => (o.layer === 'photo') === (layer === 'photo') && !o.hidden).map(objectSVG)).join('\n');
   return body ? '<g transform="matrix(' + M.join(' ') + ')">\n' + body + '\n</g>' : '';
 }

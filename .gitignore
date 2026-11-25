@@ -8,3 +8,7 @@ tests/out/
 # Local notes that are not part of the project
 private/
 *.local.md
+
+# The GitHub Pages build (npm run site) and local screenshots
+pages/
+/out/

@@ -26,7 +26,7 @@ const wait = async (p) => { await p.waitForTimeout(300); while (await p.evaluate
   await wait(p);
   await shot('start.jpg');
 
-  // 2. a style: Confetti on light paper, Text art panel scrolled to the style tiles
+  // 2. a style: Confetti on light paper, the style tiles at the top of the Text art panel
   await p.evaluate(() => {
     const A = window.__sungfluence;
     A.applyTextArt(); A.doc.out.paper = '#ffffff';
@@ -34,18 +34,18 @@ const wait = async (p) => { await p.waitForTimeout(300); while (await p.evaluate
   });
   await wait(p);
   await p.evaluate(() => { const t = document.getElementById('tiles'); if (t) t.scrollIntoView({ block: 'start' }); });
-  await p.waitForTimeout(5000); // recipe thumbnails
+  await p.waitForTimeout(1500);
   await shot('styles.jpg');
 
-  // 3. Focus and fade open, with the shape and its handles on the picture
+  // 3. Shape open at Focus and fade, with the fade shape and its handles on the picture
   await p.evaluate(() => {
     const A = window.__sungfluence;
     A.doc.out.paper = '#f3efe6'; A.setLayerStyle('typewriter');
     Object.assign(A.curLayer(), { focus: 'ellipse', fr: 0.78, fs: 0.45, fe: 0.75, fa: 12 });
-    A.ui.open.focus = true; A.buildPanel(); A.scheduleText(0);
+    A.ui.open.shape = true; A.buildPanel(); A.scheduleText(0);
   });
   await wait(p);
-  await p.evaluate(() => { const d = Array.from(document.querySelectorAll('#panel details summary')).find((s) => /Focus and fade/.test(s.textContent)); if (d) d.scrollIntoView({ block: 'start' }); });
+  await p.evaluate(() => { const d = Array.from(document.querySelectorAll('#grp-shape .sub-t')).find((s) => /Focus and fade/i.test(s.textContent)) || document.getElementById('grp-shape'); if (d) d.scrollIntoView({ block: 'start' }); });
   const box = await p.locator('#canvasWrap').boundingBox();
   await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await p.waitForTimeout(300);

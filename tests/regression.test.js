@@ -18,7 +18,7 @@ const wait = async (p, ms = 60000) => { const t0 = Date.now(); await p.waitForTi
   console.log('pencil paths', await p.evaluate(() => window.__sungfluence.doc.lines.paths.length));
   // trace outlines too, then use both: photo word portrait + lines
   await p.evaluate(() => { const c = window.__sungfluence; c.setTool('hand'); c.ui.trace.kind = 'edges'; c.traceNow(); }); await wait(p);
-  await p.evaluate(() => { const c = window.__sungfluence; c.applyRecipe(c.RECIPES[0]); c.doc.text.source = 'both'; c.doc.text.layers.push(Object.assign({}, c.doc.text.layers[0], { id: 999, mode: 'paths', text: 'music · memory · rhythm · soul', color: 'ink', inkColor: '#ffffff', fill: 0.9, sizeFrom: 'line', font: 'condensed', weight: 700, upper: true, minSize: 3, maxSize: 200, tracking: 0.06, sep: ' · ' })); c.setView('text'); });
+  await p.evaluate(() => { const c = window.__sungfluence; c.applyRecipe(c.RECIPES.find((r) => r.name === 'Word portrait')); c.doc.text.source = 'both'; c.doc.text.layers.push(Object.assign({}, c.doc.text.layers[0], { id: 999, mode: 'paths', text: 'music · memory · rhythm · soul', color: 'ink', inkColor: '#ffffff', fill: 0.9, sizeFrom: 'line', font: 'condensed', weight: 700, upper: true, minSize: 3, maxSize: 200, tracking: 0.06, sep: ' · ' })); c.setView('text'); });
   await p.evaluate(() => document.querySelector('#qualitySeg button:nth-child(2)').click()); await wait(p);
   await p.screenshot({ path: __dirname + '/out/s15-both.png' });
   await p.evaluate(() => window.__sungfluence.setView('mix')); await p.waitForTimeout(300);

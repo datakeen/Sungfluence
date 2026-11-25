@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Page not found · SungFluence</title>
+<meta name="description" content="This page is not here. Go to the SungFluence home page, the web app or the download.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121317" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<!-- the icon is written into the page, so it shows at any depth and when the page is opened from disk -->
+<link rel="icon" href="{{ICON_DATA}}" type="image/svg+xml">
+<style>
+/* This page is served for every missing address, at any depth, so it links its files from {{BASE}} and keeps the rest inside. */
+@font-face { font-family: 'Inter'; font-display: swap; font-weight: 100 900; src: url('{{BASE}}fonts/inter-latin-wght-normal.woff2') format('woff2-variations'); }
+@font-face { font-family: 'Playfair Display'; font-display: swap; font-weight: 400 900; src: url('{{BASE}}fonts/playfair-display-latin-wght-normal.woff2') format('woff2-variations'); }
+@font-face { font-family: 'JetBrains Mono'; font-display: swap; font-weight: 400; src: url('{{BASE}}fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2'); }
+:root { --paper: #f6f1e7; --card: #fffdf8; --ink: #17181c; --ink-2: #4b4a50; --ink-3: #77757a; --gold: #9a5b06; --gold-fill: #e8a33d; --line: rgba(23,24,28,.12); --line-2: rgba(23,24,28,.22); --cat: #ece5d6; --cat-bg: #1d1c20; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { --paper: #121317; --card: #1a1b20; --ink: #f3efe6; --ink-2: #bdb8ae; --ink-3: #8b877f; --gold: #f0b04f; --line: rgba(255,255,255,.09); --line-2: rgba(255,255,255,.18); --cat: #e9e2d4; --cat-bg: #0e0f12; color-scheme: dark; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { background: var(--paper); color: var(--ink); font: 400 17px/1.6 Inter, -apple-system, 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+/* the letters of the address: over the whole window on a wide screen, in a band under the name on a narrow one */
+#pile { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; touch-action: pan-y; }
+.wrap { position: relative; z-index: 1; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; max-width: 1100px; margin: 0 auto; padding: 18px clamp(16px, 4vw, 40px) 140px; pointer-events: none; }
+.wrap a, .wrap button, .poster { pointer-events: auto; }
+.logo { align-self: flex-start; display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: 600 19px/1 Inter, system-ui, sans-serif; letter-spacing: -.01em; }
+.logo b { color: var(--gold); font-weight: 700; }
+.logo img { border-radius: 22%; }
+@media (prefers-color-scheme: dark) { .logo img { box-shadow: 0 0 0 1px rgba(255,255,255,.2); } }
+main { flex: 1; display: grid; place-items: center; padding: clamp(24px, 6vh, 64px) 0; }
+.poster { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: clamp(22px, 4vw, 48px); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 30px 70px -30px rgba(30,20,5,.35); transform: rotate(-.6deg); }
+.cat { margin: 0; text-align: center; }
+.cat pre { margin: 0; font: 400 10.3px/1.02 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; color: var(--cat); letter-spacing: 0; will-change: transform; -webkit-text-stroke: .45px currentColor;
+  /* like the photo on a lost pet poster: light dots on a dark print read best */
+  display: inline-block; padding: 18px 20px; background: var(--cat-bg); border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); }
+.cat figcaption { margin-top: 10px; font: 400 11.5px/1.3 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.eyebrow { margin: 0 0 10px; font: 400 12.5px/1.4 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
+h1 { margin: 0; font: 700 clamp(40px, 6vw, 68px)/1 'Playfair Display', Georgia, serif; letter-spacing: -.025em; }
+.lost { margin: 18px 0 0; padding: 14px 16px; border: 1.5px dashed var(--line-2); border-radius: 12px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 15px; }
+.lost dt { font: 400 12px/1.9 'JetBrains Mono', ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.lost dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.lost code { font: 400 14px/1.5 'JetBrains Mono', ui-monospace, monospace; color: var(--ink); }
+.say { margin: 16px 0 0; color: var(--ink-2); }
+.go { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 20px; border-radius: 999px; font: 600 15.5px/1 Inter, system-ui, sans-serif; text-decoration: none; transition: transform .2s, border-color .2s, background-color .2s; }
+.btn:active { transform: scale(.98); }
+.btn-gold { background: var(--gold-fill); color: #1c1407; }
+.btn-gold:hover { background: #f0b04f; }
+.btn-line { border: 1.5px solid var(--line-2); }
+.btn-line:hover { border-color: var(--ink); }
+.play { margin: 22px 0 0; font-size: 13.5px; color: var(--ink-3); }
+@media (max-width: 960px) {
+  .wrap { padding-bottom: 40px; }
+  #pile { position: relative; inset: auto; z-index: auto; display: block; height: clamp(120px, 17vh, 170px); margin: 6px 0 0; border-bottom: 1.5px dashed var(--line-2); pointer-events: auto; }
+  main { padding-top: 22px; place-items: start center; }
+  .poster { grid-template-columns: minmax(0, 1fr); transform: none; width: 100%; max-width: 640px; }
+  .poster > div { order: 1; }
+  .cat { order: 2; overflow: hidden; padding-top: 22px; border-top: 1px solid var(--line); }
+  .cat pre { font-size: 8.4px; }
+}
+@media (max-width: 560px) {
+  .cat pre { font-size: 6.4px; }
+  .go .btn { flex: 1 1 auto; padding: 0 14px; white-space: nowrap; }
+  .go .btn-gold { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .poster { transform: none; } .play { display: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="logo" href="{{BASE}}"><img src="{{ICON_DATA}}" alt="" width="28" height="28"><span>Sung<b>Fluence</b></span></a>
+  <canvas id="pile" aria-hidden="true"></canvas>
+  <main>
+    <article class="poster" aria-labelledby="t">
+      <figure class="cat">
+<pre aria-label="A cat drawn in Braille characters">{{LOST_CAT}}</pre>
+        <figcaption>Drawn by SungFluence</figcaption>
+      </figure>
+      <div>
+        <p class="eyebrow">Error 404 · Lost page</p>
+        <h1 id="t">This page wandered off.</h1>
+        <dl class="lost">
+          <dt>Last seen</dt><dd><code id="where">here</code></dd>
+          <dt>Answers to</dt><dd>its address, mostly</dd>
+          <dt>Reward</dt><dd>a free app, no strings</dd>
+        </dl>
+        <p class="say">The cat has looked everywhere. The page may have moved, or the link has a typo. The web app now lives at <a href="{{BASE}}try/">try/</a>.</p>
+        <nav class="go" aria-label="Where to go">
+          <a class="btn btn-gold" href="{{BASE}}">Home page</a>
+          <a class="btn btn-line" href="{{BASE}}try/">Open the web app</a>
+          <a class="btn btn-line" href="https://sourceforge.net/projects/sungfluence/files/latest/download">Download</a>
+        </nav>
+        <p class="play" id="play">The letters of the address fell out. Push them around.</p>
+      </div>
+    </article>
+  </main>
+</div>
+<script>
+(function () {
+  'use strict';
+  var BASE = '{{BASE}}';
+  var path = location.pathname;
+  try { path = decodeURIComponent(path); } catch (e) { /* keep it as it is */ }
+  var rest = path.indexOf(BASE) === 0 ? path.slice(BASE.length) : path.replace(/^\//, '');
+  // Opened from disk (file://), the site's files sit next to this page, not at BASE: point the links, the icon
+  // and the fonts there, and let a folder link open its index.html, as a web server would.
+  if (location.protocol === 'file:') {
+    var here = location.href.replace(/[?#].*$/, '').replace(/[^\/]*$/, '');
+    var local = function (u) { u = here + u.slice(BASE.length); return /\/$/.test(u) ? u + 'index.html' : u; };
+    Array.prototype.forEach.call(document.querySelectorAll('[href], [src]'), function (el) {
+      ['href', 'src'].forEach(function (k) { var u = el.getAttribute(k); if (u && u.indexOf(BASE) === 0) el.setAttribute(k, local(u)); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('style'), function (st) { st.textContent = st.textContent.split("url('" + BASE).join("url('" + here); });
+    path = '/404.html'; rest = '404.html';
+  }
+  // links to files of the old web app, which lived here before it moved to try/
+  if (/^(help|icons|plugins|vendor)\/|^(app|engine|samples|help|config|pwa|plugin-files)\.js$|^(styles\.css|manifest\.webmanifest)$/.test(rest)) { location.replace(BASE + 'try/' + rest + location.search + location.hash); return; }
+  var shown = (path.length > 48 ? '…' + path.slice(-47) : path);
+  document.getElementById('where').textContent = shown;
+
+  // the letters of the missing address fall into a pile that the pointer can push around
+  var still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var cv = document.getElementById('pile'), cx = cv.getContext('2d');
+  var word = (rest.replace(/\/+$/, '') || '404').slice(-36);
+  var chars = Array.from(word + ' 404').filter(function (c) { return c.trim(); });
+  var W = 0, H = 0, dpr = 1, P = [], raf = 0, ptr = { x: -1e4, y: -1e4, vx: 0, vy: 0, on: false }, quiet = 0, box = { left: 0, top: 0 };
+  var dark = matchMedia('(prefers-color-scheme: dark)');
+  function size() {
+    var r = cv.getBoundingClientRect();
+    W = Math.round(r.width) || innerWidth; H = Math.round(r.height) || innerHeight; dpr = Math.min(2, devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  }
+  // where the pointer is on the canvas: the canvas covers the window on a wide screen, and is a band on a narrow one
+  function local(e) { box = cv.getBoundingClientRect(); return { x: e.clientX - box.left, y: e.clientY - box.top }; }
+  // b: how far each letter reaches below its middle, measured from the glyph, so g, p and y rest on the floor too
+  function measure() {
+    var m = {};
+    P.forEach(function (q) {
+      if (!m[q.c]) { cx.font = '700 ' + q.s + 'px "Playfair Display", Georgia, serif'; cx.textBaseline = 'middle'; m[q.c] = cx.measureText(q.c).actualBoundingBoxDescent || q.s * 0.3; }
+      q.b = Math.max(q.r * 0.6, q.s * 0.04 + m[q.c]) + 2;
+      if (still) q.y = H - q.b;
+    });
+  }
+  function make() {
+    var s = Math.max(30, Math.min(64, W / 11, H / 2.6));
+    P = chars.map(function (c, i) {
+      var r = s * 0.42;
+      return { c: c, r: r, s: s, b: r, x: still ? r + (i + 0.5) * Math.min(W / (chars.length + 1), s * 0.95) : W * (0.15 + Math.random() * 0.7), y: still ? H - r - 6 : -r - Math.random() * H * 0.9 - i * 18,
+        vx: (Math.random() - 0.5) * 2, vy: 0, a: (Math.random() - 0.5) * 0.6, va: 0, gold: i % 3 === 0 };
+    });
+  }
+  function draw() {
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx.clearRect(0, 0, W, H);
+    var ink = dark.matches ? '#f3efe6' : '#17181c', gold = dark.matches ? '#f0b04f' : '#c07a12';
+    for (var i = 0; i < P.length; i++) {
+      var q = P[i];
+      cx.setTransform(dpr * Math.cos(q.a), dpr * Math.sin(q.a), -dpr * Math.sin(q.a), dpr * Math.cos(q.a), q.x * dpr, q.y * dpr);
+      cx.font = '700 ' + q.s + 'px "Playfair Display", Georgia, serif';
+      cx.textAlign = 'center'; cx.textBaseline = 'middle';
+      cx.globalAlpha = 0.9; cx.fillStyle = q.gold ? gold : ink;
+      cx.fillText(q.c, 0, q.s * 0.04);
+    }
+    cx.globalAlpha = 1;
+  }
+  function step() {
+    raf = 0;
+    var moving = false, g = 0.55, n = P.length;
+    for (var i = 0; i < n; i++) {
+      var q = P[i];
+      q.vy += g; q.vx *= 0.995; q.vy *= 0.995; q.va *= 0.96;
+      if (ptr.on) {
+        var dx = q.x - ptr.x, dy = q.y - ptr.y, d = Math.sqrt(dx * dx + dy * dy), R = 90;
+        if (d < R && d > 0.1) { var f = (1 - d / R) * 2.2; q.vx += dx / d * f + ptr.vx * 0.08; q.vy += dy / d * f + ptr.vy * 0.08; q.va += (dx > 0 ? 1 : -1) * 0.01; }
+      }
+      q.x += q.vx; q.y += q.vy; q.a += q.va;
+      if (q.y > H - q.b) { q.y = H - q.b; q.vy *= -0.35; q.vx *= 0.86; q.va *= 0.7; q.a *= 0.92; }
+      if (q.x < q.r) { q.x = q.r; q.vx = Math.abs(q.vx) * 0.5; }
+      if (q.x > W - q.r) { q.x = W - q.r; q.vx = -Math.abs(q.vx) * 0.5; }
+    }
+    // letters bump into each other like coins
+    for (var a = 0; a < n; a++) for (var b = a + 1; b < n; b++) {
+      var p1 = P[a], p2 = P[b], ddx = p2.x - p1.x, ddy = p2.y - p1.y, dist = Math.sqrt(ddx * ddx + ddy * ddy), min = p1.r + p2.r;
+      if (dist < min && dist > 0.01) {
+        var o = (min - dist) / 2, ux = ddx / dist, uy = ddy / dist;
+        p1.x -= ux * o; p1.y -= uy * o; p2.x += ux * o; p2.y += uy * o;
+        var rv = (p2.vx - p1.vx) * ux + (p2.vy - p1.vy) * uy;
+        if (rv < 0) { var j = -rv * 0.6; p1.vx -= ux * j; p1.vy -= uy * j; p2.vx += ux * j; p2.vy += uy * j; }
+      }
+    }
+    for (var k = 0; k < n; k++) if (Math.abs(P[k].vx) + Math.abs(P[k].vy) > 0.08 || P[k].y < H - P[k].b - 1) { moving = true; break; }
+    ptr.vx *= 0.5; ptr.vy *= 0.5;
+    draw();
+    quiet = moving || ptr.on ? 0 : quiet + 1;
+    if (quiet < 30 && !document.hidden) raf = requestAnimationFrame(step);
+  }
+  function kick() { if (!raf && !still) { quiet = 0; raf = requestAnimationFrame(step); } }
+  size(); make();
+  (document.fonts ? document.fonts.load('700 40px "Playfair Display"') : Promise.resolve()).catch(function () {}).then(function () { measure(); if (still) draw(); else kick(); });
+  addEventListener('resize', function () { size(); P.forEach(function (q) { q.x = Math.min(q.x, W - q.r); q.y = Math.min(q.y, H - q.b); }); if (still) draw(); else kick(); });
+  dark.addEventListener && dark.addEventListener('change', function () { draw(); });
+  function move(e) { if (still) return; var l = local(e), nx = l.x, ny = l.y; if (ptr.on) { ptr.vx = nx - ptr.x; ptr.vy = ny - ptr.y; } ptr.x = nx; ptr.y = ny; ptr.on = true; kick(); }
+  addEventListener('pointermove', move, { passive: true });
+  addEventListener('pointerdown', function (e) { move(e); if (still) return; P.forEach(function (q) { var dx = q.x - ptr.x, dy = q.y - ptr.y, d = Math.sqrt(dx * dx + dy * dy); if (d < 160) { q.vy -= (1 - d / 160) * 14; q.vx += dx / (d || 1) * 4; } }); }, { passive: true });
+  document.addEventListener('pointerleave', function () { ptr.on = false; });
+  addEventListener('blur', function () { ptr.on = false; });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) kick(); });
+  window.__lost = { get letters() { return P.length; }, get running() { return !!raf; }, still: still };
+})();
+</script>
+</body>
+</html>
