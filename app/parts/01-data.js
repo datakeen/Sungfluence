@@ -21,6 +21,7 @@ const useCap = (n) => (window.claude && typeof window.claude.use === 'function')
 const dlP = useCap('downloads');
 const sampleP = useCap('sample');
 
+// Classic and Detailed follow Paul Bourke's "Character representation of grey scale images" (1997), darkest last. Credited in NOTICE.md.
 const RAMPS = {
   Classic: ' .:-=+*#%@',
   Letters: ' .,:;irsXA253hMHGS#9B&@',

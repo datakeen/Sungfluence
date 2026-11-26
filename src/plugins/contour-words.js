@@ -5,7 +5,7 @@
     Method: the picture's tone is sampled on a small grid, smoothed, and cut at
     evenly spaced levels with marching squares. Line pieces are joined into
     long contours, and the layer's text is written along them.
-    MIT licensed. */
+    MIT licensed. Copyright (C) 2026 Ahmed Bilal. SPDX-License-Identifier: MIT */
 
 Sungfluence.plugin({
   api: 1,

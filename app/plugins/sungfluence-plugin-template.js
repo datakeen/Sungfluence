@@ -11,6 +11,7 @@
 
     Plugins run code inside SungFluence. Only load plugins you trust.
     This template is MIT licensed. Use it for anything.
+    Copyright (C) 2026 Ahmed Bilal. SPDX-License-Identifier: MIT
 
     ---------------------------------------------------------------
     What render(api) gets

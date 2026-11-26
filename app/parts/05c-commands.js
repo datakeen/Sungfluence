@@ -128,6 +128,7 @@ command('help.shortcuts', 'Keyboard shortcuts', () => openHelp('shortcuts'));
 command('help.palette', 'Find a command…', () => openPalette(), { keys: ['mod+k'], typing: true });
 command('help.feedback', 'Send feedback or report a bug', () => openURL(ISSUES_URL));
 command('help.source', 'Project page and source code', () => openURL('https://github.com/datakeen/Sungfluence'));
+command('help.credits', 'Open-source credits', () => openCredits());
 command('help.about', 'About SungFluence', () => openAbout());
 
 /* styles, recipes, samples and export formats are commands too, made from their own lists */
@@ -177,7 +178,7 @@ function menuSpec() {
       { label: 'Show transparency as', items: TRANSP_SHOW.map(([v, t]) => Object.assign(item('view.transp.' + v), { label: t })) }, SEP,
       item('view.rulers'), { label: 'Ruler units', items: RULER_UNITS.map(([u, t]) => Object.assign(item('view.rulerUnit.' + u), { label: t })) }, item('view.newGuide'), item('view.guides'), item('view.lockGuides'), item('view.clearGuides'), SEP, item('view.grid'),
       { label: 'Snapping', items: snapMenuItems().concat([SEP, item('snap.gridSize')]) }] },
-    { label: 'Help', items: [item('help.help'), item('help.tutorial'), item('help.shortcuts'), item('help.palette'), SEP, item('help.feedback'), item('help.source'), SEP, item('help.about')] }
+    { label: 'Help', items: [item('help.help'), item('help.tutorial'), item('help.shortcuts'), item('help.palette'), SEP, item('help.feedback'), item('help.source'), SEP, item('help.credits'), item('help.about')] }
   ];
 }
 /* fill in labels, keys and states, so the page and the desktop app can draw the same menus */

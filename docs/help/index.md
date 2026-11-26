@@ -22,6 +22,7 @@ New here? Start with **[Getting started](getting-started.md)**. It takes five mi
 - [Plugins](plugins.md): extra effects, and how to add more.
 - [Keyboard shortcuts](shortcuts.md)
 - [Problems and answers](troubleshooting.md)
+- [Open-source credits](credits.md): the projects and typefaces SungFluence is built on, and their licenses.
 
 ## Get help or give feedback
 

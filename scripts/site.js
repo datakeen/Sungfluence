@@ -2,6 +2,7 @@
 //   pages/            the website from site/ (index.html, 404.html, sw.js, site.css, site.js, img/, og.jpg)
 //   pages/try/        the web app: a copy of src/, so run `npm run build` first
 //   pages/fonts/      the few fonts the website uses, from src/fonts
+//   pages/credits.html, NOTICE.md and licenses/   the open-source notices (scripts/notices.js), linked from the footer
 // Run: npm run site. GitHub Actions runs it in .github/workflows/web.yml.
 // node scripts/site.js --serve [port] builds it, then serves pages/ at http://localhost:8090/Sungfluence/ the way
 // GitHub Pages does: folders open their index.html and a missing address gets 404.html.
@@ -16,6 +17,7 @@ const SRC = path.join(root, 'src');
 const OUT = path.join(root, 'pages');
 const BASE = (process.env.SITE_BASE || '/Sungfluence/').replace(/\/?$/, '/');
 const SITE = process.env.SITE_URL || 'https://datakeen.github.io' + BASE;
+const notices = require('./notices.js');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 // files in site/ that are only for making the pictures
@@ -31,8 +33,12 @@ function build() {
   // the icon as a data address, for the 404 page: it is served at any depth and also opened from disk, so a file
   // address would miss in one of the two
   const iconData = 'data:image/svg+xml;base64,' + fs.readFileSync(path.join(root, 'app', 'icon.svg'), 'base64');
+  // the notice page as HTML: license texts are copied next to it, other files of the project open on GitHub.
+  // Wide tables get a box of their own that scrolls on a phone.
+  const noticeHtml = notices.noticeHtml((h) => (/^[a-z]+:|^#|^licenses\//.test(h) ? h : 'https://github.com/datakeen/Sungfluence/blob/main/' + h))
+    .replace(/<table>/g, '<div class="tbl"><table>').replace(/<\/table>/g, '</table></div>');
   // template-only: what helps only the unbuilt template (site/index.html opened by itself) stays out of pages/
-  const fill = (s) => s.replace(/[ \t]*<!-- template-only[\s\S]*?<!-- \/template-only -->\n?/g, '').replace(/\{\{SITE\}\}/g, SITE).replace(/\{\{BASE\}\}/g, BASE).replace(/\{\{VERSION\}\}/g, pkg.version).replace(/\{\{LOST_CAT\}\}/g, () => esc(cat)).replace(/\{\{ICON_DATA\}\}/g, iconData);
+  const fill = (s) => s.replace(/[ \t]*<!-- template-only[\s\S]*?<!-- \/template-only -->\n?/g, '').replace(/\{\{SITE\}\}/g, SITE).replace(/\{\{BASE\}\}/g, BASE).replace(/\{\{VERSION\}\}/g, pkg.version).replace(/\{\{LOST_CAT\}\}/g, () => esc(cat)).replace(/\{\{ICON_DATA\}\}/g, iconData).replace(/\{\{NOTICE\}\}/g, () => noticeHtml);
 
   // 1. the website
   let n = 0;
@@ -61,13 +67,16 @@ function build() {
   // the logo in the page header and footer: a small PNG drawn at its real size, much lighter than the full icon
   fs.copyFileSync(path.join(root, 'build', 'icons', '64x64.png'), path.join(OUT, 'icon-64.png'));
 
+  // 2b. the open-source notices and the full license texts, for the fonts above and the web app below
+  notices.copyTo(OUT);
+
   // 3. the web app
   fs.cpSync(SRC, path.join(OUT, 'try'), { recursive: true });
 
   // 4. for search engines
   fs.writeFileSync(path.join(OUT, 'robots.txt'), 'User-agent: *\nAllow: /\nSitemap: ' + SITE + 'sitemap.xml\n');
   fs.writeFileSync(path.join(OUT, 'sitemap.xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
-    ['', 'try/'].map((u) => '  <url><loc>' + SITE + u + '</loc></url>\n').join('') + '</urlset>\n');
+    ['', 'try/', 'credits.html'].map((u) => '  <url><loc>' + SITE + u + '</loc></url>\n').join('') + '</urlset>\n');
   fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
   console.log('pages/ built: the website (' + n + ' files) at ' + BASE + ', the web app at ' + BASE + 'try/');
 }

@@ -1,0 +1,34 @@
+Small programs inside the Windows installers
+
+The Windows Setup and Portable files are made by electron-builder with NSIS. They carry a few small
+programs from electron-builder's NSIS resources. They run only while SungFluence is installed, started
+from the Portable file, or removed. The copyright lines below are read from the files themselves
+(their Windows version information). Where a license is marked "not confirmed", the file does not say
+which license it uses; see the project page for its terms.
+
+elevate.exe (installed in the resources folder of the Windows app)
+  (c) 2007 - Johannes Passing - http://int3.de/
+  Comes with electron-builder's NSIS bundle (nsis 3.0.4.1). License: not confirmed.
+
+nsis7z.dll (Nsis7z plug-in, unpacks the app during setup)
+  Copyright (c) 1999-2016 Igor Pavlov, Nik Medved, Marek Mizanin, Stuart Welch
+  Based on 7-Zip by Igor Pavlov. License: GNU LGPL 2.1, like 7-Zip.
+  License text: LGPL-2.1.txt in this folder.
+  Source: https://nsis.sourceforge.io/Nsis7z_plug-in and https://www.7-zip.org
+
+StdUtils.dll (StdUtils plug-in)
+  Copyright (C) 2004-2018 LoRd_MuldeR
+  License: GNU LGPL 2.1 or later.
+  License text: LGPL-2.1.txt in this folder.
+  Source: https://github.com/lordmulder/stdutils
+
+SungFluence ships Nsis7z and StdUtils unchanged, as electron-builder provides them. Their source code
+is at the addresses above. The full GNU Lesser General Public License, version 2.1, is in LGPL-2.1.txt
+in this folder.
+
+UAC.dll, WinShell.dll, nsProcess.dll, SpiderBanner.dll
+  Small NSIS plug-ins from the NSIS community. Their files carry no copyright line.
+  License: not confirmed. Source: https://nsis.sourceforge.io
+
+The NSIS installer itself is covered by NSIS-COPYING.txt in this folder. The installer scripts
+that electron-builder adds are covered by MIT-electron-builder.txt.

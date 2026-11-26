@@ -30,6 +30,10 @@ Please include your system, the app version, the steps to repeat the problem, an
 
 Plain JavaScript. No runtime dependencies without a good reason. Heavy work must yield, so slow computers never freeze. Keep the interface text short and plain.
 
+## Code, fonts or data from others
+
+If your change adds something made by someone else, such as a library, a font, a plugin, icons or a table of data, add it to `licenses/third-party.json`, put its license text in `licenses/`, and add a line to `NOTICE.md`, all in the same pull request. Only add things whose license allows it, and keep their copyright lines exactly as they are. Fonts and libraries for `src/fonts` and `src/vendor` come from an npm package through `scripts/vendor.js`, not by hand. `npm run test:notices` checks all of it.
+
 ## License of contributions
 
 SungFluence is licensed under the GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later). By sending a pull request you agree that your contribution is licensed the same way. New source files start with this line:

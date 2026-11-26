@@ -1,6 +1,7 @@
 /* Fonts bundled with Sungfluence so the app works offline.
    Inter, JetBrains Mono, Playfair Display, Oswald and Noto Naskh Arabic: SIL Open Font License 1.1.
-   Special Elite: Apache License 2.0. Files come from the Fontsource project. */
+   Noto Nastaliq Urdu: SIL Open Font License 1.1. Special Elite: Apache License 2.0. Files come from the Fontsource project.
+   Copyright lines and the full license texts: ../NOTICE.md and ../licenses/ (licenses/third-party.json lists every file). */
 @font-face { font-family: 'Inter'; font-style: normal; font-display: swap; font-weight: 100 900; src: url('inter-latin-wght-normal.woff2') format('woff2-variations'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-display: swap; font-weight: 400; src: url('jetbrains-mono-latin-400-normal.woff2') format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-display: swap; font-weight: 700; src: url('jetbrains-mono-latin-700-normal.woff2') format('woff2'); }

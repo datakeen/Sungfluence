@@ -1,6 +1,7 @@
 // Builds the app from app/ into:
 //   src/                  the desktop app, the web app on GitHub Pages, and what opens when you double-click src/index.html
 //   single/sungfluence.html  one self-contained file, handy for quick tests and sharing. Only with --single.
+// Every copy carries the open-source notices: NOTICE.md and licenses/ (see scripts/notices.js).
 // Edit files in app/, never in src/. Then run: npm run build
 // Uses only Node's standard library.
 // SPDX-License-Identifier: AGPL-3.0-or-later
@@ -33,7 +34,7 @@ const running = plugins.filter((f) => !/template/.test(f));
 //     styles.md and shortcuts.md are written from the code first, so they always match the app.
 require('./docs.js').writeDocs();
 const { md } = require('./md.js');
-const HELP_ORDER = ['index', 'getting-started', 'workspace', 'photo', 'vector', 'text-art', 'styles', 'type-toolbox', 'output-and-export', 'printing', 'urdu-and-arabic', 'plugins', 'shortcuts', 'troubleshooting'];
+const HELP_ORDER = ['index', 'getting-started', 'workspace', 'photo', 'vector', 'text-art', 'styles', 'type-toolbox', 'output-and-export', 'printing', 'urdu-and-arabic', 'plugins', 'shortcuts', 'troubleshooting', 'credits'];
 const helpDir = path.join(root, 'docs', 'help');
 const helpIds = HELP_ORDER.concat(fs.readdirSync(helpDir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)).filter((id) => !HELP_ORDER.includes(id)));
 const help = { order: [], pages: {} };
@@ -80,6 +81,11 @@ write(S('help.js'), banner('help pages, from docs/help') + 'const HELP = ' + jso
 write(S('plugin-files.js'), banner('plugin source for the template download') + 'const PLUGIN_FILES = ' + json(pluginSrc) + ';\n');
 write(S('styles.css'), css);
 write(S('icons', 'icon.svg'), iconSvg);
+// open-source notices: NOTICE.md and licenses/ go with every copy; notices.js feeds the Open-source credits window
+const notices = require('./notices.js');
+notices.copyTo(S());
+const noticeData = notices.appData();
+write(S('notices.js'), banner('open-source notices, from NOTICE.md and licenses/') + 'window.SUNGFLUENCE_NOTICES = ' + json(noticeData) + ';\n');
 write(S('config.js'), "/* Local copies of the export libraries, so PDF and ZIP export work offline. */\nwindow.SUNGFLUENCE_VENDOR = { jspdf: 'vendor/jspdf.umd.min.js', jszip: 'vendor/jszip.min.js' };\nwindow.SUNGFLUENCE_VERSION = '" + pkg.version + "';\n");
 
 const csp = "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'";
@@ -129,7 +135,8 @@ if (process.argv.includes('--single')) {
     '<link rel="stylesheet" href="' + fonts + '">\n<style>\n' + css + '</style>\n\n' + body.replace('icons/icon.svg', () => 'data:image/svg+xml;base64,' + Buffer.from(iconSvg).toString('base64')) + '\n' +
     '<script>\n' + engine + '\n</script>\n<script>\n' +
     running.map((f) => 'try {\n' + pluginSrc[f] + '\n} catch (e) { console.error("Built-in plugin failed: ' + f + '", e); }').join('\n') + '\n</script>\n' +
-    '<script>\nconst SAMPLES = ' + json(samples) + ';\nconst PLUGIN_FILES = ' + json(pluginSrc) + ';\nconst HELP = ' + json(singleHelp()) + ';\n' + appJs + '</script>\n';
+    // the single file has no licenses/ folder next to it, so the notices go inside, like the help
+    '<script>\nwindow.SUNGFLUENCE_NOTICES = ' + json(noticeData) + ';\nconst SAMPLES = ' + json(samples) + ';\nconst PLUGIN_FILES = ' + json(pluginSrc) + ';\nconst HELP = ' + json(singleHelp()) + ';\n' + appJs + '</script>\n';
   write(path.join(root, 'single', 'sungfluence.html'), single);
   console.log('single/sungfluence.html built: ' + Math.round(single.length / 1024) + ' KB');
 }

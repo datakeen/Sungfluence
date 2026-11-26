@@ -26,6 +26,7 @@ const useCap = (n) => (window.claude && typeof window.claude.use === 'function')
 const dlP = useCap('downloads');
 const sampleP = useCap('sample');
 
+// Classic and Detailed follow Paul Bourke's "Character representation of grey scale images" (1997), darkest last. Credited in NOTICE.md.
 const RAMPS = {
   Classic: ' .:-=+*#%@',
   Letters: ' .,:;irsXA253hMHGS#9B&@',
@@ -960,6 +961,8 @@ function searchByShape(alpha, w, h, many) {
 }
 
 /* ---------------- one-line art and faces (G2, G3) ---------------- */
+/* Many of these are well-known internet kaomoji, also collected in the ART library by Sepand Haghighi (MIT,
+   https://github.com/sepandhaghighi/art), which inspired this toolbox. Credited in NOTICE.md. */
 const ART_SETS = {
   'Happy': ['(◕‿◕)', '(｡◕‿◕｡)', '(＾▽＾)', '(✿◠‿◠)', '(ﾉ◕ヮ◕)ﾉ', '♪(´▽｀)', '(*^▽^*)', '＼(^o^)／', '(〜￣▽￣)〜', '(•‿•)', '(ᵔᴥᵔ)', '(＾◡＾)'],
   'Sad and tired': ['(╥﹏╥)', '(ಥ_ಥ)', '(っ- ‸ – ς)', '(´；ω；`)', '(ㅠ﹏ㅠ)', '(-_-)zzz', '(_ _)..zzZZ', '(´-ω-`)', '(눈_눈)', '(⌣_⌣”)'],
@@ -4178,7 +4181,54 @@ function openAbout() {
     const a4 = el('a', 'btn', 'Send feedback'); a4.href = 'https://github.com/datakeen/Sungfluence/issues'; a4.target = '_blank'; a4.rel = 'noopener'; a4.title = 'Report a bug or share an idea on GitHub';
     links.append(a1, a2, a3, a4); body.appendChild(links);
     body.appendChild(el('p', 'note', 'If you change SungFluence and let people use it over a network, the license asks you to offer them your changed source code too.'));
+    const oc = el('div', 'sec about-credits');
+    oc.append(el('span', 'sec-t', 'Open-source credits'),
+      el('p', 'note', 'SungFluence is built on jsPDF, JSZip and Electron, and uses the typefaces Inter, JetBrains Mono, Oswald, Playfair Display, Noto Naskh Arabic, Noto Nastaliq Urdu and Special Elite. Thank you to everyone who made them. The sample pictures were made by the author for SungFluence.'));
+    const cb = optBtn('Open-source credits and licenses', () => openCredits());
+    cb.id = 'aboutCredits'; oc.appendChild(cb);
+    body.appendChild(oc);
   });
+}
+
+/* ---------------- open-source credits ----------------
+   NOTICE.md and every license text, from src/notices.js (made by the build from NOTICE.md and licenses/).
+   The single file carries the same data inside it. Works offline. Links to a license jump to its text below. */
+function withNotices(fn) {
+  if (window.SUNGFLUENCE_NOTICES) return fn(window.SUNGFLUENCE_NOTICES);
+  const s = document.createElement('script'); s.src = 'notices.js';
+  s.onload = () => (window.SUNGFLUENCE_NOTICES ? fn(window.SUNGFLUENCE_NOTICES) : toast('The open-source credits are missing from this copy of SungFluence.'));
+  s.onerror = () => toast('The open-source credits are missing from this copy of SungFluence. They are also at github.com/datakeen/Sungfluence in NOTICE.md.');
+  document.head.appendChild(s);
+}
+function openCredits(file) {
+  withNotices((N) => openDialog('Open-source credits', (body, d) => {
+    d.classList.add('credits-dlg');
+    const art = el('article', 'help-content credits-content');
+    art.innerHTML = N.html;
+    // each table sits in its own box, which scrolls sideways on a narrow screen instead of breaking words
+    art.querySelectorAll('table').forEach((t) => { const w = el('div', 'credits-tbl'); t.replaceWith(w); w.appendChild(t); });
+    art.appendChild(el('h2', null, 'License texts'));
+    art.appendChild(el('p', null, 'The full text of every license, as it comes with each project.'));
+    N.texts.forEach((t) => {
+      const det = el('details', 'lic'); det.id = t.id;
+      const sum = el('summary', null, t.file);
+      const pre = el('pre', 'lic-text', t.text);
+      det.append(sum, pre); art.appendChild(det);
+    });
+    art.addEventListener('click', (e) => {
+      const a = e.target.closest('a'); if (!a) return;
+      const href = a.getAttribute('href') || '';
+      if (href.startsWith('#')) {
+        e.preventDefault();
+        const t = art.querySelector(href.replace(/[^#\w-]/g, ''));
+        if (t) { if (t.tagName === 'DETAILS') t.open = true; t.scrollIntoView({ block: 'start' }); }
+        return;
+      }
+      a.target = '_blank'; a.rel = 'noopener';
+    });
+    body.appendChild(art);
+    if (file) { const t = art.querySelector('#' + CSS.escape(file)); if (t) { t.open = true; requestAnimationFrame(() => t.scrollIntoView({ block: 'start' })); } }
+  }, true));
 }
 
 /* ---------------- on-canvas guides for the selected text layer: the fade shape and the spiral's reach ---------------- */
@@ -9577,6 +9627,7 @@ command('help.shortcuts', 'Keyboard shortcuts', () => openHelp('shortcuts'));
 command('help.palette', 'Find a command…', () => openPalette(), { keys: ['mod+k'], typing: true });
 command('help.feedback', 'Send feedback or report a bug', () => openURL(ISSUES_URL));
 command('help.source', 'Project page and source code', () => openURL('https://github.com/datakeen/Sungfluence'));
+command('help.credits', 'Open-source credits', () => openCredits());
 command('help.about', 'About SungFluence', () => openAbout());
 
 /* styles, recipes, samples and export formats are commands too, made from their own lists */
@@ -9626,7 +9677,7 @@ function menuSpec() {
       { label: 'Show transparency as', items: TRANSP_SHOW.map(([v, t]) => Object.assign(item('view.transp.' + v), { label: t })) }, SEP,
       item('view.rulers'), { label: 'Ruler units', items: RULER_UNITS.map(([u, t]) => Object.assign(item('view.rulerUnit.' + u), { label: t })) }, item('view.newGuide'), item('view.guides'), item('view.lockGuides'), item('view.clearGuides'), SEP, item('view.grid'),
       { label: 'Snapping', items: snapMenuItems().concat([SEP, item('snap.gridSize')]) }] },
-    { label: 'Help', items: [item('help.help'), item('help.tutorial'), item('help.shortcuts'), item('help.palette'), SEP, item('help.feedback'), item('help.source'), SEP, item('help.about')] }
+    { label: 'Help', items: [item('help.help'), item('help.tutorial'), item('help.shortcuts'), item('help.palette'), SEP, item('help.feedback'), item('help.source'), SEP, item('help.credits'), item('help.about')] }
   ];
 }
 /* fill in labels, keys and states, so the page and the desktop app can draw the same menus */

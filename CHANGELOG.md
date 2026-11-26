@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Open-source credits.** Help → Open-source credits, and a button in About, show every project and typeface SungFluence is built on, with its copyright and the full text of its license. It works offline. Every copy now carries `NOTICE.md` and the `licenses` folder: the installers, the web app, the single file and the source code. The website has a Credits page, linked from the footer. On macOS the app now keeps the Electron and Chromium license files. The credits also cover the parts inside the Windows and Linux installers, with the full LGPL 2.1 text.
+
+### Changed
+
+- The website counts visits with GoatCounter, without cookies and without storing anything about the visitor. The web app and the desktop app have no analytics. The website's privacy note says so.
+
 ## [3.4.0] - 2026-11-25
 
 ### Added

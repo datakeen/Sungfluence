@@ -220,7 +220,7 @@ Bug reports, new styles, plugins and translations are welcome. See [CONTRIBUTING
 SungFluence is free and open-source software. If it helps you make something you are proud of, it has done what it was made for, and you owe nothing in return. Still, every kind of help is welcome. See the [roadmap](ROADMAP.md); if you like where SungFluence is going, you can:
 
 1. **Share it:** tell others about SungFluence, or show what you made with it.
-2. **Support the projects it stands on:** [jsPDF](https://github.com/parallax/jsPDF) · [JSZip](https://github.com/Stuk/jszip) · [Electron](https://github.com/electron/electron) · [electron-builder](https://github.com/electron-userland/electron-builder) · [Playwright](https://github.com/microsoft/playwright) · [Fontsource](https://github.com/fontsource/fontsource), and the typefaces [Inter](https://github.com/rsms/inter), [Playfair Display](https://github.com/clauseggers/Playfair), [Oswald](https://github.com/googlefonts/OswaldFont), [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), [Special Elite](https://fonts.google.com/specimen/Special+Elite) and [Noto](https://github.com/notofonts) (Naskh Arabic and Nastaliq Urdu).
+2. **Support the projects it stands on:** [jsPDF](https://github.com/parallax/jsPDF) · [JSZip](https://github.com/Stuk/jszip) · [Electron](https://github.com/electron/electron) · [electron-builder](https://github.com/electron-userland/electron-builder) · [Playwright](https://github.com/microsoft/playwright) · [Fontsource](https://github.com/fontsource/fontsource), and the typefaces [Inter](https://github.com/rsms/inter), [Playfair Display](https://github.com/clauseggers/Playfair-Display), [Oswald](https://github.com/googlefonts/OswaldFont), [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), [Special Elite](https://fonts.google.com/specimen/Special+Elite) and [Noto](https://github.com/notofonts) (Naskh Arabic and Nastaliq Urdu).
 3. **Help build it:** new styles, plugins, translations, code or documents ([CONTRIBUTING.md](CONTRIBUTING.md), [docs/PLUGINS.md](docs/PLUGINS.md)).
 4. **Sponsor a feature:** something from the roadmap sooner, or something new.
 5. **Become a sponsor:** organizations can support SungFluence as a Gold, Silver or Bronze sponsor and be thanked here.
@@ -249,8 +249,10 @@ If you run a changed version of SungFluence on a server where other people use i
 
 ## Credits
 
-- **Fonts:** Inter, JetBrains Mono, Playfair Display, Oswald, Noto Naskh Arabic and Noto Nastaliq Urdu use the SIL Open Font License 1.1. Special Elite uses the Apache License 2.0. The font files come from [Fontsource](https://fontsource.org).
-- **Libraries:** [jsPDF](https://github.com/parallax/jsPDF) (MIT) and [JSZip](https://github.com/Stuk/jszip) (MIT). [Electron](https://www.electronjs.org) and [electron-builder](https://www.electron.build) (MIT). Tests use [Playwright](https://playwright.dev) (Apache 2.0).
+SungFluence is built on [jsPDF](https://github.com/parallax/jsPDF) and [JSZip](https://github.com/Stuk/jszip) (MIT), [Electron](https://www.electronjs.org) and [electron-builder](https://www.electron.build) (MIT), and the typefaces Inter, JetBrains Mono, Oswald, Playfair Display, Noto Naskh Arabic and Noto Nastaliq Urdu (SIL Open Font License 1.1) and Special Elite by Astigmatic (Apache License 2.0), from [Fontsource](https://fontsource.org). Thank you to everyone who made them.
+
+[NOTICE.md](NOTICE.md) lists every project, font and piece of content SungFluence uses, with its copyright and license. The full license texts are in the [licenses](licenses/) folder, with the same list as data in [licenses/third-party.json](licenses/third-party.json). In the app, open **Help → Open-source credits**.
+
 - **Plugin template** and the built-in Contours and Confetti plugins are MIT licensed, so plugin authors can choose their own license.
 - **Sample pictures** cat, coffee, camera, rocket, animals, swirl and face were made with AI image tools by the author for this project.
 - **Sample "lines"** and the test images in `tests/images` were generated for this project.

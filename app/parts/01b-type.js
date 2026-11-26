@@ -434,6 +434,8 @@ function searchByShape(alpha, w, h, many) {
 }
 
 /* ---------------- one-line art and faces (G2, G3) ---------------- */
+/* Many of these are well-known internet kaomoji, also collected in the ART library by Sepand Haghighi (MIT,
+   https://github.com/sepandhaghighi/art), which inspired this toolbox. Credited in NOTICE.md. */
 const ART_SETS = {
   'Happy': ['(◕‿◕)', '(｡◕‿◕｡)', '(＾▽＾)', '(✿◠‿◠)', '(ﾉ◕ヮ◕)ﾉ', '♪(´▽｀)', '(*^▽^*)', '＼(^o^)／', '(〜￣▽￣)〜', '(•‿•)', '(ᵔᴥᵔ)', '(＾◡＾)'],
   'Sad and tired': ['(╥﹏╥)', '(ಥ_ಥ)', '(っ- ‸ – ς)', '(´；ω；`)', '(ㅠ﹏ㅠ)', '(-_-)zzz', '(_ _)..zzZZ', '(´-ω-`)', '(눈_눈)', '(⌣_⌣”)'],

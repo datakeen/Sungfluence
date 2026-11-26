@@ -2,6 +2,7 @@
     Letters are packed from large to small. Calm areas get large letters, detailed areas (eyes, a mouth, whiskers)
     get small ones, so a face stays a face. Letters can turn along the lines of the picture.
     MIT licensed, like the plugin template, so plugin authors can borrow from it.
+    Copyright (C) 2026 Ahmed Bilal. SPDX-License-Identifier: MIT
 */
 Sungfluence.plugin({
   api: 1,

@@ -39,7 +39,7 @@ const OUT = site.OUT, BASE = site.BASE;
   check(!fs.existsSync(path.join(OUT, 'og-card.html')), 'the page that draws the sharing picture is not published');
 
   // ---- links: local ones point to files that exist, outside ones only to the project's own places ----
-  const ALLOWED = /^https:\/\/(github\.com\/datakeen\/Sungfluence|sourceforge\.net\/projects\/sungfluence|datakeen\.github\.io\/Sungfluence\/|schema\.org|www\.gnu\.org\/licenses\/)/;
+  const ALLOWED = /^https:\/\/(github\.com\/datakeen\/Sungfluence|sourceforge\.net\/projects\/sungfluence|datakeen\.github\.io\/Sungfluence\/|schema\.org|www\.gnu\.org\/licenses\/|gc\.zgo\.at\/count\.js$)/; // the last one is the website's visit counter
   const bad = [];
   for (const page of ['index.html', '404.html']) {
     const html = fs.readFileSync(path.join(OUT, page), 'utf8');
@@ -66,7 +66,9 @@ const OUT = site.OUT, BASE = site.BASE;
   const origin = 'http://127.0.0.1:' + server.address().port, HOME = origin + BASE;
   const b = await launch();
   const outside = [];
-  const watch = (ctx) => ctx.on('request', (r) => { const u = r.url(); if (!u.startsWith(origin) && !/^(data|blob|about|chrome-extension):/.test(u)) outside.push(u); });
+  // the website's visit counter (GoatCounter, no cookies) is the one outside address allowed, and only on the website
+  const COUNTER = /^https:\/\/(gc\.zgo\.at|abilal\.goatcounter\.com)\//, counted = [];
+  const watch = (ctx) => ctx.on('request', (r) => { const u = r.url(); if (COUNTER.test(u)) { counted.push(r.frame() ? r.frame().url() : ''); return; } if (!u.startsWith(origin) && !/^(data|blob|about|chrome-extension):/.test(u)) outside.push(u); });
 
   // ---- the website ----
   {
@@ -558,7 +560,11 @@ const OUT = site.OUT, BASE = site.BASE;
     await ctx.close();
   }
 
-  check(!outside.length, 'nothing loads from another server', outside.slice(0, 5).join(' | ') || 'only ' + origin);
+  check(!outside.length, 'nothing loads from another server except the visit counter', outside.slice(0, 5).join(' | ') || 'only ' + origin);
+  check(!counted.some((u) => /\/try\//.test(u)), 'the web app at /try has no visit counter', counted.filter((u) => /\/try\//.test(u)).join(' | ') || 'none in /try');
+  { const fs = require('fs'), path = require('path'), out = path.join(__dirname, '..', 'pages');
+    const has = (f) => /data-goatcounter=/.test(fs.readFileSync(path.join(out, f), 'utf8'));
+    check(has('index.html') && has('404.html') && !has('try/index.html'), 'the counter is on the website pages and not in the web app', ['index.html', '404.html', 'try/index.html'].map((f) => f + ':' + has(f)).join(', ')); }
   await b.close(); server.close();
   console.log(fails ? fails + ' failed' : 'all passed');
   process.exit(fails ? 1 : 0);

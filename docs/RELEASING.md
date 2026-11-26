@@ -9,7 +9,8 @@ A checklist for maintainers, so every release is complete. Version numbers follo
 3. In `package.json`, set `"version"` to the same number.
 4. If the app looks different, retake the tutorial pictures: `npm run build`, then `npm run help:shots`.
 5. Check that the help pages still match the app (`docs/help`). The style reference and shortcuts are written from the code on every build, so they are always current.
-6. If a style looks different, redraw the pictures on the website: `npm run build`, then `npm run site:images`. Look at the files in `site/img` and `site/og.jpg` and commit them.
+6. If anything from someone else was added or updated (a library, a font, a plugin, data), check that `licenses/third-party.json`, its text in `licenses/` and `NOTICE.md` say so, with the new version. `npm run test:notices` checks it.
+7. If a style looks different, redraw the pictures on the website: `npm run build`, then `npm run site:images`. Look at the files in `site/img` and `site/og.jpg` and commit them.
 
 ## 2. Check
 

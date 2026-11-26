@@ -486,7 +486,54 @@ function openAbout() {
     const a4 = el('a', 'btn', 'Send feedback'); a4.href = 'https://github.com/datakeen/Sungfluence/issues'; a4.target = '_blank'; a4.rel = 'noopener'; a4.title = 'Report a bug or share an idea on GitHub';
     links.append(a1, a2, a3, a4); body.appendChild(links);
     body.appendChild(el('p', 'note', 'If you change SungFluence and let people use it over a network, the license asks you to offer them your changed source code too.'));
+    const oc = el('div', 'sec about-credits');
+    oc.append(el('span', 'sec-t', 'Open-source credits'),
+      el('p', 'note', 'SungFluence is built on jsPDF, JSZip and Electron, and uses the typefaces Inter, JetBrains Mono, Oswald, Playfair Display, Noto Naskh Arabic, Noto Nastaliq Urdu and Special Elite. Thank you to everyone who made them. The sample pictures were made by the author for SungFluence.'));
+    const cb = optBtn('Open-source credits and licenses', () => openCredits());
+    cb.id = 'aboutCredits'; oc.appendChild(cb);
+    body.appendChild(oc);
   });
+}
+
+/* ---------------- open-source credits ----------------
+   NOTICE.md and every license text, from src/notices.js (made by the build from NOTICE.md and licenses/).
+   The single file carries the same data inside it. Works offline. Links to a license jump to its text below. */
+function withNotices(fn) {
+  if (window.SUNGFLUENCE_NOTICES) return fn(window.SUNGFLUENCE_NOTICES);
+  const s = document.createElement('script'); s.src = 'notices.js';
+  s.onload = () => (window.SUNGFLUENCE_NOTICES ? fn(window.SUNGFLUENCE_NOTICES) : toast('The open-source credits are missing from this copy of SungFluence.'));
+  s.onerror = () => toast('The open-source credits are missing from this copy of SungFluence. They are also at github.com/datakeen/Sungfluence in NOTICE.md.');
+  document.head.appendChild(s);
+}
+function openCredits(file) {
+  withNotices((N) => openDialog('Open-source credits', (body, d) => {
+    d.classList.add('credits-dlg');
+    const art = el('article', 'help-content credits-content');
+    art.innerHTML = N.html;
+    // each table sits in its own box, which scrolls sideways on a narrow screen instead of breaking words
+    art.querySelectorAll('table').forEach((t) => { const w = el('div', 'credits-tbl'); t.replaceWith(w); w.appendChild(t); });
+    art.appendChild(el('h2', null, 'License texts'));
+    art.appendChild(el('p', null, 'The full text of every license, as it comes with each project.'));
+    N.texts.forEach((t) => {
+      const det = el('details', 'lic'); det.id = t.id;
+      const sum = el('summary', null, t.file);
+      const pre = el('pre', 'lic-text', t.text);
+      det.append(sum, pre); art.appendChild(det);
+    });
+    art.addEventListener('click', (e) => {
+      const a = e.target.closest('a'); if (!a) return;
+      const href = a.getAttribute('href') || '';
+      if (href.startsWith('#')) {
+        e.preventDefault();
+        const t = art.querySelector(href.replace(/[^#\w-]/g, ''));
+        if (t) { if (t.tagName === 'DETAILS') t.open = true; t.scrollIntoView({ block: 'start' }); }
+        return;
+      }
+      a.target = '_blank'; a.rel = 'noopener';
+    });
+    body.appendChild(art);
+    if (file) { const t = art.querySelector('#' + CSS.escape(file)); if (t) { t.open = true; requestAnimationFrame(() => t.scrollIntoView({ block: 'start' })); } }
+  }, true));
 }
 
 /* ---------------- on-canvas guides for the selected text layer: the fade shape and the spiral's reach ---------------- */

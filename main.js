@@ -103,12 +103,13 @@ function buildMenu() {
         { label: 'Project page and source code', click: () => shell.openExternal(require('./package.json').homepage || 'https://github.com') },
         { label: 'Send feedback or report a bug', click: () => shell.openExternal('https://github.com/datakeen/Sungfluence/issues') },
         { label: 'License: GNU AGPL v3', click: () => shell.openExternal('https://www.gnu.org/licenses/agpl-3.0.html') },
+        { label: 'Open-source credits', click: run('help.credits') },
         { type: 'separator' },
         {
           label: 'About SungFluence',
           click: () => dialog.showMessageBox(win, {
             type: 'info', title: 'About SungFluence', message: 'SungFluence ' + app.getVersion(),
-            detail: 'Turn images into art made of letters.\n\nFree and open source software.\n\nMade by Ahmed Bilal.\nCopyright (C) 2026 Ahmed Bilal and contributors.\n\nThis program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.\n\nThis program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.\n\nSource code: ' + (require('./package.json').homepage || '')
+            detail: 'Turn images into art made of letters.\n\nFree and open source software.\n\nMade by Ahmed Bilal.\nCopyright (C) 2026 Ahmed Bilal and contributors.\n\nThis program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.\n\nThis program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.\n\nSungFluence includes open-source software and fonts made by others: jsPDF, JSZip, Electron, and the typefaces Inter, JetBrains Mono, Oswald, Playfair Display, Noto and Special Elite. Help > Open-source credits lists them with their licenses.\n\nSource code: ' + (require('./package.json').homepage || '')
           })
         }
       ]
