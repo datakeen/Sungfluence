@@ -18,6 +18,16 @@ In Urdu, *sungam* (سنگم) is the point where two rivers meet and flow on as o
 
 The name is close to my heart. I love the science of water, and in my working hours I teach and research rivers and water. A name about two rivers meeting felt right.
 
+## What "free" means here
+
+Free software usually means two things. Here it means three.
+
+1. Free as in "free bread": it takes nothing from your pocket. No price, no account, no subscription.
+2. Free as in "free to control": use it for any purpose, study and change it, and share it with anyone, under the GNU AGPL.
+3. Free as in "friction free": making art should flow the way you like to work. One idea, many paths: a tile, a menu, a shortcut or the command palette, by mouse or by keyboard.
+
+The third freedom is still growing. Each new version is one more step toward it, and that is a commitment.
+
 ![SungFluence main window: a portrait drawn as a Word cloud, with its settings](docs/screenshot.jpg)
 
 ## What it does
@@ -205,9 +215,21 @@ Found a bug, or have an idea? Please [open an issue](https://github.com/datakeen
 
 Bug reports, new styles, plugins and translations are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/PLUGINS.md](docs/PLUGINS.md) for writing a plugin.
 
+## Support SungFluence
+
+SungFluence is free and open-source software. If it helps you make something you are proud of, it has done what it was made for, and you owe nothing in return. Still, every kind of help is welcome. See the [roadmap](ROADMAP.md); if you like where SungFluence is going, you can:
+
+1. **Share it:** tell others about SungFluence, or show what you made with it.
+2. **Support the projects it stands on:** [jsPDF](https://github.com/parallax/jsPDF) · [JSZip](https://github.com/Stuk/jszip) · [Electron](https://github.com/electron/electron) · [electron-builder](https://github.com/electron-userland/electron-builder) · [Playwright](https://github.com/microsoft/playwright) · [Fontsource](https://github.com/fontsource/fontsource), and the typefaces [Inter](https://github.com/rsms/inter), [Playfair Display](https://github.com/clauseggers/Playfair), [Oswald](https://github.com/googlefonts/OswaldFont), [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), [Special Elite](https://fonts.google.com/specimen/Special+Elite) and [Noto](https://github.com/notofonts) (Naskh Arabic and Nastaliq Urdu).
+3. **Help build it:** new styles, plugins, translations, code or documents ([CONTRIBUTING.md](CONTRIBUTING.md), [docs/PLUGINS.md](docs/PLUGINS.md)).
+4. **Sponsor a feature:** something from the roadmap sooner, or something new.
+5. **Become a sponsor:** organizations can support SungFluence as a Gold, Silver or Bronze sponsor and be thanked here.
+
+**Get in touch:** [send me a message](https://tally.so/r/OQGlPA). It is a short form, for individuals and organizations alike.
+
 ## Made by
 
-SungFluence is made by Ahmed Bilal. You can find me on [LinkedIn](https://www.linkedin.com/in/abilal/).
+SungFluence is made by Ahmed Bilal, for the simple joy of making art and of watching letters become pictures. You can find me on [LinkedIn](https://www.linkedin.com/in/abilal/).
 
 ## License
 
