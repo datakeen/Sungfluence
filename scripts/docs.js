@@ -97,7 +97,7 @@ function stylesPage(D) {
     if (more.length) out.push('**More**', '', table(more, defs, D));
   }
   out.push('## Settings every style has', '',
-    'Size has **Text size** for every style. The folded sections Mirror, Shape, Finish and Tone come after Color and Background. Click a section name to open it.', '',
+    'Size has **Scale all letters** for every style. The folded sections Mirror, Shape, Finish and Tone come after Color and Background. Click a section name to open it.', '',
     '### Marks', '', 'The switch under the text box. The **?** beside it lists the marks.', '',
     table([D.MARKS_CTL], D.COMMON_DEFAULTS, D),
     '### Mirror', '',

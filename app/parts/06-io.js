@@ -106,7 +106,7 @@ function freshImage() {
   commitTextEdit();
   if (ui.tool === 'crop') { ui.cropDraft = null; ui.tool = 'hand'; buildRail(); }
   doc.text.applied = false; doc.text.locked = false; lockSnap = null; doc.lines.paths = []; doc.objects = []; doc.guides = []; out = null; textCanvas = null;
-  doc.photo = Object.assign({}, LAYER_DEFAULTS, PHOTO_DEFAULTS); doc.blank = null;
+  doc.photo = Object.assign({}, LAYER_DEFAULTS, PHOTO_DEFAULTS); doc.blank = null; boardSized = false;
   // every new picture starts on white paper: SungFluence assumes the art is printed on light paper
   doc.out.paper = '#ffffff'; doc.out.printedOn = 'auto';
   Object.assign(doc.lines, { visible: true, opacity: 1, blend: 'normal' }); Object.assign(doc.text, { visible: true, opacity: 1, blend: 'normal' });
@@ -122,6 +122,20 @@ function freshImage() {
   rebuildPhotoView();
   snapshotMask(); buildAll(); setView('photo'); statusIdle(); queueHistory();
 }
+/* A blank artboard, or one sized with Canvas size, is work of its own: before a new picture replaces it, ask.
+   Returns true when it asked (the choice then runs openNew or place). */
+let boardSized = false;
+function boardChoice(name, openNew, place) {
+  if (!origImg || !(doc.blank || boardSized) || loadFile.asNew) return false;
+  openDialog('Open ' + name, (body) => {
+    const g = artGeom(1);
+    body.appendChild(el('p', 'note', 'Your artboard is ' + g.TW + ' × ' + g.TH + ' px. Place the picture on it, fitted inside, so text art uses it, or open the picture on its own, at its own size.'));
+    const row = el('div', 'row2');
+    row.append(optBtn('Open as a new picture', () => { closeDialog(); openNew(); }), optBtn('Place on this artboard', () => { closeDialog(); place(); }, true));
+    body.appendChild(row);
+  });
+  return true;
+}
 function loadFile(file, asPicture) {
   if (!file) return;
   if (/\.sungfluence$/i.test(file.name) || /zip/.test(file.type)) { openProjectZip(file); return; }
@@ -135,6 +149,8 @@ function loadFile(file, asPicture) {
     recipeInFile(file).then((r) => { if (!(r && applySavedRecipe(r, file.name, file))) loadFile(file, true); });
     return;
   }
+  // a blank artboard, or one you sized with Canvas size: ask before a new picture replaces it
+  if (boardChoice(file.name, () => { loadFile.asNew = true; try { loadFile(file, asPicture); } finally { loadFile.asNew = false; } }, () => placeImageFile(file, { layer: 'photo' }))) return;
   const fr = new FileReader();
   fr.onload = () => loadImageURL(fr.result, file.name).then(() => { doc.sample = null; buildSamples(); freshImage(); }).catch((e) => toast(e.message));
   fr.readAsDataURL(file);
@@ -195,7 +211,12 @@ function sampleThumb(k) {
   });
   return thumbCache[k];
 }
-function useSample(k) { return loadImageURL(SAMPLES[k], k + '.jpg').then(() => { doc.sample = k; buildSamples(); freshImage(); }); }
+function useSample(k) {
+  const open = () => loadImageURL(SAMPLES[k], k + '.jpg').then(() => { doc.sample = k; buildSamples(); freshImage(); });
+  const place = () => fetch(SAMPLES[k]).then((r) => r.blob()).then((b) => placeImageFile(new File([b], k + '.jpg', { type: b.type || 'image/jpeg' }), { layer: 'photo' }));
+  if (boardChoice(k + '.jpg', open, place)) return Promise.resolve();
+  return open();
+}
 function newSquare() { createArtboard(Object.assign({ dpi: 300, cell: 24, bg: '#ffffff' }, ARTBOARDS[0])); }
 function buildSamples() {
   const box = $('samples'); box.replaceChildren();
@@ -420,15 +441,89 @@ const VENDOR = Object.assign({ jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/js
 async function jsPDFReady() { if (!window.jspdf) await loadScript(VENDOR.jspdf); return window.jspdf.jsPDF; }
 async function zipReady() { if (!window.JSZip) await loadScript(VENDOR.jszip); return window.JSZip; }
 
-async function cmykPDF(o, fill) {
+/* ---------- the app's own fonts in PDF files ----------
+   jsPDF embeds TrueType fonts with one weight each. pdf-fonts.js holds fixed-weight WOFF files of the app's
+   typefaces (see scripts/vendor.js); each is turned back into TrueType here, once, when the first PDF is made.
+   WOFF is TrueType with each table packed by zlib, so unpacking the tables gives the original font. */
+const PDF_FAMILY = { sans: 'inter', condensed: 'oswald', serif: 'playfair-display', mono: 'jetbrains-mono', typewriter: 'special-elite' };
+// the characters in the fonts' Latin subset; anything else in a layer puts that layer into the PDF as a picture
+const PDF_COVERED = /^[\u0000-\u00FF\u0131\u0152\u0153\u02BB\u02BC\u02C6\u02DA\u02DC\u0304\u0308\u0329\u2000-\u206F\u20AC\u2122\u2191\u2193\u2212\u2215\uFEFF\uFFFD]*$/;
+const pdfTTF = new Map();
+async function pdfFontsReady() {
+  if (!window.SUNGFLUENCE_PDF_FONTS && VENDOR.pdfFonts) { try { await loadScript(VENDOR.pdfFonts); } catch (e) { /* no fonts: standard PDF fonts instead */ } }
+  return window.SUNGFLUENCE_PDF_FONTS || null;
+}
+const b64bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+function bytesB64(u) { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+async function inflate(u) { return new Uint8Array(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer()); }
+async function woffToTTF(woff) {
+  const dv = new DataView(woff.buffer, woff.byteOffset, woff.byteLength);
+  if (dv.getUint32(0) !== 0x774F4646) throw new Error('Not a WOFF font');
+  const n = dv.getUint16(12), tables = [];
+  for (let i = 0; i < n; i++) {
+    const e = 44 + i * 20, off = dv.getUint32(e + 4), comp = dv.getUint32(e + 8), orig = dv.getUint32(e + 12);
+    const raw = woff.subarray(off, off + comp);
+    tables.push({ tag: dv.getUint32(e), sum: dv.getUint32(e + 16), data: comp < orig ? await inflate(raw) : raw });
+  }
+  let size = 12 + 16 * n; tables.forEach((t) => { t.off = size; size += (t.data.length + 3) & ~3; });
+  const out = new Uint8Array(size), ov = new DataView(out.buffer);
+  let p2 = 1, lg = 0; while (p2 * 2 <= n) { p2 *= 2; lg++; }
+  ov.setUint32(0, dv.getUint32(4)); ov.setUint16(4, n); ov.setUint16(6, p2 * 16); ov.setUint16(8, lg); ov.setUint16(10, n * 16 - p2 * 16);
+  tables.forEach((t, i) => { const r = 12 + i * 16; ov.setUint32(r, t.tag); ov.setUint32(r + 4, t.sum); ov.setUint32(r + 8, t.off); ov.setUint32(r + 12, t.data.length); out.set(t.data, t.off); });
+  return out;
+}
+/* Adds the fonts to one PDF. Returns a picker: (family key, weight) -> the PDF font name, or null for a family
+   it does not have (Urdu and Arabic, which go in as a picture). */
+async function pdfAddFonts(pdf) {
+  const data = await pdfFontsReady();
+  if (!data || typeof DecompressionStream === 'undefined') return null;
+  const added = new Set();
+  return async (fam, weight) => {
+    const stem = PDF_FAMILY[fam]; if (!stem) return null;
+    const ws = Object.keys(data).filter((k) => k.startsWith(stem + '-latin-')).map((k) => +k.slice(stem.length + 7));
+    if (!ws.length) return null;
+    const want = weight || 400, w = ws.reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a));
+    const id = stem + '-' + w;
+    if (!added.has(id)) {
+      if (!pdfTTF.has(id)) pdfTTF.set(id, bytesB64(await woffToTTF(b64bytes(data[stem + '-latin-' + w]))));
+      pdf.addFileToVFS(id + '.ttf', pdfTTF.get(id)); pdf.addFont(id + '.ttf', id, 'normal'); added.add(id);
+    }
+    return id;
+  };
+}
+
+/* The vector PDF: live letters in the app's own fonts, sharp at any zoom. opt.rgb writes screen colors (PDF for
+   print); without it the colors are CMYK ink values. A layer that needs pixels (letter fill, or letters the fonts
+   do not have, such as Urdu) goes in as a picture at print resolution. */
+async function cmykPDF(o, fill, opt) {
+  opt = opt || {};
   const jsPDF = await jsPDFReady();
   const g = printGeom(), k = g.aw / o.W;
   const pdf = new jsPDF({ orientation: g.land ? 'landscape' : 'portrait', unit: 'mm', format: [g.pw, g.ph].sort((a, b) => a - b), compress: true });
-  const cm = (c) => { const p = C.parseColor(c); return C.rgbToCmyk(p[0], p[1], p[2]).map((v) => +v.toFixed(4)).concat([p[3]]); };
+  const fontFor = await pdfAddFonts(pdf);
+  const rgbOut = !!opt.rgb;
   const pt = 72 / 25.4;
+  // dark tones get a rich black: some cyan, magenta and yellow under the black ink, so near-black prints and shows
+  // as deep black instead of a flat brownish gray
+  const cm = (c) => {
+    if (rgbOut) { const p = C.parseColor(c); return [Math.round(p[0] * 255), Math.round(p[1] * 255), Math.round(p[2] * 255), undefined, p[3]]; }
+    const p = C.parseColor(c), q = C.rgbToCmyk(p[0], p[1], p[2]), t = Math.max(0, (q[3] - 0.5) / 0.5);
+    if (t > 0) { q[0] = Math.max(q[0], 0.6 * t); q[1] = Math.max(q[1], 0.4 * t); q[2] = Math.max(q[2], 0.4 * t); }
+    return q.map((v) => +v.toFixed(4)).concat([p[3]]);
+  };
   const gst = new Map();
   const alpha = (a) => { const q = Math.round(Math.min(1, a) * 20) / 20; if (!gst.has(q)) gst.set(q, new pdf.GState({ opacity: q, 'stroke-opacity': q })); pdf.setGState(gst.get(q)); };
   if (!o.transparent) { const p = cm(o.paperOriginal || o.paper); pdf.setFillColor(p[0], p[1], p[2], p[3]); pdf.rect(0, 0, g.pw, g.ph, 'F'); }
+  // the art turned on the page: one matrix around the middle of the art, so letters, shapes and pictures all turn
+  let turned = false;
+  if (g.rot) {
+    try {
+      const ph0 = pdf.internal.pageSize.getHeight(), cx = (g.x + g.aw / 2) * pt, cy = (ph0 - (g.y + g.ah / 2)) * pt;
+      const a = -g.rot * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
+      pdf.internal.write('q ' + [ca, sa, -sa, ca, cx - ca * cx + sa * cy, cy - sa * cx - ca * cy].map((v) => v.toFixed(5)).join(' ') + ' cm');
+      turned = true;
+    } catch (e) { turned = false; }
+  }
   // the Vector layer goes under or over the letters, as in the layer order. It is never mirrored with the text art,
   // so the part under the letters is drawn before the mirror matrix starts.
   const vecOn = doc.lines.visible && (doc.lines.paths.length || doc.objects.some((q) => q.layer !== 'photo' && !q.hidden));
@@ -445,11 +540,13 @@ async function cmykPDF(o, fill) {
     } catch (e) { mirrored = false; }
   }
   const pdfFont = (f) => (f === 'mono' || f === 'typewriter') ? 'courier' : f === 'serif' ? 'times' : 'helvetica';
-  const latin = /^[\x20-\x7E -ÿ]+$/;
+  // with the app's fonts every character of their Latin subset goes in; the standard PDF fonts take less
+  const latin = fontFor ? PDF_COVERED : /^[\x20-\x7E -ÿ]+$/;
   let skipped = 0;
   const X = (px) => g.x + px * k, Y = (py) => g.y + py * k;
   const text = (s, it, x, y, outline) => {
-    pdf.setFont(pdfFont(it.font), (it.weight >= 600 ? 'bold' : '') + (it.italic ? 'italic' : '') || 'normal');
+    if (it.pdfFont) pdf.setFont(it.pdfFont, 'normal');
+    else pdf.setFont(pdfFont(it.font), (it.weight >= 600 ? 'bold' : '') + (it.italic ? 'italic' : '') || 'normal');
     pdf.setFontSize(Math.max(0.5, it.size * k / 0.3528));
     // a piece mirrored in place: the page is turned around that piece, and its own turn goes the other way with it
     const mir = it.mir ? X(it.mirX ?? it.x) : 0;
@@ -480,6 +577,9 @@ async function cmykPDF(o, fill) {
   for (const L of o.layers) {
     // filled letters go in as one picture of that layer at print resolution, placed and mirrored like the rest
     if (fill && C.fillOn(L)) { await pdfFillLayer(pdf, o, L, g, fill, mirrored); continue; }
+    // letters the PDF fonts do not have (Urdu, Arabic, symbols, emoji): the whole layer as a picture, so nothing is lost
+    if (fontFor && L.items.some((it) => it.t === 'text' && (!PDF_FAMILY[it.font] || !PDF_COVERED.test(String(it.s).replace(/[\u2800-\u28FF\u2580\u2588\u2591-\u2593]/g, ''))))) { await pdfFillLayer(pdf, o, L, g, fill, mirrored); continue; }
+    if (fontFor) for (const it of L.items) if (it.t === 'text') it.pdfFont = await fontFor(it.font, it.weight);
     const passes = (L.effect === 'shadow' || L.effect === 'riso') ? ['under', 'main'] : ['main'];
     for (const pass of passes) for (const it of L.items) {
       if (pass === 'under' && it.t === 'rect') continue;
@@ -511,8 +611,9 @@ async function cmykPDF(o, fill) {
   if (mirrored) { try { pdf.internal.write('Q'); } catch (e) { /* the page ends anyway */ } }
   else if (o.flipX || o.flipY) toast('This PDF reader build cannot mirror live letters. Use the PDF for print or the SVG for a mirrored file.');
   if (vecOn && !vecBelow) pdfVector(pdf, g, cm, alpha);
-  await saveFile(baseName() + '-' + printTag() + '-cmyk.pdf', pdf.output('blob'));
-  if (skipped) toast(skipped.toLocaleString() + ' non-Latin letters are not in the CMYK PDF. Use the SVG or the raster PDF for those.');
+  if (turned) { try { pdf.internal.write('Q'); } catch (e) { /* the page ends anyway */ } }
+  await saveFile(baseName() + '-' + printTag() + (rgbOut ? '' : '-cmyk') + '.pdf', pdf.output('blob'));
+  if (skipped) toast(skipped.toLocaleString() + ' non-Latin letters are not in this PDF. Use the SVG, or PDF for print as a picture, for those.');
 }
 /* One filled layer as a picture in the CMYK PDF. The page matrix already mirrors it when the text art is
    mirrored, so it is drawn the right way round here. The drawing runs as a sliced job like every export. */
@@ -849,7 +950,7 @@ Promise.resolve(boot).then(() => {
   const faces = ['400 20px Inter', '900 20px Inter', '200 20px Inter', '400 20px "JetBrains Mono"', '700 20px "Playfair Display"', '600 20px Oswald', '700 20px Oswald', '400 20px "Special Elite"'];
   Promise.race([Promise.all(faces.map((f) => document.fonts.load(f).catch(() => null)).concat(['400 20px "Noto Naskh Arabic"', '700 20px "Noto Naskh Arabic"', '400 20px "Noto Nastaliq Urdu"', '700 20px "Noto Nastaliq Urdu"'].map((f) => document.fonts.load(f, 'خودی کو').catch(() => null)))), new Promise((r) => setTimeout(r, 5000))]).then(() => { C.resetCaches(); if (doc.text.applied) scheduleText(0); thumbsFresh(); });
 });
-window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, suggestFor, flagshipCloud, flagshipWhyNot, pictureLook, FLAGSHIP_PAPER, firstText, paperClass, autoPaperClass, groundHex, setPrintedOn, paperNoteText, openPaperSettings, checkerCell, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, LIB, LIB_DEFAULT, renderLibrary, useSample, printGeom, searchByShape, buildGlyphShapes, countFor, fixBreaks, breaksWillStick, fitTo, SOCIAL, buildGlyphShapesSoon, shapeStep, photoTouched, resetPhoto, autoPhoto, autoToneNow, photoStats, get baseSrc() { return baseSrc; }, get photoCanvas() { return photoCanvas; }, photoLayerCanvas, safeStem, compareCanvas, openSettings, projectData, openProject, openTypeBox, typeState, typeResult, renderTypeBox, styleText, unstyleText, expandText, glyphSearch, textCounts, blankBoxes, TYPE_STYLES, EXPANSIONS, makeDivider, decorate, graphemes, MODES, revealing, applyMotion, setSplitAngle, buildSplitBar, photoChanged, rebuildBase, rebuildPhotoView, EXPORTS, EXPORTERS, jsPDFReady, cmykPDF, docxFor, xlsxPicture, xlsxText, xlsxHidden, twinGrid, textOpt, flipVectorLayer, flipTextArt, thumbSource, openWall, wallState, wallStyles, layerInStyle, openExport, runExporter, exporterOpts, recipeFromPNG, recipeFromSVG, codeFor, RECIPES, applyRecipe, newLayer, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp, runCommand, COMMANDS, snapAt, gridSize, linesChanged, toggleRulers, drawRulers, addGuide, clearGuides, guideOut, outToImg, unitPx, rulerStep, rulerMap, editGuide, pickGuide, evPos,
+window.__sungfluence = { doc, ui, prefs, setZoom, zoomTo, displayZoom, toggleSplit, createArtboard, cropApply, setCropRatio, rotateImage, flipImage, newObject, addObject, quickAdd, stepRepeat, selectedObjs, lockText, moveLayerTo, compose, flatPNG, vectorSVG, objectsSVGGroup, get canvas() { return canvas; }, get imgSize() { return [iw, ih]; }, jobs, sceneFor, activeLayers, previewScale, get src() { return src; }, loadPluginText, usePluginStyle, runPluginCode, applyTextArt, suggestFor, flagshipCloud, flagshipWhyNot, pictureLook, FLAGSHIP_PAPER, firstText, paperClass, autoPaperClass, groundHex, setPrintedOn, paperNoteText, openPaperSettings, checkerCell, traceNow, setTool, setView, undo, redo, selectBackground, removeBackground, openLibrary, libApply, libState, LIB, LIB_DEFAULT, libGroupOf, renderLibrary, useSample, printGeom, searchByShape, buildGlyphShapes, countFor, fixBreaks, breaksWillStick, fitTo, SOCIAL, buildGlyphShapesSoon, shapeStep, photoTouched, resetPhoto, autoPhoto, autoToneNow, photoStats, get baseSrc() { return baseSrc; }, get photoCanvas() { return photoCanvas; }, photoLayerCanvas, safeStem, compareCanvas, openSettings, projectData, openProject, openTypeBox, typeState, typeResult, renderTypeBox, styleText, unstyleText, expandText, glyphSearch, textCounts, blankBoxes, TYPE_STYLES, EXPANSIONS, makeDivider, decorate, graphemes, MODES, revealing, applyMotion, setSplitAngle, buildSplitBar, photoChanged, rebuildBase, rebuildPhotoView, EXPORTS, EXPORTERS, jsPDFReady, cmykPDF, docxFor, xlsxPicture, xlsxText, xlsxHidden, twinGrid, textOpt, flipVectorLayer, flipTextArt, thumbSource, openWall, wallState, wallStyles, layerInStyle, openExport, runExporter, exporterOpts, recipeFromPNG, recipeFromSVG, codeFor, RECIPES, applyRecipe, newLayer, get out() { return out; }, get hasRemoval() { return hasRemoval; }, loadImageURL, freshImage, scheduleText, buildPanel, curLayer, setLayerStyle, openPlugins, guideHandles, guideLayer, artGeom, photoPalette, openHelp, runCommand, COMMANDS, snapAt, gridSize, linesChanged, toggleRulers, drawRulers, addGuide, clearGuides, guideOut, outToImg, unitPx, rulerStep, rulerMap, editGuide, pickGuide, evPos,
   convertTextToPaths, groupSelection, ungroupSelection, selectedPaths, selectedPathIds, setPathSel, pathsBounds, pathUnits, unitSVG, distortPaths, distortTargets, distortSession, distortApply, fillAll, setFill, wordsInShapes, warpLines, commitHistory, findPath, hitPath, runShortcut, withVector, turnFill, whenSrcReady, applySavedRecipe, get img2art() { return (x, y) => img2art(x, y, artGeom()); },
   toScreen: (x, y) => { const g = artGeom(), q = img2art(x, y, g), r = canvas.getBoundingClientRect(); return [r.left + q[0] * r.width / canvas.width, r.top + q[1] * r.height / canvas.height]; },
   get snapHint() { return ui.snapHint; }, get pen() { return pen; }, redrawFill, setQuality, get textCanvas() { return textCanvas; }, fillPreview: () => fillPicture(fillBase(), curLayer()),

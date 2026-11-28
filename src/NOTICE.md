@@ -34,6 +34,8 @@ The font files come from [Fontsource](https://fontsource.org), which cuts each f
 | [Noto Nastaliq Urdu](https://github.com/notofonts/nastaliq) | Urdu text art | SIL Open Font License 1.1 | Copyright 2022 The Noto Project Authors | [OFL-1.1-NotoNastaliqUrdu.txt](licenses/OFL-1.1-NotoNastaliqUrdu.txt) |
 | [Special Elite](https://fonts.google.com/specimen/Special+Elite) by Astigmatic | Typewriter text art | Apache License 2.0 | Copyright (c) 2010 by Brian J. Bonislawsky DBA Astigmatic (AOETI) | [Apache-2.0-SpecialElite.txt](licenses/Apache-2.0-SpecialElite.txt) |
 
+PDF exports embed fixed-weight copies of Inter, Oswald, Playfair Display, JetBrains Mono and Special Elite, so the letters in a PDF are the same as on screen and stay sharp at any zoom. They come from the Fontsource packages `@fontsource/inter`, `@fontsource/oswald`, `@fontsource/playfair-display`, `@fontsource/jetbrains-mono` and `@fontsource/special-elite`, under the same licenses as above. The app turns them into TrueType when it writes a PDF.
+
 The single-file version (`sungfluence.html`) does not include the fonts or the two libraries. It loads them while it runs, the fonts from Google Fonts and the libraries from cdnjs, under the same licenses.
 
 ## The desktop app and its installers

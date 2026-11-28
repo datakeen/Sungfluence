@@ -346,7 +346,10 @@ const ratio = (a, b) => { const x = Y(a), y = Y(b); return (Math.max(x, y) + 0.0
 
   // ---- no freezing, no errors ----
   await step('');
-  await A(() => window.__sungfluence.useSample('cat')); await wait(p);
+  // over a blank artboard, a sample asks first: open it on its own
+  await A(() => window.__sungfluence.useSample('cat')); await p.waitForTimeout(300);
+  if (await A(() => !document.getElementById('dlgScrim').hidden)) await A(() => [...document.querySelectorAll('#dlg button')].find((b) => b.textContent === 'Open as a new picture').click());
+  await wait(p);
   await step('switching');
   // a Halftone, so Tone below has letters of every strength
   await A(() => window.__sungfluence.applyTextArt('halftone')); await wait(p);

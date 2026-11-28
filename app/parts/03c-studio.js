@@ -19,7 +19,18 @@ function numInput(label, val, onchange, opt) {
   opt = opt || {};
   const w = el('label', 'num'); w.append(el('span', null, label));
   const i = el('input'); i.type = 'number'; i.value = val; if (opt.min !== undefined) i.min = opt.min; if (opt.max !== undefined) i.max = opt.max; i.step = opt.step || 'any';
-  i.oninput = () => { if (i.value !== '' && isFinite(+i.value)) onchange(+i.value); };
+  // while typing, only values inside the limits count, so clearing the box to type 800 never jumps to the minimum;
+  // leaving the box (or Enter) brings an out-of-range value back inside. With opt.commit, the value counts only then.
+  const inRange = (v) => (opt.min === undefined || v >= opt.min) && (opt.max === undefined || v <= opt.max);
+  i.oninput = () => { if (!opt.commit && i.value !== '' && isFinite(+i.value) && inRange(+i.value)) onchange(+i.value); };
+  i.onchange = () => {
+    if (i.value === '' || !isFinite(+i.value)) return;
+    let v = +i.value;
+    if (opt.min !== undefined) v = Math.max(opt.min, v);
+    if (opt.max !== undefined) v = Math.min(opt.max, v);
+    if (String(v) !== i.value) i.value = v;
+    onchange(v);
+  };
   w.appendChild(i);
   if (opt.unit) w.appendChild(el('small', null, opt.unit));
   return w;
@@ -231,9 +242,10 @@ function rotateImage(dir) {
 }
 function flipImage(axis) { bakeImage(axis === 'x' ? [-1, 0, 0, 1, iw, 0] : [1, 0, 0, -1, 0, ih], iw, ih, { flip: axis }); }
 function openCanvasSize() {
-  const st = { w: iw, h: ih, ax: 0.5, ay: 0.5, bg: 'transparent' };
+  // on a blank artboard the new area takes the artboard's own color, so the artboard simply grows
+  const st = { w: iw, h: ih, ax: 0.5, ay: 0.5, bg: doc.blank ? doc.blank.bg : 'transparent' };
   openDialog('Canvas size', (body) => {
-    body.appendChild(el('p', 'note', 'Add space around the photo, or trim it. Lines, shapes and text stay where they are on the photo.'));
+    body.appendChild(el('p', 'note', 'Add space around the photo, or trim it. Lines, shapes and text stay where they are on the photo. Exports come out at the size you type here; the Width in the Output panel follows it.'));
     const row = el('div', 'row2');
     row.append(numInput('Width', st.w, (v) => { st.w = Math.round(v); }, { min: 16, unit: 'px' }), numInput('Height', st.h, (v) => { st.h = Math.round(v); }, { min: 16, unit: 'px' }));
     body.appendChild(row);
@@ -243,7 +255,18 @@ function openCanvasSize() {
     body.appendChild(grid);
     body.appendChild(el('span', 'lab', 'New area'));
     body.appendChild(optSeg([['transparent', 'Clear'], ['#ffffff', 'White'], ['#000000', 'Black'], [doc.out.paper, 'Paper color']], st.bg, (v) => { st.bg = v; body.querySelectorAll('.seg')[0].querySelectorAll('button').forEach((q, i) => q.setAttribute('aria-pressed', String(['transparent', '#ffffff', '#000000', doc.out.paper][i] === v))); }, 'New area'));
-    const go = optBtn('Change canvas size', () => { closeDialog(); bakeImage([1, 0, 0, 1, (st.w - iw) * st.ax, (st.h - ih) * st.ay], st.w, st.h, { bg: st.bg }); }, true);
+    const go = optBtn('Change canvas size', () => {
+      closeDialog();
+      // the photo is kept at up to 3000 px inside, for speed; the artboard width carries the size you asked for into every export
+      const w0 = doc.out.width, wantW = clamp(Math.round(st.w), 200, 12000);
+      bakeImage([1, 0, 0, 1, (st.w - iw) * st.ax, (st.h - ih) * st.ay], st.w, st.h, { bg: st.bg });
+      doc.out.width = wantW; boardSized = true;
+      if (doc.blank) doc.blank = Object.assign({}, doc.blank, { w: st.w, h: st.h });
+      rebuildPhotoView(); compose(); scheduleText(0); buildPanel(); queueHistory();
+      const g = artGeom(1);
+      toast('Canvas is ' + st.w + ' × ' + st.h + ' px. Exports come out at ' + g.TW + ' × ' + g.TH + ' px.');
+      if (w0 !== wantW) setTimeout(() => fixedSizesNote(w0), 4500);
+    }, true);
     body.appendChild(go);
   });
 }

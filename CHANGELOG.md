@@ -5,13 +5,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-11-28
+
 ### Added
 
 - **Open-source credits.** Help → Open-source credits, and a button in About, show every project and typeface SungFluence is built on, with its copyright and the full text of its license. It works offline. Every copy now carries `NOTICE.md` and the `licenses` folder: the installers, the web app, the single file and the source code. The website has a Credits page, linked from the footer. On macOS the app now keeps the Electron and Chromium license files. The credits also cover the parts inside the Windows and Linux installers, with the full LGPL 2.1 text.
+- **PDF for print is now a vector PDF in SungFluence's own fonts.** The letters stay sharp at any zoom, the text can be selected and searched, and a turned artwork stays turned. Letters filled with the photo, and Urdu or Arabic letters, go in as a picture at the chosen dpi. **As a picture** keeps the old way: the whole artwork as a picture, exactly as on screen. The CMYK PDF uses the same fonts. The fonts are fixed-weight copies of Inter, Oswald, Playfair Display, JetBrains Mono and Special Elite, embedded as TrueType.
+- **Coffee**, a new word and phrase set in the Text library. It mixes coffee with humor, courage, decency and family: "courage, one cup at a time", "laughter is the best creamer".
 
 ### Changed
 
+- **Text size** is now called **Scale all letters**, with a note under it: Letter size sets the size inside the style, and this scales every letter of the layer on top of that.
+- **A much bigger Text library.** Every word set now has 25 to 40 words and every phrase set at least 10 phrases, about 1,400 words and 590 phrases in all. **Family** has phrases of its own.
+- The Text library shows its sets under headings that open and close: Heart and people, Spirit and mood, Everyday, Nature, Water and rivers, Science and making, UN goals, and My sets for your own. Characters are grouped as Letters, Numbers, and Marks and shapes. Find a set opens every heading.
 - The website counts visits with GoatCounter, without cookies and without storing anything about the visitor. The web app and the desktop app have no analytics. The website's privacy note says so.
+
+### Fixed
+
+- **Any dpi** in the Print section can be typed digit by digit: clearing it to type 800 no longer jumps to 30. Number boxes everywhere take a value outside their limits only when you leave the box, and then bring it inside.
+- **PNG for print** now stores its dpi in the file, so photo editors and print shops see the print size instead of 72 dpi. It is listed under **Most used** in the Export window, and the Print section says that the dpi sets the size of PNG for print and PDF for print, while PNG at artboard size follows the artboard Width.
+- **Canvas size** larger than 3000 px no longer stops at 3000 without a word. Exports come out at the size you type, the artboard Width follows it, and a note says the export size.
+- Opening a picture, or clicking a sample, on a blank artboard or one sized with Canvas size now asks first: **Place on this artboard** or **Open as a new picture**. Before, the new picture replaced the artboard.
+- A picture placed on the Photo layer fits the artboard and shows: the area under it that counted as removed (such as the clear border from Canvas size) comes back, so the photo view and text art use it, edge to edge. **Image…** on the Vector layer also fits the picture to the artboard, turns that layer on, and offers **Use it in text art**.
+- **Exact width** in the Output panel takes the number when you press Enter or leave the box, so 3500 is not applied as 350 on the way.
+- **Canvas size** on a blank artboard grows the artboard in its own color. Before, the new area counted as removed and showed in the removed-area color, such as a yellow frame.
+- **PDF for print** and **CMYK PDF** now match the screen with a transparent background: they keep the paper color, because the letters were colored for that paper and look wrong on white. **Leave the background clear** in the Export window keeps the old way. Dark tones in the CMYK PDF print as a rich black instead of a brownish gray.
+- In the Text library, ticking a set also shows what is in it, so ticking **Symbols** shows the symbols, not the set you looked at before.
+- **Text portrait** no longer leaves a thin line across the art every few rows in large exports. The row spacing is now a whole number of pixels at the size being drawn, so every gap between rows is the same.
+- Changing **Turn the art on the page**, the print size, the page or its margin on the Artboard view now switches to the Paper view, where the turn and the page show, with a button to go back. Before, the turn showed only in the exported file.
 
 ## [3.4.0] - 2026-11-25
 
@@ -242,7 +263,8 @@ First public release.
 
 - Licensed under the GNU Affero General Public License, version 3 or later.
 
-[Unreleased]: https://github.com/datakeen/Sungfluence/compare/v3.4.0...HEAD
+[Unreleased]: https://github.com/datakeen/Sungfluence/compare/v3.4.1...HEAD
+[3.4.1]: https://github.com/datakeen/Sungfluence/compare/v3.4.0...v3.4.1
 [3.4.0]: https://github.com/datakeen/Sungfluence/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/datakeen/Sungfluence/compare/v3.2.0...v3.3.0
 [3.2.0]: https://github.com/datakeen/Sungfluence/compare/v3.1.0...v3.2.0

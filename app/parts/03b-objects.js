@@ -556,18 +556,36 @@ function selectionToObject() {
   setTool('select');
   toast('Copied to an image object on the Vector layer. Move it, or make copies with Step and repeat.');
 }
-function placeImageFile(file) {
+/* A picture placed on the artboard: it fits inside the artboard, whole, and shows in every view.
+   opt.layer 'photo' puts it on the Photo layer, where text art draws it too. */
+function placeImageFile(file, opt) {
+  opt = opt || {};
   if (!file || !file.type.startsWith('image/')) return;
   const fr = new FileReader();
   fr.onload = () => {
     const im = new Image();
     im.onload = () => {
-      const k = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+      const k = Math.min(1, 3000 / Math.max(im.naturalWidth, im.naturalHeight));
       const c = mk(Math.round(im.naturalWidth * k), Math.round(im.naturalHeight * k)); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-      const cr = cropRect(), bw = cr.w * iw, bh = cr.h * ih, s = Math.min(bw * 0.5 / c.width, bh * 0.5 / c.height);
-      const o = newObject('image', { asset: addAsset(c.toDataURL(file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.92)), w: c.width * s, h: c.height * s, fill: null });
+      const cr = cropRect(), bw = cr.w * iw, bh = cr.h * ih, s = Math.min(bw / c.width, bh / c.height);
+      const over = { asset: addAsset(c.toDataURL(file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.92)), w: c.width * s, h: c.height * s, fill: null };
+      if (opt.layer) over.layer = opt.layer;
+      const o = newObject('image', over);
       o.x = cr.x * iw + (bw - o.w) / 2; o.y = cr.y * ih + (bh - o.h) / 2;
-      addObject(o); setTool('select');
+      // make sure it can be seen: its layer on, and the photo shown when it sits on the Photo layer
+      if (o.layer === 'photo') { if (!doc.photo.visible) setView(doc.text.applied ? 'mix' : 'photo'); }
+      else doc.lines.visible = true;
+      // on the Photo layer the picture fills its place: an area removed there (such as the clear border from
+      // Canvas size) comes back under it, or the photo view and text art would still leave that area out
+      if (o.layer === 'photo' && hasRemoval) {
+        const x = remCanvas.getContext('2d'), k = remCanvas.width / iw;
+        x.globalCompositeOperation = 'destination-out'; x.fillStyle = '#000';
+        x.fillRect(o.x * k, o.y * k, o.w * k, o.h * k); x.globalCompositeOperation = 'source-over';
+        hasRemoval = anyAlpha(remCanvas); snapshotMask();
+      }
+      addObject(o); setTool('select'); buildStack();
+      if (o.layer === 'photo') toast('Placed on the Photo layer, fitted to the artboard. Text art draws it too.', { label: 'Undo', fn: undo });
+      else toast('Placed on the Vector layer, fitted to the artboard.', { label: 'Use it in text art', fn: () => { ui.selObjs = [o.id]; moveObjectsToLayer('photo'); if (!doc.photo.visible) setView(doc.text.applied ? 'mix' : 'photo'); } });
     };
     im.src = fr.result;
   };

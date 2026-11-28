@@ -23,13 +23,26 @@ const fonts = {
   '@fontsource/special-elite': ['special-elite-latin-400-normal.woff2']
 };
 
+/* Fixed-weight WOFF files of the same typefaces, for PDF export only: the PDF writer (jsPDF) embeds TrueType fonts
+   with one weight each, so the build packs these into src/pdf-fonts.js and the app turns them into TrueType when a
+   PDF is made. They go to src/fonts/pdf. The weights are the ones the PDF picks from (nearest weight). */
+const PDF_WEIGHTS = {
+  '@fontsource/inter': ['inter', [300, 400, 600, 700, 900]],
+  '@fontsource/oswald': ['oswald', [300, 400, 500, 700]],
+  '@fontsource/playfair-display': ['playfair-display', [400, 700, 900]],
+  '@fontsource/jetbrains-mono': ['jetbrains-mono', [400, 700]],
+  '@fontsource/special-elite': ['special-elite', [400]]
+};
+const pdfFonts = Object.entries(PDF_WEIGHTS).flatMap(([pkg, [stem, ws]]) => ws.map((w) => ({ pkg, from: pkg + '/files/' + stem + '-latin-' + w + '-normal.woff', to: 'src/fonts/pdf/' + stem + '-latin-' + w + '-normal.woff' })));
+
 /* every copy: the package, the file inside node_modules, and where it goes (relative to the project root) */
 const plan = libs.map(([pkg, from, to]) => ({ pkg, from: pkg + '/' + from, to: 'src/' + to }))
-  .concat(Object.entries(fonts).flatMap(([pkg, files]) => files.map((f) => ({ pkg, from: pkg + '/files/' + f, to: 'src/fonts/' + f }))));
+  .concat(Object.entries(fonts).flatMap(([pkg, files]) => files.map((f) => ({ pkg, from: pkg + '/files/' + f, to: 'src/fonts/' + f }))))
+  .concat(pdfFonts);
 
 function run() {
-  for (const c of plan) { fs.copyFileSync(nm(c.from), path.join(root, c.to)); console.log('copied', c.to); }
+  for (const c of plan) { fs.mkdirSync(path.dirname(path.join(root, c.to)), { recursive: true }); fs.copyFileSync(nm(c.from), path.join(root, c.to)); console.log('copied', c.to); }
 }
 
-module.exports = { plan, nm };
+module.exports = { plan, nm, PDF_WEIGHTS };
 if (require.main === module) run();

@@ -38,7 +38,9 @@ The dpi of your printer, often 1200 or more, is something else: it is how finely
 | 300 | Anything seen up close: photo prints, flyers, cards, books and magazines. Most print shops ask for this. |
 | 600 | Only when a printer asks for it, for example for some one-color line art. For photo prints and T-shirts, more than 300 dpi only makes the file larger. |
 
-You can type any value from 30 to 2400 dpi in **Any dpi**.
+You can type any value from 30 to 2400 dpi in **Any dpi**. It takes the number when you press Enter or leave the box.
+
+The dpi sets the size of **PNG for print** and **PDF for print** only. **PNG at artboard size** always follows the **Width** under **Artboard**, so to make that file bigger, raise the width there.
 
 ### A note for text art
 

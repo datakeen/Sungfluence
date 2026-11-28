@@ -86,7 +86,16 @@ const notices = require('./notices.js');
 notices.copyTo(S());
 const noticeData = notices.appData();
 write(S('notices.js'), banner('open-source notices, from NOTICE.md and licenses/') + 'window.SUNGFLUENCE_NOTICES = ' + json(noticeData) + ';\n');
-write(S('config.js'), "/* Local copies of the export libraries, so PDF and ZIP export work offline. */\nwindow.SUNGFLUENCE_VENDOR = { jspdf: 'vendor/jspdf.umd.min.js', jszip: 'vendor/jszip.min.js' };\nwindow.SUNGFLUENCE_VERSION = '" + pkg.version + "';\n");
+// the fixed-weight fonts for PDF export, from src/fonts/pdf (scripts/vendor.js copies them), as one script the app
+// loads only when it writes a PDF. A script tag also works when the app is opened from disk, where fetch cannot read files.
+{
+  const dir = S('fonts', 'pdf');
+  const list = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.woff')).sort() : [];
+  const data = {};
+  for (const f of list) data[f.replace(/-normal\.woff$/, '')] = fs.readFileSync(path.join(dir, f)).toString('base64');
+  write(S('pdf-fonts.js'), banner('fixed-weight fonts for PDF export, from src/fonts/pdf (Fontsource; licenses in NOTICE.md)') + 'window.SUNGFLUENCE_PDF_FONTS = ' + JSON.stringify(data) + ';\n');
+}
+write(S('config.js'), "/* Local copies of the export libraries, so PDF and ZIP export work offline. */\nwindow.SUNGFLUENCE_VENDOR = { jspdf: 'vendor/jspdf.umd.min.js', jszip: 'vendor/jszip.min.js', pdfFonts: 'pdf-fonts.js' };\nwindow.SUNGFLUENCE_VERSION = '" + pkg.version + "';\n");
 
 const csp = "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'";
 const scripts = ['config.js', 'engine.js', ...running.map((f) => 'plugins/' + f), 'samples.js', 'plugin-files.js', 'help.js', 'app.js', 'pwa.js'];
@@ -104,7 +113,8 @@ const files = [];
   for (const f of fs.readdirSync(dir).sort()) {
     const full = path.join(dir, f), r = rel ? rel + '/' + f : f;
     if (fs.statSync(full).isDirectory()) walk(full, r);
-    else if (r !== 'sw.js') files.push(r);
+    // fonts/pdf only feeds pdf-fonts.js at build time, so the web version does not need to keep it
+    else if (r !== 'sw.js' && !r.startsWith('fonts/pdf/')) files.push(r);
   }
 })(S(), '');
 const hash = crypto.createHash('sha1');

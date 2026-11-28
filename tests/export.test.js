@@ -16,6 +16,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
   await p.setInputFiles('#fileInput', __dirname + '/images/portrait.jpg'); await p.waitForTimeout(1200);
   await p.evaluate(() => window.__sungfluence.applyTextArt()); await wait(p);
 
+  let f;
   // one export: runs it and returns the saved file
   const grab = async (id, opts) => {
     const dl = p.waitForEvent('download', { timeout: 60000 });
@@ -32,8 +33,30 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
   await p.screenshot({ path: __dirname + '/out/e1-export-window.png' });
   await p.keyboard.press('Escape');
 
+  // PNG for print: its pixel size follows the print size and dpi, and the dpi is written in the file
+  const most = await p.evaluate(() => { window.__sungfluence.runCommand('file.export'); return [...document.querySelectorAll('.exp-item')].slice(0, 4).map((x) => x.dataset.id); });
+  await p.keyboard.press('Escape');
+  check(most.join() === 'png-art,png-print,pdf-print,svg-art', 'Most used lists PNG for print: ' + most.join(', '));
+  await p.evaluate(() => { const S = window.__sungfluence; S.doc.out.print = 'A6'; S.doc.out.dpi = 200; });
+  const want = await p.evaluate(() => { const g = window.__sungfluence.printGeom(); return [g.needPx, g.realDpi]; });
+  f = await grab('png-print');
+  const pb = fs.readFileSync(f), pw = pb.readUInt32BE(16), phy = pb.indexOf('pHYs');
+  const ppm = phy > 0 ? pb.readUInt32BE(phy + 4) : 0;
+  check(pw === want[0], 'PNG for print is ' + pw + ' px wide, as the print size needs (' + want[0] + ')');
+  check(phy === 37 && Math.round(ppm * 0.0254) === want[1] && pb[phy + 12] === 1, 'and says ' + Math.round(ppm * 0.0254) + ' dpi inside the file');
+  // the Any dpi box: typed digit by digit, it takes the number only when you leave it
+  await p.evaluate(() => { const S = window.__sungfluence; S.ui.tab = 'output'; S.buildPanel(); });
+  const dpiBox = p.locator('#panel label.num', { hasText: 'Any dpi' }).locator('input');
+  await dpiBox.scrollIntoViewIfNeeded(); await dpiBox.fill(''); await dpiBox.pressSequentially('800', { delay: 120 }); await p.waitForTimeout(700);
+  const mid = await p.evaluate(() => [window.__sungfluence.doc.out.dpi, [...document.querySelectorAll('#panel label.num')].find((l) => l.textContent.includes('Any dpi')).querySelector('input').value]);
+  await dpiBox.press('Enter'); await p.waitForTimeout(300);
+  check(mid[0] === 200 && mid[1] === '800' && await p.evaluate(() => window.__sungfluence.doc.out.dpi) === 800, 'Any dpi can be typed digit by digit (800), and counts after Enter');
+  await dpiBox.fill('5'); await dpiBox.press('Tab'); await p.waitForTimeout(300);
+  check(await p.evaluate(() => window.__sungfluence.doc.out.dpi) === 30, 'a dpi below the limit comes back to 30 when you leave the box');
+  await p.evaluate(() => { const S = window.__sungfluence; S.doc.out.print = 'A3'; S.doc.out.dpi = 300; S.buildPanel(); });
+
   // text twins
-  let f = await grab('txt-plain', { cols: 80, chars: 'ramp' });
+  f = await grab('txt-plain', { cols: 80, chars: 'ramp' });
   let t = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean);
   check(t.length > 10 && Math.max(...t.map((l) => l.length)) <= 80, 'plain text, 80 wide: ' + t.length + ' lines');
   f = await grab('txt-plain', { cols: 40, chars: 'az', own: '' });

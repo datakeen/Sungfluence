@@ -164,6 +164,19 @@
       "use": "The app's interface and the website"
     },
     {
+      "id": "inter-pdf",
+      "name": "Inter (fixed weights, for PDF export)",
+      "version": "4.001 (Fontsource 5.3.0, latin subset, fixed weights)",
+      "license": "OFL-1.1",
+      "copyright": ["Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)"],
+      "homepage": "https://github.com/rsms/inter",
+      "package": "@fontsource/inter",
+      "files": ["src/fonts/pdf/inter-latin-*.woff"],
+      "ships": ["desktop", "web", "website", "repository"],
+      "licenseFiles": ["licenses/OFL-1.1-Inter.txt"],
+      "use": "Letters in PDF exports, embedded as TrueType"
+    },
+    {
       "id": "jetbrains-mono",
       "name": "JetBrains Mono",
       "version": "2.211 (Fontsource 5.3.0, latin subset)",
@@ -171,7 +184,7 @@
       "copyright": ["Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)"],
       "homepage": "https://github.com/JetBrains/JetBrainsMono",
       "package": "@fontsource/jetbrains-mono",
-      "files": ["src/fonts/jetbrains-mono-latin-*.woff2"],
+      "files": ["src/fonts/jetbrains-mono-latin-*.woff2", "src/fonts/pdf/jetbrains-mono-latin-*.woff"],
       "ships": ["desktop", "web", "website", "repository"],
       "licenseFiles": ["licenses/OFL-1.1-JetBrainsMono.txt"],
       "use": "Monospace text art and the website"
@@ -190,6 +203,19 @@
       "use": "Condensed text art and the website"
     },
     {
+      "id": "oswald-pdf",
+      "name": "Oswald (fixed weights, for PDF export)",
+      "version": "4.103 (Fontsource 5.3.0, latin subset, fixed weights)",
+      "license": "OFL-1.1",
+      "copyright": ["Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont)"],
+      "homepage": "https://github.com/googlefonts/OswaldFont",
+      "package": "@fontsource/oswald",
+      "files": ["src/fonts/pdf/oswald-latin-*.woff"],
+      "ships": ["desktop", "web", "website", "repository"],
+      "licenseFiles": ["licenses/OFL-1.1-Oswald.txt"],
+      "use": "Letters in PDF exports, embedded as TrueType"
+    },
+    {
       "id": "playfair-display",
       "name": "Playfair Display",
       "version": "1.203 (Fontsource 5.3.0, latin subset)",
@@ -201,6 +227,19 @@
       "ships": ["desktop", "web", "website", "repository"],
       "licenseFiles": ["licenses/OFL-1.1-PlayfairDisplay.txt"],
       "use": "Serif text art and the website headings. The file is Fontsource's latin subset, shipped unchanged."
+    },
+    {
+      "id": "playfair-display-pdf",
+      "name": "Playfair Display (fixed weights, for PDF export)",
+      "version": "1.203 (Fontsource 5.3.0, latin subset, fixed weights)",
+      "license": "OFL-1.1",
+      "copyright": ["Copyright 2017 The Playfair Display Project Authors (https://github.com/clauseggers/Playfair-Display), with Reserved Font Name \"Playfair Display\"."],
+      "homepage": "https://github.com/clauseggers/Playfair-Display",
+      "package": "@fontsource/playfair-display",
+      "files": ["src/fonts/pdf/playfair-display-latin-*.woff"],
+      "ships": ["desktop", "web", "website", "repository"],
+      "licenseFiles": ["licenses/OFL-1.1-PlayfairDisplay.txt"],
+      "use": "Letters in PDF exports, embedded as TrueType"
     },
     {
       "id": "noto-naskh-arabic",
@@ -236,7 +275,7 @@
       "copyright": ["Copyright (c) 2010 by Brian J. Bonislawsky DBA Astigmatic (AOETI). All rights reserved."],
       "homepage": "https://fonts.google.com/specimen/Special+Elite",
       "package": "@fontsource/special-elite",
-      "files": ["src/fonts/special-elite-latin-*.woff2"],
+      "files": ["src/fonts/special-elite-latin-*.woff2", "src/fonts/pdf/special-elite-latin-*.woff"],
       "ships": ["desktop", "web", "repository"],
       "licenseFiles": ["licenses/Apache-2.0-SpecialElite.txt"],
       "use": "Typewriter text art. Fontsource cut the latin subset from the original font; SungFluence ships it unchanged."

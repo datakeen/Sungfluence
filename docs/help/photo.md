@@ -6,7 +6,7 @@ The Photo panel changes the picture that the text art reads. Changes here redraw
 
 - **Crop**: choose the Crop tool (C), or click **Crop on the canvas** here. Drag the corners and sides; drag inside the box to move it. Pick a shape: Free, Original, 1:1, 4:5, 3:2, 2:3, 16:9 or 9:16. Enter, a double-click or **Apply crop** applies it. **Reset crop** brings back the whole photo.
 - **⟲ Left** and **⟳ Right** turn the photo by a quarter. **Flip ↔** and **Flip ↕** mirror it.
-- **Canvas size…** adds or removes space around the photo, with an anchor to choose which side grows.
+- **Canvas size…** adds or removes space around the photo, with an anchor to choose which side grows. Exports come out at the size you type, and the artboard **Width** in the Output panel follows it. SungFluence keeps the photo at up to 3000 px inside, for speed. A picture you open after that asks first: **Place on this artboard** puts it on the Photo layer, fitted inside the artboard, so text art fills the whole artboard; **Open as a new picture** starts again with that picture at its own size. The same question comes up on a blank artboard.
 
 All of these can be undone.
 
@@ -71,7 +71,7 @@ The **Liquify** tool (Y, or **Liquify by hand** under Reshape) bends the photo w
 
 ## Draw on the photo
 
-**Text**, **Rectangle**, **Ellipse** and **Image…** add an object that becomes part of the photo, so the text art draws it too. Use this to put a name into a portrait made of letters. The new object is selected and its settings open at the top of the Photo panel. If the photo is hidden, Photo view turns on so you can see it. Shapes on the Vector layer float above instead; see [Vector panel](vector.md).
+**Text**, **Rectangle**, **Ellipse** and **Image…** add an object that becomes part of the photo, so the text art draws it too. Use this to put a name into a portrait made of letters. **Image…** fits the picture inside the artboard. A picture placed where the photo was removed, such as the clear border from Canvas size, brings that area back, so it shows and text art uses it. The new object is selected and its settings open at the top of the Photo panel. If the photo is hidden, Photo view turns on so you can see it. Shapes on the Vector layer float above instead; see [Vector panel](vector.md).
 
 ## Layer blending
 

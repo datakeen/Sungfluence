@@ -97,7 +97,11 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
       river: (W['Hydraulics and rivers'] || []).includes('hydraulic jump'),
       six: (W['SDG 6: Clean water and sanitation'] || [])[0],
       empty: Object.entries(W).filter(([, v]) => !v.length).length + Object.entries(P).filter(([, v]) => !v.length).length,
-      dupes: Object.entries(W).filter(([, v]) => new Set(v).size !== v.length).map(([n]) => n)
+      dupes: Object.entries(W).filter(([, v]) => new Set(v).size !== v.length).map(([n]) => n),
+      fewWords: Object.entries(W).filter(([, v]) => v.length < 25 || v.length > 40).map(([n, v]) => n + ' ' + v.length),
+      fewPhrases: Object.keys(W).filter((n) => !P[n] || P[n].length < 10).map((n) => n + ' ' + (P[n] || []).length),
+      coffee: (W.Coffee || []).length && (P.Coffee || []).includes('courage, one cup at a time'),
+      ungrouped: ['words', 'phrases', 'chars'].flatMap((k) => Object.keys(S.LIB_DEFAULT[k]).filter((n) => S.libGroupOf(k, n) === 'My sets'))
     };
   });
   check(lib.sdg === 17 && lib.nums === '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17', 'one word set for each of the 17 UN goals, numbered in order');
@@ -105,17 +109,41 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
   check(lib.want.length === 4, 'water resources, hydraulics and rivers, flora and fauna all have words and phrases');
   check(lib.river && lib.six === 'clean water', 'the sets hold the right words (hydraulic jump, clean water)');
   check(!lib.empty && !lib.dupes.length, 'no set is empty and none repeats a word' + (lib.dupes.length ? ': ' + lib.dupes.join(', ') : ''));
+  check(!lib.fewWords.length, 'every word set has 25 to 40 words' + (lib.fewWords.length ? ': ' + lib.fewWords.join(', ') : ''));
+  check(!lib.fewPhrases.length, 'every word set has at least 10 phrases to go with it' + (lib.fewPhrases.length ? ': ' + lib.fewPhrases.join(', ') : ''));
+  check(lib.coffee, 'the Coffee set has words and its phrases');
+  check(!lib.ungrouped.length, 'every built-in set sits under a heading' + (lib.ungrouped.length ? ': ' + lib.ungrouped.join(', ') : ''));
   const found = await A(() => {
     const S = window.__sungfluence;
     S.openLibrary({ obj: S.curLayer(), key: 'text', kind: 'text', label: 'test' });
     S.libState.find = 'sdg 6'; S.renderLibrary();
     const rows = [...document.querySelectorAll('#library .sets .set button')].map((b) => b.textContent);
-    S.libState.find = ''; S.renderLibrary();
+    S.libState.find = ''; S.libState.focus = 'Positive'; S.libState.open = {}; S.renderLibrary();
+    const heads = () => [...document.querySelectorAll('#library .set-group')];
+    const names = heads().map((h) => h.querySelector('.set-group-t').textContent);
+    const openNow = heads().filter((h) => h.getAttribute('aria-expanded') === 'true').map((h) => h.querySelector('.set-group-t').textContent);
+    const shut = document.querySelectorAll('#library .sets .set').length;
+    // open every heading: all sets come back
+    let guard = 20; while (guard-- && document.querySelector('#library .set-group[aria-expanded="false"]')) document.querySelector('#library .set-group[aria-expanded="false"]').click();
     const all = document.querySelectorAll('#library .sets .set').length;
-    return { rows, all };
+    // tick a set: its heading counts it, without rebuilding the list
+    const row = [...document.querySelectorAll('#library .set')].find((r) => r.querySelector('button').textContent === 'Coffee');
+    const cb = row.querySelector('input'); cb.click();
+    const ev = [...document.querySelectorAll('#library .set-group')].find((h) => h.querySelector('.set-group-t').textContent === 'Everyday').querySelector('small').textContent;
+    const same = document.activeElement && document.activeElement.getAttribute('aria-label') === 'Use Coffee' && document.querySelector('#library .items .sec-t').textContent === 'Coffee';
+    document.activeElement.click();
+    // your own set goes under My sets
+    S.LIB.words['My set 1'] = ['tea']; S.renderLibrary();
+    const mine = [...document.querySelectorAll('#library .set-group-t')].map((t) => t.textContent).includes('My sets');
+    delete S.LIB.words['My set 1']; S.libState.open = {}; S.renderLibrary();
+    return { rows, all, names, openNow, shut, ev, same, mine, total: Object.keys(S.LIB.words).length };
   });
   check(found.rows.length === 1 && found.rows[0].startsWith('SDG 6'), 'the Find a set line narrows the list to one: ' + found.rows.join(', '));
-  check(found.all > 30, 'and clearing it brings all ' + found.all + ' sets back');
+  check(found.names.join('|') === 'Heart and people|Spirit and mood|Everyday|Nature|Water and rivers|Science and making|UN goals', 'the sets sit under seven headings: ' + found.names.join(', '));
+  check(found.openNow.join() === 'Spirit and mood' && found.shut < 10, 'only the heading of the set in view is open (' + found.openNow.join() + ', ' + found.shut + ' rows)');
+  check(found.all === found.total, 'opening every heading shows all ' + found.all + ' sets');
+  check(found.ev === '1 of 1' && found.same, 'ticking a set counts it in its heading, shows what is in it, and keeps the keyboard on the box');
+  check(found.mine, 'your own sets show under My sets');
 
   check(!errs.length, 'no page errors' + (errs.length ? ': ' + errs.join(' | ') : ''));
   await b.close();

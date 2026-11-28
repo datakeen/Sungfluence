@@ -50,11 +50,11 @@ The text box, with **B**, **I** and **U** for bold, italic and a line under, **T
 
 ## Size
 
-**Letter size** comes first. Styles that fill a grid, such as ASCII and Halftone, have **Columns** here too: fewer columns mean bigger letters. Word mosaic and Word cloud have **Largest word** and **Smallest word** instead. Then come **Line spacing** and **Text size**, which makes every letter of the layer bigger or smaller at once. **Typeface** is next.
+**Letter size** comes first. Styles that fill a grid, such as ASCII and Halftone, have **Columns** here too: fewer columns mean bigger letters. Word mosaic and Word cloud have **Largest word** and **Smallest word** instead. Then come **Line spacing** and **Scale all letters**, which makes every letter of the layer bigger or smaller at once. **Typeface** is next.
 
 **More size settings** at the end of the section has the rest: letter spacing, the weight from thin to bold, **Weight follows tone**, **Size follows tone**, italic and capitals. While Weight follows tone is on, the weight comes from the photo, so the weight slider is hidden until you turn it off.
 
-Every style starts with letters big enough to read when the whole picture fits the window. **Text size** makes every letter of the layer bigger or smaller from there, by the same amount. At 150% every letter is half as big again, in every style and in every export. Where a style fills the picture, bigger letters mean fewer of them: ASCII, Braille, Halftone and Typewriter use fewer columns. Text size is saved with the layer, and it starts at 100%.
+Every style starts with letters big enough to read when the whole picture fits the window. **Scale all letters** makes every letter of the layer bigger or smaller from there, by the same amount. At 150% every letter is half as big again, in every style and in every export. Where a style fills the picture, bigger letters mean fewer of them: ASCII, Braille, Halftone and Typewriter use fewer columns. Text size is saved with the layer, and it starts at 100%.
 
 ## Color
 
@@ -102,7 +102,11 @@ Once there are lines on the Vector layer, **Text art uses** appears here. It cho
 
 ## The text library
 
-The **Library** button above any text box opens ready-made words and phrases. Tick as many sets as you like and they are mixed together. Besides the general sets there are sets for **Water resources**, **Hydraulics and rivers**, **Flora** and **Fauna**, and one set for each of the 17 United Nations Sustainable Development Goals, named **SDG 1: No poverty** through **SDG 17: Partnerships for the goals**. The SDG names are the official goal titles; the words and phrases in them are ordinary English, written for this app. Type in **Find a set** to narrow the list, which also searches inside the sets, so looking for "flood" finds the sets that hold it. You can edit any set, add your own, and **Reset** puts a built-in set back as it was. Your changes stay on this device.
+The **Library** button above any text box opens ready-made words and phrases. Tick as many sets as you like and they are mixed together. Every set has 25 to 40 words and at least 10 phrases.
+
+The sets sit under headings: **Heart and people**, **Spirit and mood**, **Everyday**, **Nature**, **Water and rivers**, **Science and making** and **UN goals**. Click a heading to open or close it. The number beside a heading says how many sets it holds, or how many of them are ticked. **Everyday** holds **Coffee**, which mixes coffee with humor, courage, decency and family: "courage, one cup at a time". **UN goals** has one set for each of the 17 United Nations Sustainable Development Goals, named **SDG 1: No poverty** through **SDG 17: Partnerships for the goals**. The SDG names are the official goal titles. The words and phrases in every set are ordinary English, written for this app, with a few old proverbs and lines from authors of long ago. Characters have headings too: **Letters**, **Numbers** and **Marks and shapes**.
+
+Type in **Find a set** to narrow the list. It opens every heading and also searches inside the sets, so looking for "flood" finds the sets that hold it. You can edit any set, add your own, and **Reset** puts a built-in set back as it was. Your own sets show under **My sets**. Your changes stay on this device.
 
 ## Sizes in pixels
 
@@ -159,7 +163,7 @@ Relief also has **Tone curve**. Below 1 it gives the light and middle tones more
 
 The photo is the one the Photo layer shows: with its edits, crop and removed areas. Removed areas leave the letters empty there. Locked text art keeps the photo it was locked with. Mirrored text art mirrors the photo in its letters too, so the iron-on transfer lines up.
 
-Bold, heavy letters show more of the photo. Try a weight of 800 or more under **Letters**, or a bigger **Text size**.
+Bold, heavy letters show more of the photo. Try a weight of 800 or more under **Letters**, or a bigger **Scale all letters**.
 
 Changing the fill does not move the letters; only their filling is drawn again.
 

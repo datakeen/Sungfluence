@@ -66,6 +66,19 @@ async function pngWithRecipe(blob, rec) {
   outB.set(src.subarray(0, p), 0); outB.set(chunk, p); outB.set(src.subarray(p), p + chunk.length);
   return new Blob([outB], { type: 'image/png' });
 }
+/* PNG: a pHYs chunk right after the header says the dpi, so photo editors and print shops see the print size */
+async function pngWithDpi(blob, dpi) {
+  const src = new Uint8Array(await blob.arrayBuffer());
+  if (!(dpi > 0) || src.length < 33) return blob;
+  const type = new TextEncoder().encode('pHYs'), ppm = Math.round(dpi / 0.0254);
+  const chunk = new Uint8Array(21), dv = new DataView(chunk.buffer);
+  dv.setUint32(0, 9); chunk.set(type, 4); dv.setUint32(8, ppm); dv.setUint32(12, ppm); chunk[16] = 1;
+  dv.setUint32(17, crc32(chunk.subarray(4, 17)));
+  const p = 33; // signature (8) and IHDR (25)
+  const outB = new Uint8Array(src.length + 21);
+  outB.set(src.subarray(0, p), 0); outB.set(chunk, p); outB.set(src.subarray(p), p + 21);
+  return new Blob([outB], { type: 'image/png' });
+}
 function recipeFromPNG(buf) {
   const u = new Uint8Array(buf);
   if (u.length < 8 || u[0] !== 0x89 || u[1] !== 0x50) return null;
@@ -226,6 +239,12 @@ function helpHeader(lines, prog) {
    layers: true when the user picks which layers go in. opts: controls (R, T, S, SEL from 01-data.js).
    info(o): the size line in the window. run(o): makes and saves the file. */
 const RECIPE_OPT = T('recipe', 'Keep the style settings inside the file (never the photo)');
+/* A PDF is read on white pages and printed on paper, so with a transparent background it still gets the paper
+   color by default: the letters were colored for that paper, and on white they would look wrong. */
+const PDF_CLEAR_OPT = Object.assign(T('clear', 'Leave the background clear (PDF viewers then show the art on white)'), { show: () => doc.out.transparent });
+const pdfClear = (o) => doc.out.transparent && !!(o && o.clear);
+/* PDF for print is vector by default; this keeps the old picture of the screen, effects and all */
+const PDF_PICTURE_OPT = T('picture', 'As a picture at the chosen dpi (exactly as on screen; pixels show when you zoom in far)');
 const LAYER_IDS = [['photo', 'Photo'], ['lines', 'Vector'], ['text', 'Text art']];
 const layerList = (o) => LAYER_IDS.map(([id]) => id).filter((id) => o['layer_' + id]);
 const pngSize = (w, h) => aboutBytes(w * h * 1.6);
@@ -243,7 +262,7 @@ function vectorEmpty() {
 }
 const GROUPS = ['Picture', 'Text art', 'Text twins', 'Code', 'Project'];
 /* The Export window lists these first, under Most used, and not again in their own group */
-const MOST_USED = ['png-art', 'pdf-print', 'svg-art'];
+const MOST_USED = ['png-art', 'png-print', 'pdf-print', 'svg-art'];
 [
   { id: 'png-view', group: 'Picture', title: 'PNG of the visible layers', hint: 'What you see: photo, vector and text art together', always: true, layers: true, opts: [RECIPE_OPT],
     sub: () => 'Every shown layer in its order, at the size of the artboard',
@@ -275,32 +294,35 @@ const MOST_USED = ['png-art', 'pdf-print', 'svg-art'];
   { id: 'png-print', group: 'Text art', title: 'PNG for print', hint: 'The text art at the pixel size your print needs', opts: [RECIPE_OPT],
     sub: () => 'The text art at the print size chosen under Print in the Output panel' + (doc.out.transparent ? ', transparent' : ''),
     info: () => { const g = printGeom(); return g.needPx.toLocaleString() + ' × ' + g.needH.toLocaleString() + ' px, ' + g.name + ' at ' + g.realDpi + ' dpi, ' + pngSize(g.needPx, g.needH); },
-    run: (o) => runExport(printScaleFor, async (r) => saveFile(baseName() + '-' + printTag() + '.png', await withRecipePNG(await toBlob(r.canvas, 'image/png'), o))) },
+    run: (o) => runExport(printScaleFor, async (r) => saveFile(baseName() + '-' + printTag() + '.png', await withRecipePNG(await pngWithDpi(await toBlob(r.canvas, 'image/png'), printGeom().realDpi), o))) },
   { id: 'png-art', group: 'Text art', title: 'PNG at artboard size', hint: 'The text art alone. Best for sharing and the web', opts: [RECIPE_OPT],
-    sub: () => 'The text art alone, as wide as the artboard', info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + pngSize(g.TW, g.TH); },
+    sub: () => 'The text art alone, as wide as the artboard (Width, in the Output panel). For a size in dpi, use PNG for print', info: () => { const g = artGeom(1); return g.TW + ' × ' + g.TH + ' px, ' + pngSize(g.TW, g.TH); },
     run: (o) => runExport(() => 1, async (r) => saveFile(baseName() + '.png', await withRecipePNG(await toBlob(r.canvas, 'image/png'), o))) },
   { id: 'svg-art', group: 'Text art', title: 'SVG with live text', hint: 'Letters stay editable in design apps', opts: [RECIPE_OPT], sub: () => 'Editable letters for Illustrator, Inkscape or Figma',
     info: () => (out ? out.layers.reduce((n, L) => n + L.items.length, 0).toLocaleString() + ' letters and shapes' : 'Editable letters'),
     run: (o) => runExport(null, async (r) => { const s = C.toSVG(r.out, FONT_IMPORT, fillHrefs(r.fill)); return saveFile(baseName() + '.svg', o && o.recipe ? svgWithRecipe(s, recipeData()) : s); }) },
-  { id: 'pdf-print', group: 'Text art', title: 'PDF for print', hint: 'A page ready to print, at your print size', sub: () => printGeom().name + ' page, artwork at ' + printGeom().realDpi + ' dpi', info: () => { const g = printGeom(); return g.name + ' ' + (g.land ? 'landscape' : 'portrait') + ', ' + g.realDpi + ' dpi' + (g.rot ? ', art turned ' + g.rot + '°' : ''); },
-    run: () => runExport(printScaleFor, async (r) => {
-      const jsPDF = await jsPDFReady(); const g = printGeom();
+  { id: 'pdf-print', group: 'Text art', title: 'PDF for print', hint: 'A page ready to print, at your print size', opts: [PDF_PICTURE_OPT, PDF_CLEAR_OPT],
+    sub: (o) => (o && o.picture) ? printGeom().name + ' page, the artwork as a picture at ' + printGeom().realDpi + ' dpi, exactly as on screen. It shows pixels when you zoom in far.' : printGeom().name + ' page with live letters in the app\'s own fonts: sharp at any zoom, and the text can be selected. Letters filled with the photo, and Urdu or Arabic, go in as a picture at ' + printGeom().realDpi + ' dpi.', info: () => { const g = printGeom(); return g.name + ' ' + (g.land ? 'landscape' : 'portrait') + ', ' + g.realDpi + ' dpi' + (g.rot ? ', art turned ' + g.rot + '°' : ''); },
+    run: (o) => (!o || !o.picture) ? runExport(null, (r) => cmykPDF(Object.assign({}, r.out, { transparent: pdfClear(o) }), r.fill, { rgb: true }), null, pdfFillScale) : runExport(printScaleFor, async (r) => {
+      const jsPDF = await jsPDFReady(); const g = printGeom(), clear = pdfClear(o);
       r = Object.assign({}, r, { canvas: withVector(r.canvas) });
+      // a transparent background that goes into the PDF with its paper: the paper goes under the art first
+      if (!clear && doc.out.transparent) { const pc0 = mk(r.canvas.width, r.canvas.height), x0 = pc0.getContext('2d'); x0.fillStyle = r.out.paper; x0.fillRect(0, 0, pc0.width, pc0.height); x0.drawImage(r.canvas, 0, 0); r = Object.assign({}, r, { canvas: pc0 }); }
       const pdf = new jsPDF({ orientation: g.land ? 'landscape' : 'portrait', unit: 'mm', format: [g.pw, g.ph].sort((a, b) => a - b), compress: true });
       if (g.rot) {
         // turned art: draw the whole page as one picture, at the chosen dpi or as close as fits
         const ppm = Math.min(doc.out.dpi / 25.4, 12000 / Math.max(g.pw, g.ph));
         const pc = mk(Math.round(g.pw * ppm), Math.round(g.ph * ppm)), x = pc.getContext('2d');
-        if (!doc.out.transparent) { x.fillStyle = r.out.paper; x.fillRect(0, 0, pc.width, pc.height); }
+        if (!clear) { x.fillStyle = r.out.paper; x.fillRect(0, 0, pc.width, pc.height); }
         x.translate(pc.width / 2, pc.height / 2); x.rotate(g.rot * Math.PI / 180);
         x.imageSmoothingQuality = 'high';
         x.drawImage(r.canvas, -g.aw * ppm / 2, -g.ah * ppm / 2, g.aw * ppm, g.ah * ppm);
-        pdf.addImage(doc.out.transparent ? pc.toDataURL('image/png') : pc.toDataURL('image/jpeg', 0.93), doc.out.transparent ? 'PNG' : 'JPEG', 0, 0, g.pw, g.ph);
-      } else if (!doc.out.transparent) { pdf.setFillColor(r.out.paper); pdf.rect(0, 0, g.pw, g.ph, 'F'); pdf.addImage(r.canvas.toDataURL('image/jpeg', 0.93), 'JPEG', g.x, g.y, g.aw, g.ah); }
+        pdf.addImage(clear ? pc.toDataURL('image/png') : pc.toDataURL('image/jpeg', 0.93), clear ? 'PNG' : 'JPEG', 0, 0, g.pw, g.ph);
+      } else if (!clear) { pdf.setFillColor(r.out.paper); pdf.rect(0, 0, g.pw, g.ph, 'F'); pdf.addImage(r.canvas.toDataURL('image/jpeg', 0.93), 'JPEG', g.x, g.y, g.aw, g.ah); }
       else pdf.addImage(r.canvas.toDataURL('image/png'), 'PNG', g.x, g.y, g.aw, g.ah);
       await saveFile(baseName() + '-' + printTag() + '.pdf', pdf.output('blob'));
     }, vectorInPrint() ? { noPaper: true } : undefined) },
-  { id: 'pdf-cmyk', group: 'Text art', title: 'CMYK PDF, vector', hint: 'Live letters in print inks, for print shops', sub: () => 'Live letters with CMYK ink values, ' + printGeom().name, info: () => printGeom().name + ' page, live letters' + (printGeom().rot ? ', art kept straight' : ''), run: () => runExport(null, (r) => cmykPDF(r.out, r.fill), null, pdfFillScale) },
+  { id: 'pdf-cmyk', group: 'Text art', title: 'CMYK PDF, vector', hint: 'Live letters in print inks, for print shops', opts: [PDF_CLEAR_OPT], sub: () => 'Live letters with CMYK ink values, ' + printGeom().name, info: () => printGeom().name + ' page, live letters' + (printGeom().rot ? ', art turned ' + printGeom().rot + '°' : ''), run: (o) => runExport(null, (r) => cmykPDF(Object.assign({}, r.out, { transparent: pdfClear(o) }), r.fill), null, pdfFillScale) },
   { id: 'cmyk-plates', group: 'Text art', title: 'CMYK plates', hint: 'Four ink separations, for screen print', sub: () => 'Four PNG separations in one .zip, for screen print', info: () => 'Four PNG files in a .zip',
     run: () => runExport((o) => Math.min(printScaleFor(o), 4000 / Math.max(o.W, o.H)), (r) => separations(r.canvas)) },
 
@@ -431,7 +453,7 @@ function openExport(id) {
       const o = exporterOpts(x);
       pane.replaceChildren();
       pane.appendChild(el('h3', 'exp-t', x.title));
-      pane.appendChild(el('p', 'note', x.sub()));
+      pane.appendChild(el('p', 'note', x.sub(o)));
       const info = el('p', 'exp-info'); info.setAttribute('aria-live', 'polite');
       const refresh = () => { try { info.textContent = x.info ? x.info(o) : ''; } catch (e) { info.textContent = ''; } };
       const changed = (dl) => { saveExportState(); if (dl === 0) drawPane(); else refresh(); };

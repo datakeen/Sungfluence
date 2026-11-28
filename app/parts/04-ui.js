@@ -2200,8 +2200,8 @@ function buildOutputPanel(p) {
   const wchg = () => { rebuildPhotoView(); compose(); queueHistory(); scheduleText(0); thumbsSoon(); statusIdle(); fixedSizesNote(w0); };
   s.appendChild(makeControl(o, Object.assign(S('width', 'Width', widths), { idp: 'o-', rebuild: () => buildPanel() }), wchg));
   const cw = el('div', 'row2');
-  let wTimer = null;
-  cw.appendChild(numInput('Exact width', o.width, (v) => { clearTimeout(wTimer); wTimer = setTimeout(() => { o.width = clamp(Math.round(v), 200, 12000); wchg(); }, 500); }, { min: 200, max: 12000, unit: 'px' }));
+  // takes the number when you press Enter or leave the box, so 3500 is never applied as 350 on the way
+  cw.appendChild(numInput('Exact width', o.width, (v) => { o.width = clamp(Math.round(v), 200, 12000); buildPanel(); wchg(); }, { min: 200, max: 12000, unit: 'px', commit: true }));
   s.appendChild(cw);
   const hNote = el('span', 'note'); hNote.id = 'artHeightNote';
   const hText = () => { hNote.textContent = 'Height ' + artGeom(1).TH + ' px: it follows the photo or the crop. Letter sizes grow and shrink with the width, so the art keeps its look.'; };
@@ -2215,7 +2215,14 @@ function buildOutputPanel(p) {
   s.appendChild(makeControl(o, Object.assign(S('colorModel', 'Colors', MODELS), { idp: 'o-', rebuild: () => buildPanel() }), oc()));
   s.appendChild(el('span', 'note', MODEL_NOTE[o.colorModel]));
   s = sec(p, 'Print');
-  const pchg = () => { updatePrint(); layoutStage(); queueHistory(); };
+  // print settings only show on the page: on the Artboard view, switch to the Paper view so the change is seen
+  const pchg = (see) => {
+    if (see !== false && o.mock === 'artboard') {
+      o.mock = 'paper'; layoutStage(); buildPanel();
+      toast('Showing the page as it will print. The turn, page size and margins show here.', { label: 'Back to the artboard', fn: () => { o.mock = 'artboard'; layoutStage(); buildPanel(); } });
+    }
+    updatePrint(); layoutStage(); queueHistory();
+  };
   const pr = el('div', 'ctl');
   const lab = el('label', 'lab', 'Print size'); lab.htmlFor = 'c-print';
   const sl = el('select'); sl.id = 'c-print';
@@ -2248,12 +2255,14 @@ function buildOutputPanel(p) {
   // resolution: the common choices as buttons, and any number in the field
   const dl = el('span', 'lab', 'Resolution (dpi)'); dl.id = 'c-dpi-l';
   const dseg = el('div', 'seg'); dseg.setAttribute('role', 'group'); dseg.setAttribute('aria-labelledby', 'c-dpi-l');
-  DPI_PRESETS.forEach(([v, t]) => { const b = el('button', null, t); b.type = 'button'; b.setAttribute('aria-pressed', String(o.dpi === v)); b.onclick = () => { o.dpi = v; buildPanel(); pchg(); }; dseg.appendChild(b); });
+  DPI_PRESETS.forEach(([v, t]) => { const b = el('button', null, t); b.type = 'button'; b.setAttribute('aria-pressed', String(o.dpi === v)); b.onclick = () => { o.dpi = v; buildPanel(); pchg(false); }; dseg.appendChild(b); });
   const dctl = el('div', 'ctl'); dctl.append(dl, dseg); s.appendChild(dctl);
-  const drow = el('div', 'row2'); let dT = null;
-  drow.appendChild(numInput('Any dpi', o.dpi, (v) => { clearTimeout(dT); dT = setTimeout(() => { o.dpi = clamp(Math.round(v), 30, 2400); buildPanel(); pchg(); }, 500); }, { min: 30, max: 2400, step: 1, unit: 'dpi' }));
+  const drow = el('div', 'row2');
+  // takes the number when you press Enter or leave the box, so 800 can be typed digit by digit
+  drow.appendChild(numInput('Any dpi', o.dpi, (v) => { o.dpi = clamp(Math.round(v), 30, 2400); buildPanel(); pchg(false); }, { min: 30, max: 2400, step: 1, unit: 'dpi', commit: true }));
   s.appendChild(drow);
   s.appendChild(el('span', 'note', DPI_NOTE(o.dpi)));
+  s.appendChild(el('span', 'note', 'The dpi sets the size of PNG for print and PDF for print. PNG at artboard size follows the Width under Artboard.'));
   const hb = el('button', 'mini-btn', 'Which dpi should I use?'); hb.type = 'button'; hb.onclick = () => openHelp('printing'); s.appendChild(hb);
   const po = el('div', 'print'); po.id = 'printOut'; s.appendChild(po);
   updatePrint();
@@ -2372,7 +2381,7 @@ function updatePalette() {
 }
 
 /* ---------------- text library sheet ---------------- */
-const libState = { tab: 'words', focus: 'Positive', checked: { words: new Set(['Positive']), phrases: new Set(['Positive']), chars: new Set(['Capital letters']) }, shuffle: true, count: 24, length: 60, target: null, find: '' };
+const libState = { tab: 'words', focus: 'Positive', checked: { words: new Set(['Positive']), phrases: new Set(['Positive']), chars: new Set(['Capital letters']) }, shuffle: true, count: 24, length: 60, target: null, find: '', open: {} };
 function openLibrary(target) {
   libState.target = target;
   if (target.kind === 'glyphs') libState.tab = 'chars';
@@ -2424,14 +2433,36 @@ function renderLibrary() {
   const q = libState.find.trim().toLowerCase();
   const names = Object.keys(LIB[kind]).filter((n) => !q || n.toLowerCase().includes(q) || (kind === 'chars' ? false : LIB[kind][n].some((w) => String(w).toLowerCase().includes(q))));
   if (!names.length) sets.appendChild(el('span', 'note', 'No set matches that.'));
-  names.forEach((name) => {
-    const row = el('div', 'set'); row.setAttribute('aria-current', String(libState.focus === name));
-    const cb = el('input'); cb.type = 'checkbox'; cb.checked = libState.checked[kind].has(name); cb.setAttribute('aria-label', 'Use ' + name);
-    cb.onchange = () => { cb.checked ? libState.checked[kind].add(name) : libState.checked[kind].delete(name); updLibPreview(); };
-    const b = el('button', null, name); b.type = 'button'; b.onclick = () => { libState.focus = name; renderLibrary(); };
-    const n = kind === 'chars' ? Array.from(LIB.chars[name]).length : LIB[kind][name].length;
-    row.append(cb, b, el('small', null, String(n)));
-    sets.appendChild(row);
+  // sets sit under headings; a heading opens when you search, or when it holds the set you are looking at
+  const order = LIB_GROUPS[kind].map(([g]) => g).concat(MY_SETS);
+  const byGroup = new Map(order.map((g) => [g, []]));
+  names.forEach((n) => byGroup.get(libGroupOf(kind, n)).push(n));
+  const focusGroup = libGroupOf(kind, libState.focus in LIB[kind] ? libState.focus : Object.keys(LIB[kind])[0]);
+  byGroup.forEach((list, g) => {
+    if (!list.length) return;
+    const key = kind + ':' + g;
+    const open = !!q || (key in libState.open ? libState.open[key] : g === focusGroup);
+    const gh = el('button', 'set-group'); gh.type = 'button'; gh.setAttribute('aria-expanded', String(open));
+    const cnt = el('small');
+    const count = () => { const t = list.filter((n) => libState.checked[kind].has(n)).length; cnt.textContent = t ? t + ' of ' + list.length : String(list.length); gh.title = t ? t + ' ticked in this group' : list.length + ' sets'; };
+    gh.append(el('span', 'set-group-t', g), cnt); count();
+    gh.onclick = () => { libState.open[key] = !open; renderLibrary(); };
+    sets.appendChild(gh);
+    if (!open) return;
+    list.forEach((name) => {
+      const row = el('div', 'set'); row.setAttribute('aria-current', String(libState.focus === name));
+      const cb = el('input'); cb.type = 'checkbox'; cb.checked = libState.checked[kind].has(name); cb.setAttribute('aria-label', 'Use ' + name);
+      cb.onchange = () => {
+        if (!cb.checked) { libState.checked[kind].delete(name); count(); updLibPreview(); return; }
+        // ticking a set also shows what is in it, and the keyboard stays on the box
+        libState.checked[kind].add(name); libState.focus = name; renderLibrary();
+        const again = [...$('library').querySelectorAll('.set input')].find((i) => i.getAttribute('aria-label') === 'Use ' + name); if (again) again.focus();
+      };
+      const b = el('button', null, name); b.type = 'button'; b.onclick = () => { libState.focus = name; renderLibrary(); };
+      const n = kind === 'chars' ? Array.from(LIB.chars[name]).length : LIB[kind][name].length;
+      row.append(cb, b, el('small', null, String(n)));
+      sets.appendChild(row);
+    });
   });
   const addSet = el('button', 'mini-btn', '+ New set'); addSet.type = 'button'; addSet.style.margin = '8px';
   addSet.onclick = () => { let i = 1; while (LIB[kind]['My set ' + i]) i++; const nm = 'My set ' + i; LIB[kind][nm] = kind === 'chars' ? '' : []; libState.focus = nm; libState.checked[kind].add(nm); saveLibrary(LIB); renderLibrary(); };

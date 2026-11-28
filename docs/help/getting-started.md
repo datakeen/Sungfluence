@@ -25,7 +25,7 @@ Not sure where to start? Click the **Recipes** tab beside **Styles** and click a
 Under the tiles come the style's own settings, then **Words**, **Size**, **Color** and **Background**. The most useful ones:
 
 - **Text**: type your own words. Click **Library** for ready-made words and phrases.
-- **Letter size** or **Columns**: how fine the result is. **Text size** makes every letter bigger or smaller at once.
+- **Letter size** or **Columns**: how fine the result is. **Scale all letters** makes every letter bigger or smaller at once, on top of the style's own sizes.
 - **Color**: Ink (one color), Photo (the photo's own colors), Tone, or Duotone (two inks).
 - **Typeface**: the font. Urdu text uses Nastaliq on its own.
 

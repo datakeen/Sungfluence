@@ -17,7 +17,7 @@ How strongly the photo shows in Mix view is set on the **Mix** button at the top
 
 Click **Export** at the top right, press Ctrl E, or choose a format from the **Export** menu. The window lists every format on the left. Pick one to see its options on the right, with a line that tells you the size of the result. Click **Export** to save the file. The window remembers your last format and its options.
 
-**Most used** sits at the top of the list: **PNG at artboard size**, **PDF for print** and **SVG with live text**. Below them the other formats follow in their groups. Each format has a short hint under its name, so you can tell them apart. While more formats wait below, the bottom of the list fades and shows **More formats**; click it or scroll to see them.
+**Most used** sits at the top of the list: **PNG at artboard size**, **PNG for print**, **PDF for print** and **SVG with live text**. Below them the other formats follow in their groups. Each format has a short hint under its name, so you can tell them apart. While more formats wait below, the bottom of the list fades and shows **More formats**; click it or scroll to see them.
 
 Some formats let you choose the **layers to include**: Photo, Vector and Text art. Formats under Text art, Text twins, Code and Office need text art, so apply a style first.
 
@@ -34,14 +34,14 @@ Some formats let you choose the **layers to include**: Photo, Vector and Text ar
 
 ### Text art
 
-In the window, PNG at artboard size, SVG with live text and PDF for print are listed under **Most used**.
+In the window, PNG at artboard size, PNG for print, PDF for print and SVG with live text are listed under **Most used**.
 
 | Format | What you get |
 | --- | --- |
-| PNG for print | The size and dpi chosen under Print in the Output panel. |
+| PNG for print | The size and dpi chosen under Print in the Output panel. The dpi is saved in the file, so photo editors and print shops see the print size. |
 | PNG at artboard size | The artboard width in pixels. |
 | SVG with live text | Letters that stay editable in Illustrator, Inkscape or Figma. |
-| PDF for print | A page of the chosen print size with the artwork on it. |
+| PDF for print | A page of the chosen print size with the artwork on it, with live letters in SungFluence's own fonts: they stay sharp at any zoom, and the text can be selected. A turned artwork stays turned. Letters filled with the photo, and Urdu or Arabic letters, go in as a picture at the chosen dpi. **As a picture** puts the whole artwork in as a picture at that dpi, exactly as on screen. With a transparent background the page still gets the paper color, so it looks as on screen; **Leave the background clear** leaves it out, and PDF viewers then show the art on white. The same holds for CMYK PDF, which also prints dark tones as a rich black. |
 | CMYK PDF, vector | Live letters with CMYK ink values, for print shops. |
 | CMYK plates | Four separations (cyan, magenta, yellow, black) as PNG files in a zip, for screen printing. |
 

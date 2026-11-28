@@ -367,7 +367,7 @@ Text along lines of equal tone, like a topographic or river depth map.
 
 ## Settings every style has
 
-Size has **Text size** for every style. The folded sections Mirror, Shape, Finish and Tone come after Color and Background. Click a section name to open it.
+Size has **Scale all letters** for every style. The folded sections Mirror, Shape, Finish and Tone come after Color and Background. Click a section name to open it.
 
 ### Marks
 

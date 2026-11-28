@@ -1052,7 +1052,9 @@ function* modeFlowRows(S, P, W, H, R) {
   let _op = 0;
   const fam = P.font || 'sans';
   const base = P.size || 14;
-  const lineH = base * (P.leading || 1.0);
+  // a whole number of pixels from row to row, at the size being drawn: with rows that nearly touch, a spacing
+  // with a fraction left a one pixel gap every few rows, a thin line across the art in large exports
+  const lineH0 = base * (P.leading || 1.0), lineH = lineH0 >= 6 ? Math.round(lineH0) : lineH0;
   const st = stream(P.text, { upper: P.upper, sep: P.sep ?? ' ', emph: P.emph !== false });
   const items = [];
   const text = String(P.text || '');
