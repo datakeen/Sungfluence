@@ -4,7 +4,7 @@ How to run SungFluence from source and build its installers, on your own compute
 
 ## Run from source
 
-You need [Node.js](https://nodejs.org) 20 or newer and [Git](https://git-scm.com).
+You need [Node.js](https://nodejs.org) 26, the version the builds use (24 also works), and [Git](https://git-scm.com).
 
 ```bash
 git clone https://github.com/datakeen/Sungfluence.git
